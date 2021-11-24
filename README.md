@@ -31,7 +31,7 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
    Output sample
    ![image](/doc/images/officelisten_linux.png)
 
-2. Download the latest version of OpenP2P(TBC),unzip the downloaded package, and execute below command line.
+2. Download the latest version of [OpenP2P](https://github.com/openp2p-cn/openp2p/releases),unzip the downloaded package, and execute below command line.
    ```
    tar xvf openp2p0.95.3.linux-amd64.tar.gz
    openp2p -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1
@@ -41,7 +41,7 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
    Output sample
    ![image](/doc/images/officeexecute_linux.png)
 
-3. Download the same package of OpenP2P(TBC) on your home device，unzip and execute below command line.
+3. Download the same package of [OpenP2P](https://github.com/openp2p-cn/openp2p/releases) on your home device，unzip and execute below command line.
    ```
    openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 22 --srcport 22022 --protocol tcp
    ```

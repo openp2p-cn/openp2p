@@ -21,7 +21,7 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 以一个最常见的例子说明OpenP2P如何使用：远程办公，在家里连入办公室Windows电脑。  
 相信很多人在疫情下远程办公是刚需。
 1. 先确认办公室电脑已开启远程桌面功能（如何开启参考官方说明https://docs.microsoft.com/zh-cn/windows-server/remote/remote-desktop-services/clients/remote-desktop-allow-access）
-2. 在办公室下载最新的OpenP2P(补上URL),解压出来,在命令行执行
+2. 在办公室下载最新的[OpenP2P](https://gitee.com/tenderiron/openp2p/releases/),解压出来,在命令行执行
    ```
    openp2p.exe -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
    ```
@@ -29,7 +29,7 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
    `切记将标记大写的参数改成自己的`
 
    ![image](/doc/images/officelisten.png)
-3. 在家里下载最新的OpenP2P(补上URL),解压出来,在命令行执行
+3. 在家里下载最新的[OpenP2P](https://gitee.com/tenderiron/openp2p/releases/),解压出来,在命令行执行
    ```
    openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 3389 --srcport 23389 --protocol tcp
    ```
