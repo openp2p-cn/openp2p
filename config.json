@@ -1,0 +1,31 @@
+{
+    "network": {
+        "Node": "hhd1207-222",
+        "User": "tenderiron",
+        "Password": "13760636579",
+        "ServerHost": "openp2p.cn",
+        "ServerPort": 27182,
+        "UDPPort1": 27182,
+        "UDPPort2": 27183
+    },
+    "apps": [
+        {
+            "Protocol": "tcp",
+            "SrcPort": 53389,
+            "PeerNode": "dell720-902",
+            "DstPort": 3389,
+            "DstHost": "10.1.6.36",
+            "PeerUser": "",
+            "PeerPassword": ""
+        },
+        {
+            "Protocol": "tcp",
+            "SrcPort": 22,
+            "PeerNode": "dell720-902",
+            "DstPort": 22,
+            "DstHost": "127.0.0.1",
+            "PeerUser": "",
+            "PeerPassword": ""
+        }
+    ]
+}
