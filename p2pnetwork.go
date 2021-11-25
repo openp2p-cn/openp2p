@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/rand"
 	"net/url"
 	"os"
@@ -105,10 +104,6 @@ func (pn *P2PNetwork) autoReconnectApp() {
 			thisRound := make([]AppConfig, 0)
 			for i := 0; i < len(retryApps); i++ {
 				// reset retryNum when running 15min continuously
-				delay := math.Exp(float64(retryApps[i].retryNum+1)/2) * 5
-				if delay > 1800 { // max delay 30min
-					delay = 1800
-				}
 				if retryApps[i].retryTime.Add(time.Minute * 15).Before(time.Now()) {
 					retryApps[i].retryNum = 0
 				}

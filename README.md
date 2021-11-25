@@ -138,10 +138,6 @@ QQ Group: 16947733
 
 Email: openp2p.cn@gmail.com tenderiron@139.com
 
-Get the latest version news, and some of the latest IT industry trends
-
-WeChat public account:  openp2p
-
 ## Disclaimer
 This project is open source for everyone to learn and use for free. It is forbidden to be used for illegal purposes. Any loss caused by improper use of this project or accident, this project and related personnel will not bear any responsibility. 
 
