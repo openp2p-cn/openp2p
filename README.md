@@ -36,7 +36,8 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
    tar xvf openp2p0.95.3.linux-amd64.tar.gz
    openp2p -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1
    ```
-   `Must change the parameters marked in uppercase to your own`
+
+   > :warning: **Must change the parameters marked in uppercase to your own**
 
    Output sample
    ![image](/doc/images/officeexecute_linux.png)
@@ -45,10 +46,12 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
    ```
    openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 22 --srcport 22022 --protocol tcp
    ```
-   `Must change the parameters marked in uppercase to your own`
-   Output sample
-   ![image](/doc/images/homeconnect_windows.png)
-   The log of `LISTEN ON PORT 22022 START` indicates P2PApp runs successfully on your home device, listing port is 22022. Once connects to local ip:port,127.0.0.1:22022, it means the home device has conneccted to the office device's port, 22.
+   
+   > :warning: **Must change the parameters marked in uppercase to your own**
+
+   Output sample  
+   ![image](/doc/images/homeconnect_windows.png)  
+   The log of `LISTEN ON PORT 22022 START` indicates P2PApp runs successfully on your home device, listing port is 22022. Once connects to local ip:port,127.0.0.1:22022, it means the home device has conneccted to the office device's port, 22.  
    ![image](/doc/images/officelisten_2_linux.png)
 
 

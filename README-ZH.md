@@ -26,19 +26,20 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
    openp2p.exe -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
    ```
    
-   `切记将标记大写的参数改成自己的`
+   > :warning: **切记将标记大写的参数改成自己的**
 
    ![image](/doc/images/officelisten.png)
 3. 在家里下载最新的[OpenP2P](https://gitee.com/tenderiron/openp2p/releases/),解压出来,在命令行执行
    ```
    openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 3389 --srcport 23389 --protocol tcp
    ```
-   `切记将标记大写的参数改成自己的`
+   > :warning: **切记将标记大写的参数改成自己的**
+
    ![image](/doc/images/homeconnect.png)
    ![image](/doc/images/mem.png)
    `LISTEN ON PORT 23389 START` 看到这行日志表示P2PApp建立成功，监听23389端口。只需连接本机的127.0.0.1:23389就相当于连接公司Windows电脑的3389端口。
    
-4. 在家里Windows电脑，按Win+R输入mstsc打开远程桌面，输入127.0.0.1:23389 /admin
+4. 在家里Windows电脑，按Win+R输入mstsc打开远程桌面，输入127.0.0.1:23389 /admin  
    ![image](/doc/images/mstscconnect.png)
 
    ![image](/doc/images/afterconnect.png)
