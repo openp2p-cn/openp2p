@@ -1,9 +1,10 @@
 English|[中文](/README-ZH.md)
 ## What is OpenP2P
-It is an open source, free, and lightweight P2P sharing network. As long as any device joins in, you can access them anywhere
+It is an open source, free, and lightweight P2P sharing network. As long as any device joins in, you can access them anywhere.
+Our goal is to make full use of bandwidth, use shared nodes to relay data, and build a common infrastructure for remote connections.
 ## Why OpenP2P
 ### Free
-Totaly free, fullfills most of users(especially free-rider). Unlike other similar products, we don't need a server with public IP, and don't need to pay for services.
+Totaly free, fullfills most of users(especially free-rider). Unlike other similar products, we don't need a server with public IP, and don't need to pay for services.By understanding its principle, you can understand why it can be done for free.
 
 ### Safe
 Open source, trustable(see details below)
@@ -126,7 +127,7 @@ Short-Term:
 
 
 Long-Term:
-1. Decentration and distribution.
+1. Use blockchain technology to decentralize, so that users who share equipment have benefits, thereby promoting more users to share, and achieving a positive closed loop.
 2. Enterprise-level product can well manage large scale equipment and ACL.
 
 
