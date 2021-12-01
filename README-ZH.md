@@ -1,4 +1,5 @@
-[English](/README.md)|中文
+[English](/README.md)|中文  
+网站: [openp2p.cn](https://openp2p.cn)
 ## OpenP2P是什么
 它是一个开源、免费、轻量级的P2P共享网络。任何设备接入OpenP2P，随时随地访问它们。
 我们的目标是：充分利用带宽，利用共享节点转发数据，建设一个远程连接的通用基础设施。

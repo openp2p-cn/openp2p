@@ -113,23 +113,28 @@ func netInfo() *NetInfo {
 		// 	return d.DialContext(ctx, "tcp6", addr)
 		// },
 	}
-	client := &http.Client{Transport: tr, Timeout: time.Second * 5}
-	r, err := client.Get("https://ifconfig.co/json")
-	if err != nil {
-		gLog.Println(LevelINFO, "netInfo error:", err)
-		return nil
+	// sometime will be failed, retry
+	for i := 0; i < 2; i++ {
+		client := &http.Client{Transport: tr, Timeout: time.Second * 10}
+		r, err := client.Get("https://ifconfig.co/json")
+		if err != nil {
+			gLog.Println(LevelINFO, "netInfo error:", err)
+			continue
+		}
+		defer r.Body.Close()
+		buf := make([]byte, 1024*64)
+		n, err := r.Body.Read(buf)
+		if err != nil {
+			gLog.Println(LevelINFO, "netInfo error:", err)
+			continue
+		}
+		rsp := NetInfo{}
+		err = json.Unmarshal(buf[:n], &rsp)
+		if err != nil {
+			gLog.Printf(LevelERROR, "wrong NetInfo:%s", err)
+			continue
+		}
+		return &rsp
 	}
-	defer r.Body.Close()
-	buf := make([]byte, 1024*64)
-	n, err := r.Body.Read(buf)
-	if err != nil {
-		gLog.Println(LevelINFO, "netInfo error:", err)
-		return nil
-	}
-	rsp := NetInfo{}
-	err = json.Unmarshal(buf[:n], &rsp)
-	if err != nil {
-		gLog.Printf(LevelERROR, "wrong NetInfo:%s", err)
-	}
-	return &rsp
+	return nil
 }
