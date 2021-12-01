@@ -39,3 +39,7 @@ func TestAESCBC(t *testing.T) {
 	}
 
 }
+
+func TestNetInfo(t *testing.T) {
+	log.Println(netInfo())
+}

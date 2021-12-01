@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -417,12 +418,21 @@ func (pn *P2PNetwork) init() error {
 
 		pn.config.mac = getmac(pn.config.localIP)
 		pn.config.os = getOsName()
+
 		req := ReportBasic{
 			Mac:     pn.config.mac,
 			LanIP:   pn.config.localIP,
 			OS:      pn.config.os,
-			IPv6:    pn.config.ipv6,
 			Version: OpenP2PVersion,
+		}
+		rsp := netInfo()
+		gLog.Println(LevelINFO, rsp)
+		if rsp != nil && rsp.Country != "" {
+			if len(rsp.IP) == net.IPv6len {
+				pn.config.ipv6 = rsp.IP.String()
+				req.IPv6 = rsp.IP.String()
+			}
+			req.NetInfo = *rsp
 		}
 		pn.write(MsgReport, MsgReportBasic, &req)
 		gLog.Println(LevelINFO, "P2PNetwork init ok")

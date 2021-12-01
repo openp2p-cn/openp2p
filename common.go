@@ -3,8 +3,12 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/http"
+	"time"
 )
 
 func getmac(ip string) string {
@@ -98,4 +102,34 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 	mode := cipher.NewCBCDecrypter(block, cbcIVBlock)
 	mode.CryptBlocks(out[:dataLen], in[:dataLen])
 	return pkcs7UnPadding(out, dataLen)
+}
+
+// {240e:3b7:622:3440:59ad:7fa1:170c:ef7f 47924975352157270363627191692449083263 China CN 0xc0000965c8 Guangdong GD 0  Guangzhou 23.1167 113.25 Asia/Shanghai AS4134 Chinanet }
+func netInfo() *NetInfo {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		// DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+		// 	var d net.Dialer
+		// 	return d.DialContext(ctx, "tcp6", addr)
+		// },
+	}
+	client := &http.Client{Transport: tr, Timeout: time.Second * 5}
+	r, err := client.Get("https://ifconfig.co/json")
+	if err != nil {
+		gLog.Println(LevelINFO, "netInfo error:", err)
+		return nil
+	}
+	defer r.Body.Close()
+	buf := make([]byte, 1024*64)
+	n, err := r.Body.Read(buf)
+	if err != nil {
+		gLog.Println(LevelINFO, "netInfo error:", err)
+		return nil
+	}
+	rsp := NetInfo{}
+	err = json.Unmarshal(buf[:n], &rsp)
+	if err != nil {
+		gLog.Printf(LevelERROR, "wrong NetInfo:%s", err)
+	}
+	return &rsp
 }
