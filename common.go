@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/tls"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
 	"time"
 )
 
@@ -137,4 +139,12 @@ func netInfo() *NetInfo {
 		return &rsp
 	}
 	return nil
+}
+
+func execOutput(name string, args ...string) string {
+	cmdGetOsName := exec.Command(name, args...)
+	var cmdOut bytes.Buffer
+	cmdGetOsName.Stdout = &cmdOut
+	cmdGetOsName.Run()
+	return cmdOut.String()
 }
