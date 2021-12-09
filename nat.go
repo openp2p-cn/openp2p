@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func natTest(serverHost string, serverPort int, localPort int) (publicIP string, isPublicIP int, publicPort int, err error) {
+func natTest(serverHost string, serverPort int, localPort int, echoPort int) (publicIP string, isPublicIP int, publicPort int, err error) {
 	conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		return "", 0, 0, err
@@ -21,7 +21,7 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 	}
 
 	// The connection can write data to the desired address.
-	msg, err := newMessage(MsgNATDetect, 0, &NatDetectReq{SrcPort: localPort, EchoPort: EchoPort})
+	msg, err := newMessage(MsgNATDetect, 0, &NatDetectReq{SrcPort: localPort, EchoPort: echoPort})
 	_, err = conn.WriteTo(msg, dst)
 	if err != nil {
 		return "", 0, 0, err
@@ -44,9 +44,10 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 
 func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, err error) {
 	// the random local port may be used by other.
-	go echo()
 	localPort := int(rand.Uint32()%10000 + 50000)
-	ip1, isPublicIP, port1, err := natTest(host, udp1, localPort)
+	echoPort := int(rand.Uint32()%10000 + 50000)
+	go echo(echoPort)
+	ip1, isPublicIP, port1, err := natTest(host, udp1, localPort, echoPort)
 	gLog.Printf(LevelDEBUG, "local port:%d  nat port:%d", localPort, port1)
 	if err != nil {
 		return "", 0, err
@@ -54,7 +55,7 @@ func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, 
 	if isPublicIP == 1 {
 		return ip1, NATNone, nil
 	}
-	ip2, _, port2, err := natTest(host, udp2, localPort)
+	ip2, _, port2, err := natTest(host, udp2, localPort, 0) // 2rd nat test not need testing publicip
 	gLog.Printf(LevelDEBUG, "local port:%d  nat port:%d", localPort, port2)
 	if err != nil {
 		return "", 0, err
@@ -70,14 +71,8 @@ func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, 
 	return ip1, natType, nil
 }
 
-const (
-	UDPPort1 = 27182
-	UDPPort2 = 27183
-	EchoPort = 31415
-)
-
-func echo() {
-	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: EchoPort})
+func echo(echoPort int) {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
 	if err != nil {
 		gLog.Println(LevelERROR, "echo server listen error:", err)
 		return

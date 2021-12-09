@@ -146,7 +146,7 @@ func (pn *P2PNetwork) autoReconnectApp() {
 func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint64) (*P2PTunnel, uint64, error) {
 	gLog.Printf(LevelINFO, "addRelayTunnel to %s start", config.PeerNode)
 	defer gLog.Printf(LevelINFO, "addRelayTunnel to %s end", config.PeerNode)
-	pn.write(MsgRelay, MsgRelayNodeReq, nil)
+	pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
 	head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, time.Second*10)
 	if head == nil {
 		return nil, 0, errors.New("read MsgRelayNodeRsp error")
@@ -254,9 +254,6 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		Version:        OpenP2PVersion,
 	}
 	pn.write(MsgReport, MsgReportConnect, &req)
-	if err != nil {
-		return err
-	}
 
 	app := p2pApp{
 		id:     appID,
@@ -266,7 +263,9 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		rtid:   rtid,
 		hbTime: time.Now()}
 	pn.apps.Store(appID, &app)
-	go app.listen()
+	if err == nil {
+		go app.listen()
+	}
 	return err
 }
 
@@ -373,7 +372,7 @@ func (pn *P2PNetwork) init() error {
 		// detect nat type
 		pn.config.publicIP, pn.config.natType, err = getNATType(pn.config.ServerHost, pn.config.UDPPort1, pn.config.UDPPort2)
 		// TODO rm test s2s
-		if pn.config.Node == "hhd1207-222S2S" {
+		if strings.Contains(pn.config.Node, "openp2pS2STest") {
 			pn.config.natType = NATSymmetric
 		}
 		if err != nil {

@@ -11,6 +11,7 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+
 	// TODO: install sub command, deamon process
 	// groups := flag.String("groups", "", "you could join in several groups. like: GroupName1:Password1;GroupName2:Password2; group name 8-31 characters")
 	if len(os.Args) > 1 {
@@ -19,12 +20,19 @@ func main() {
 			fmt.Println(OpenP2PVersion)
 			return
 		case "update":
-			gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LevelDEBUG, 1024*1024, LogConsole)
+			gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
 			update()
+			return
+		case "install":
+			install()
+			return
+		case "uninstall":
+			uninstall()
 			return
 		}
 	}
-
+	serverHost := flag.String("serverhost", "api.openp2p.cn", "server host ")
+	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
 	user := flag.String("user", "", "user name. 8-31 characters")
 	node := flag.String("node", "", "node name. 8-31 characters")
 	password := flag.String("password", "", "user password. 8-31 characters")
@@ -32,8 +40,6 @@ func main() {
 	peerUser := flag.String("peeruser", "", "peer node user (default peeruser=user)")
 	peerPassword := flag.String("peerpassword", "", "peer node password (default peerpassword=password)")
 	dstIP := flag.String("dstip", "127.0.0.1", "destination ip ")
-	serverHost := flag.String("serverhost", "openp2p.cn", "server host ")
-	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
 	dstPort := flag.Int("dstport", 0, "destination port ")
 	srcPort := flag.Int("srcport", 0, "source port ")
 	protocol := flag.String("protocol", "tcp", "tcp or udp")
@@ -44,7 +50,7 @@ func main() {
 	byDaemon := flag.Bool("bydaemon", false, "start by daemon")
 	logLevel := flag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	flag.Parse()
-	gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LogLevel(*logLevel), 1024*1024, LogConsole)
+	gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LogLevel(*logLevel), 1024*1024, LogFileAndConsole)
 	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
 	if *daemonMode {
 		d := daemon{}

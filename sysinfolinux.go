@@ -12,6 +12,11 @@ import (
 	"syscall"
 )
 
+const (
+	defaultInstallPath = "/usr/local/openp2p"
+	defaultBinName     = "openp2p"
+)
+
 func getOsName() (osName string) {
 	var sysnamePath string
 	sysnamePath = "/etc/redhat-release"

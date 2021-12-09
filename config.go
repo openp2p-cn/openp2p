@@ -27,6 +27,7 @@ type AppConfig struct {
 	shareBandwidth  int
 }
 
+// TODO: add loglevel, maxlogfilesize
 type Config struct {
 	Network    NetworkConfig `json:"network"`
 	Apps       []AppConfig   `json:"apps"`
@@ -45,10 +46,10 @@ func (c *Config) add(app AppConfig) {
 	c.Apps = append(c.Apps, app)
 }
 
-// func (c *Config) save() {
-// 	data, _ := json.MarshalIndent(c, "", "")
-// 	ioutil.WriteFile("config.json", data, 0644)
-// }
+func (c *Config) save() {
+	data, _ := json.MarshalIndent(c, "", "")
+	ioutil.WriteFile("config.json", data, 0644)
+}
 
 func (c *Config) load() error {
 	data, err := ioutil.ReadFile("config.json")

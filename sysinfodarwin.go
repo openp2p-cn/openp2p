@@ -8,6 +8,11 @@ import (
 	"syscall"
 )
 
+const (
+	defaultInstallPath = "/usr/local/openp2p"
+	defaultBinName     = "openp2p"
+)
+
 func getOsName() (osName string) {
 	output := execOutput("sw_vers", "-productVersion")
 	osName = "Mac OS X " + strings.TrimSpace(output)

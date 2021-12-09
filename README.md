@@ -26,6 +26,9 @@ Your applicaiton can call OpenP2P with a few code to make any internal networks 
 A common scenario to introduce OpenP2P: remote work. At home connects to office's Linux PC .
 Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamental demand.
 
+> :warning: all commands in this doc, Windows env uses "openp2p.exe", Linux env uses "./openp2p"
+ 
+
 1. Make sure your office device(Linux) has opened the access of ssh.
    ```
    netstat -nl | grep 22
@@ -36,7 +39,7 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
 2. Download the latest version of [OpenP2P](https://github.com/openp2p-cn/openp2p/releases),unzip the downloaded package, and execute below command line.
    ```
    tar xvf openp2p0.95.3.linux-amd64.tar.gz
-   openp2p -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1
+   ./openp2p install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1
    ```
 
    > :warning: **Must change the parameters marked in uppercase to your own**

@@ -13,6 +13,11 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+const (
+	defaultInstallPath = "C:\\Program Files\\OpenP2P"
+	defaultBinName     = "openp2p.exe"
+)
+
 func getOsName() (osName string) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows NT\CurrentVersion`, registry.QUERY_VALUE|registry.WOW64_64KEY)
 	if err != nil {

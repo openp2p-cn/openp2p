@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -55,7 +54,6 @@ type V8log struct {
 	stoped     bool
 	lineEnding string
 	pid        int
-	lastError  string
 	maxLogSize int64
 	mode       int
 }
@@ -89,7 +87,7 @@ func InitLogger(path string, filePrefix string, level LogLevel, maxLogSize int64
 	} else {
 		le = "\n"
 	}
-	pLog := &V8log{logger, openedfile, level, make(chan bool, 10), logdir, &sync.Mutex{}, false, le, os.Getpid(), "", maxLogSize, mode}
+	pLog := &V8log{logger, openedfile, level, make(chan bool, 10), logdir, &sync.Mutex{}, false, le, os.Getpid(), maxLogSize, mode}
 	go pLog.checkFile()
 	return pLog
 }
@@ -155,15 +153,11 @@ func (vl *V8log) Printf(level LogLevel, format string, params ...interface{}) {
 	if level < vl.llevel {
 		return
 	}
-	if level == LevelERROR {
-		vl.lastError = fmt.Sprintf(format, params...)
-	}
 	pidAndLevel := []interface{}{vl.pid, loglevel[level]}
 	params = append(pidAndLevel, params...)
 	if vl.mode == LogFile || vl.mode == LogFileAndConsole {
 		vl.loggers[0].Printf("%d %s "+format+vl.lineEnding, params...)
 	}
-
 	if vl.mode == LogConsole || vl.mode == LogFileAndConsole {
 		log.Printf("%d %s "+format+vl.lineEnding, params...)
 	}
@@ -179,20 +173,13 @@ func (vl *V8log) Println(level LogLevel, params ...interface{}) {
 	if level < vl.llevel {
 		return
 	}
-	if level == LevelERROR {
-		vl.lastError = fmt.Sprint(params...)
-	}
 	pidAndLevel := []interface{}{vl.pid, " ", loglevel[level], " "}
 	params = append(pidAndLevel, params...)
 	params = append(params, vl.lineEnding)
-	vl.loggers[0].Print(params...)
+	if vl.mode == LogFile || vl.mode == LogFileAndConsole {
+		vl.loggers[0].Print(params...)
+	}
 	if vl.mode == LogConsole || vl.mode == LogFileAndConsole {
 		log.Print(params...)
 	}
-}
-
-func (vl *V8log) getLastError() string {
-	vl.mtx.Lock()
-	defer vl.mtx.Unlock()
-	return vl.lastError
 }

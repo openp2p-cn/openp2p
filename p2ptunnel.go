@@ -39,7 +39,7 @@ func (t *P2PTunnel) init() {
 	localPort := int(rand.Uint32()%10000 + 50000)
 	if t.pn.config.natType == NATCone {
 		// prepare one random cone hole
-		_, _, port1, _ := natTest(t.pn.config.ServerHost, t.pn.config.UDPPort1, localPort)
+		_, _, port1, _ := natTest(t.pn.config.ServerHost, t.pn.config.UDPPort1, localPort, 0)
 		t.coneLocalPort = localPort
 		t.coneNatPort = port1
 		t.la = &net.UDPAddr{IP: net.ParseIP(t.pn.config.localIP), Port: t.coneLocalPort}

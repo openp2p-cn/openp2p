@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "0.95.5"
+const OpenP2PVersion = "0.96.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -231,6 +231,10 @@ type OverlayDisconnectReq struct {
 }
 type TunnelMsg struct {
 	ID uint64 `json:"id,omitempty"`
+}
+
+type RelayNodeReq struct {
+	PeerNode string `json:"peerNode,omitempty"`
 }
 
 type RelayNodeRsp struct {

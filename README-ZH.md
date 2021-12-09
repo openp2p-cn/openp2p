@@ -20,12 +20,16 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 基于OpenP2P只需数行代码，就能让原来只能局域网通信的程序，变成任何内网都能通信
 
 ## 快速入门
+
+> :warning: 本文所有命令, Windows环境使用"openp2p.exe", Linux环境使用"./openp2p"
+
+
 以一个最常见的例子说明OpenP2P如何使用：远程办公，在家里连入办公室Windows电脑。  
 相信很多人在疫情下远程办公是刚需。
 1. 先确认办公室电脑已开启远程桌面功能（如何开启参考官方说明https://docs.microsoft.com/zh-cn/windows-server/remote/remote-desktop-services/clients/remote-desktop-allow-access）
 2. 在办公室下载最新的[OpenP2P](https://gitee.com/tenderiron/openp2p/releases/),解压出来,在命令行执行
    ```
-   openp2p.exe -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
+   openp2p.exe install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
    ```
    
    > :warning: **切记将标记大写的参数改成自己的**
@@ -114,7 +118,7 @@ TODO或ISSUE里如果有你擅长的领域，或者你有特别好的主意，�
 它是一个中国人发起的项目，更懂国内网络环境，更懂用户需求，更好的企业级支持
 ## 技术交流
 QQ群：16947733  
-邮箱：openp2p.cn@gmail.com 271357901@qq.com  
+邮箱：openp2p.cn@gmail.com tenderiron@139.com  
 
 ## 免责声明
 本项目开源供大家学习和免费使用，禁止用于非法用途，任何不当使用本项目或意外造成的损失，本项目及相关人员不会承担任何责任。
