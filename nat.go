@@ -39,6 +39,35 @@ func natTest(serverHost string, serverPort int, localPort int, echoPort int) (pu
 	}
 	natRsp := NatDetectRsp{}
 	err = json.Unmarshal(buffer[openP2PHeaderSize:nRead], &natRsp)
+
+	// testing for public ip
+	if echoPort != 0 {
+		for {
+			gLog.Printf(LevelINFO, "public ip test start %s:%d", natRsp.IP, echoPort)
+			conn, err := net.ListenUDP("udp", nil)
+			if err != nil {
+				break
+			}
+			defer conn.Close()
+			dst, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", natRsp.IP, echoPort))
+			if err != nil {
+				break
+			}
+			conn.WriteTo([]byte("echo"), dst)
+			buf := make([]byte, 1600)
+
+			// wait for echo testing
+			conn.SetReadDeadline(time.Now().Add(PublicIPEchoTimeout))
+			_, _, err = conn.ReadFromUDP(buf)
+			if err == nil {
+				gLog.Println(LevelINFO, "public ip:YES")
+				natRsp.IsPublicIP = 1
+			} else {
+				gLog.Println(LevelINFO, "public ip:NO")
+			}
+			break
+		}
+	}
 	return natRsp.IP, natRsp.IsPublicIP, natRsp.Port, nil
 }
 

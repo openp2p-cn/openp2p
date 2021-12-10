@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "0.96.0"
+const OpenP2PVersion = "0.96.1"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -127,7 +127,7 @@ const (
 	AESKeySize                   = 16
 	MaxRetry                     = 10
 	RetryInterval                = time.Second * 30
-	PublicIPEchoTimeout          = time.Second * 5
+	PublicIPEchoTimeout          = time.Second * 3
 	NatTestTimeout               = time.Second * 10
 )
 

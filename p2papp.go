@@ -24,6 +24,9 @@ type p2pApp struct {
 }
 
 func (app *p2pApp) isActive() bool {
+	if app.tunnel == nil {
+		return false
+	}
 	if app.rtid == 0 { // direct mode app heartbeat equals to tunnel heartbeat
 		return app.tunnel.isActive()
 	}
@@ -119,7 +122,9 @@ func (app *p2pApp) close() {
 	if app.listener != nil {
 		app.listener.Close()
 	}
-	app.tunnel.closeOverlayConns(app.id)
+	if app.tunnel != nil {
+		app.tunnel.closeOverlayConns(app.id)
+	}
 	app.wg.Wait()
 }
 
