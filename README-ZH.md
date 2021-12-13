@@ -1,12 +1,12 @@
-[English](/README.md)|中文  
+# [English](/README.md)|中文  
 网站: [openp2p.cn](https://openp2p.cn)
 ## OpenP2P是什么
-它是一个开源、免费、轻量级的P2P共享网络。任何设备接入OpenP2P，随时随地访问它们。
+它是一个开源、免费、轻量级的P2P共享网络。任何设备接入OpenP2P，随时随地访问它们。相比BT网络用来共享文件，OpenP2P网络用来共享带宽。
 我们的目标是：充分利用带宽，利用共享节点转发数据，建设一个远程连接的通用基础设施。
 
 ## 为什么选择OpenP2P
 ### 免费
-完全免费，满足大部分用户的核心白票需求。不像其它类似的产品，我们不需要有公网IP的服务器，不需要花钱买服务。了解它原理即可理解为什么能做到免费。
+完全免费，满足大部分用户的核心白票需求。不像其它类似的产品，OpenP2P不需要有公网IP的服务器，不需要花钱买服务。了解它原理即可理解为什么能做到免费。
 ### 安全
 代码开源，接受各位大佬检验。下面详细展开
 ### 轻量
@@ -27,15 +27,15 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 以一个最常见的例子说明OpenP2P如何使用：远程办公，在家里连入办公室Windows电脑。  
 相信很多人在疫情下远程办公是刚需。
 1. 先确认办公室电脑已开启远程桌面功能（如何开启参考官方说明https://docs.microsoft.com/zh-cn/windows-server/remote/remote-desktop-services/clients/remote-desktop-allow-access）
-2. 在办公室下载最新的[OpenP2P](https://gitee.com/tenderiron/openp2p/releases/),解压出来,在命令行执行
+2. 在办公室下载最新的`OpenP2P`[下载页](https://openp2p.cn/),解压出来,在命令行执行
    ```
    openp2p.exe install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
    ```
    
-   > :warning: **切记将标记大写的参数改成自己的**
+   > :warning: **切记将标记大写的参数改成自己的,3个参数的长度必须>=8个字符**
 
    ![image](/doc/images/officelisten.png)
-3. 在家里下载最新的[OpenP2P](https://gitee.com/tenderiron/openp2p/releases/),解压出来,在命令行执行
+3. 在家里下载最新的OpenP2P,解压出来,在命令行执行
    ```
    openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 3389 --srcport 23389 --protocol tcp
    ```
@@ -50,16 +50,17 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 
    ![image](/doc/images/afterconnect.png)
 
-## [详细使用说明](/USAGE-ZH.md)
+## 详细使用说明
+[这里](/USAGE-ZH.md)详细介绍如何使用和运行参数
+
 ## 典型应用场景
 特别适合大流量的内网访问
-### 远程办公
-Windows MSTSC、VNC等远程桌面，SSH，内网各种ERP系统
-### 远程访问NAS
-管理大量视频、图片
-### 远程监控摄像头
-### 远程刷机
-### 远程数据备份
+>*  远程办公: Windows MSTSC、VNC等远程桌面，SSH，内网各种ERP系统
+>*  远程访问内网ERP系统
+>*  远程访问NAS: 管理大量视频、图片
+>*  远程监控摄像头
+>*  远程刷机
+>*  远程数据备份
 ---
 ## 概要设计
 ### 原型
@@ -72,7 +73,7 @@ Windows MSTSC、VNC等远程桌面，SSH，内网各种ERP系统
 ## 共享
 默认会开启共享限速10mbps，只有你用户下提供了共享节点才能使用别人的共享节点。这非常公平，也是这个项目的初衷。
 我们建议你在带宽足够的地方（比如办公室，家里的百兆光纤）加入共享网络。
-如果你仍然不想共享任何节点，请查看运行参数
+如果你仍然不想共享任何节点，请查看[详细使用说明](/USAGE-ZH.md)
 ## 安全性
 加入OpenP2P共享网络的节点，只能凭授权访问。共享节点只会中转数据，别人无法访问内网任何资源。
 ### TLS1.3+AES

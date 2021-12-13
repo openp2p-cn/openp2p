@@ -1,11 +1,11 @@
-English|[中文](/README-ZH.md)  
+# English|[中文](/README-ZH.md)  
 Website: [openp2p.cn](https://openp2p.cn)
 ## What is OpenP2P
-It is an open source, free, and lightweight P2P sharing network. As long as any device joins in, you can access them anywhere.
+It is an open source, free, and lightweight P2P sharing network. As long as any device joins in, you can access them anywhere. Compared with the BT network used to share files, the OpenP2P network is used to share bandwidth.
 Our goal is to make full use of bandwidth, use shared nodes to relay data, and build a common infrastructure for remote connections.
 ## Why OpenP2P
 ### Free
-Totaly free, fullfills most of users(especially free-rider). Unlike other similar products, we don't need a server with public IP, and don't need to pay for services.By understanding its principle, you can understand why it can be done for free.
+Totaly free, fullfills most of users(especially free-rider). Unlike other similar products, OpenP2p doesn't need a server with public IP, and doesn't need to pay for services.By understanding its principle, you can understand why it can be done for free.
 
 ### Safe
 Open source, trustable(see details below)
@@ -36,23 +36,23 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
    Output sample
    ![image](/doc/images/officelisten_linux.png)
 
-2. Download the latest version of [OpenP2P](https://github.com/openp2p-cn/openp2p/releases),unzip the downloaded package, and execute below command line.
+2. Download the latest version of `OpenP2P` [Download Page](https://openp2p.cn/),unzip the downloaded package, and execute below command line.
    ```
-   tar xvf openp2p0.95.3.linux-amd64.tar.gz
+   tar xzvf ${PackageName}
    ./openp2p install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1
    ```
 
-   > :warning: **Must change the parameters marked in uppercase to your own**
+   > :warning: **Must change the parameters marked in UPPERCASE to your own. These 3 parameters must >= 8 charaters**
 
    Output sample
    ![image](/doc/images/officeexecute_linux.png)
 
-3. Download the same package of [OpenP2P](https://github.com/openp2p-cn/openp2p/releases) on your home device，unzip and execute below command line.
+3. Download OpenP2P on your home device，unzip and execute below command line.
    ```
    openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 22 --srcport 22022 --protocol tcp
    ```
    
-   > :warning: **Must change the parameters marked in uppercase to your own**
+   > :warning: **Must change the parameters marked in UPPERCASE to your own**
 
    Output sample  
    ![image](/doc/images/homeconnect_windows.png)  
@@ -67,18 +67,17 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
    ![image](/doc/images/sshconnect.png)
 
 
-## [Usage](/USAGE.md)
+## Usage
+[Here](/USAGE.md) is a detailed description of how to use and running parameters
 
 ## Scenarios 
 Especially suitable for large traffic intranet access.
-### Remote work
-Windows MSTSC, VNC and other remote desktops, SSH, various ERP systems in the intranet
-
-### Remote Access NAS
-Manage a large number of videos and pictures
-### Remote Access Camera
-### Remote Flashing Phone
-### Remotely Data Backup
+>*  Remote work: Windows MSTSC, VNC and other remote desktops, SSH, various ERP systems in the intranet
+>*  Remote access ERP systems in the intranet
+>*  Remote access NAS: Manage a large number of videos and pictures
+>*  Remote access camera
+>*  Remote flashing phone
+>*  Remotely data backup
 ---
 ## Overview Design
 ### Prototype
@@ -92,7 +91,7 @@ P2PAPP is the most import concept in this project, one P2PApp is able to map the
 ## Share
 10mbps is its default setting of share speed limit. Only when your users have shared their nodes, they are allowed to use others' shared nodes. This is very fair, and it is also the original intention of this project.
 We recommend that you join a shared network in a place with sufficient bandwidth (such as an office or home with 100M optical fiber).
-If you are still not willing to contribute any node to the OpenP2P share network, please refer to the operating parameters for your own setting.
+If you are still not willing to contribute any node to the OpenP2P share network, please refer to the [usage](/USAGE.md) for your own setting.
 ## Safety
 The nodes which have joined the OpenP2P share network can vist each other by authentications. Shared nodes will only relay data, and others cannot access any resources in the intranet.
 
