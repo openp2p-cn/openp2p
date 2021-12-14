@@ -30,7 +30,8 @@ type P2PNetwork struct {
 	restartCh chan bool
 	wg        sync.WaitGroup
 	writeMtx  sync.Mutex
-	serverTs  uint64
+	serverTs  int64
+	localTs   int64
 	// msgMap    sync.Map
 	msgMap     map[uint64]chan []byte //key: nodeID
 	msgMapMtx  sync.Mutex
@@ -48,7 +49,7 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 				online:    false,
 				running:   true,
 				msgMap:    make(map[uint64]chan []byte),
-				limiter:   newBandwidthLimiter(config.shareBandwidth),
+				limiter:   newBandwidthLimiter(config.ShareBandwidth),
 			}
 			instance.msgMap[0] = make(chan []byte) // for gateway
 			if config != nil {
@@ -249,7 +250,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		PeerUser:       config.PeerUser,
 		PeerNatType:    peerNatType,
 		PeerIP:         peerIP,
-		ShareBandwidth: pn.config.shareBandwidth,
+		ShareBandwidth: pn.config.ShareBandwidth,
 		RelayNode:      relayNode,
 		Version:        OpenP2PVersion,
 	}
@@ -391,7 +392,6 @@ func (pn *P2PNetwork) init() error {
 		q.Add("password", pn.config.Password)
 		q.Add("version", OpenP2PVersion)
 		q.Add("nattype", fmt.Sprintf("%d", pn.config.natType))
-		q.Add("timestamp", fmt.Sprintf("%d", time.Now().Unix()))
 
 		noShareStr := "false"
 		if pn.config.NoShare {
@@ -465,8 +465,9 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 			gLog.Printf(LevelERROR, "login error:%d, detail:%s", rsp.Error, rsp.Detail)
 			pn.running = false
 		} else {
-			gLog.Printf(LevelINFO, "login ok. Server ts=%d, local ts=%d", rsp.Ts, time.Now().Unix())
 			pn.serverTs = rsp.Ts
+			pn.localTs = time.Now().Unix()
+			gLog.Printf(LevelINFO, "login ok. Server ts=%d, local ts=%d", rsp.Ts, pn.localTs)
 		}
 	case MsgHeartbeat:
 		gLog.Printf(LevelDEBUG, "P2PNetwork heartbeat ok")
@@ -609,7 +610,9 @@ func (pn *P2PNetwork) handlePush(subType uint16, msg []byte) error {
 		gLog.Printf(LevelINFO, "%s is connecting...", req.From)
 		gLog.Println(LevelDEBUG, "push connect response to ", req.From)
 		// verify token or name&password
-		if VerifyTOTP(req.Token, pn.config.User, pn.config.Password, time.Now().Unix()) || (req.User == pn.config.User && req.Password == pn.config.Password) {
+		if VerifyTOTP(req.Token, pn.config.User, pn.config.Password, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
+			VerifyTOTP(req.Token, pn.config.User, pn.config.Password, time.Now().Unix()) ||
+			(req.User == pn.config.User && req.Password == pn.config.Password) {
 			gLog.Printf(LevelINFO, "Access Granted\n")
 			config := AppConfig{}
 			config.peerNatType = req.NatType
@@ -618,8 +621,8 @@ func (pn *P2PNetwork) handlePush(subType uint16, msg []byte) error {
 			config.PeerNode = req.From
 			// share relay node will limit bandwidth
 			if req.User != pn.config.User || req.Password != pn.config.Password {
-				gLog.Printf(LevelINFO, "set share bandwidth %d mbps", pn.config.shareBandwidth)
-				config.shareBandwidth = pn.config.shareBandwidth
+				gLog.Printf(LevelINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
+				config.shareBandwidth = pn.config.ShareBandwidth
 			}
 			// go pn.AddTunnel(config, req.ID)
 			go pn.addDirectTunnel(config, req.ID)

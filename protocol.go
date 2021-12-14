@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "0.96.1"
+const OpenP2PVersion = "0.97.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -198,7 +198,7 @@ type PushRsp struct {
 type LoginRsp struct {
 	Error  int    `json:"error,omitempty"`
 	Detail string `json:"detail,omitempty"`
-	Ts     uint64 `json:"ts,omitempty"`
+	Ts     int64  `json:"ts,omitempty"`
 }
 
 type NatDetectReq struct {

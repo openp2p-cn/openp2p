@@ -22,6 +22,14 @@ func main() {
 		case "update":
 			gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
 			update()
+			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
+			d := daemon{}
+			err := d.Control("restart", targetPath, []string{"-d", "-f"})
+			if err != nil {
+				gLog.Println(LevelERROR, "restart service error:", err)
+			} else {
+				gLog.Println(LevelINFO, "restart service ok.")
+			}
 			return
 		case "install":
 			install()
@@ -50,6 +58,7 @@ func main() {
 	byDaemon := flag.Bool("bydaemon", false, "start by daemon")
 	logLevel := flag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	flag.Parse()
+
 	gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LogLevel(*logLevel), 1024*1024, LogFileAndConsole)
 	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
 	if *daemonMode {
@@ -59,18 +68,7 @@ func main() {
 	}
 	if !*configFile {
 		// validate cmd params
-		if *node == "" {
-			gLog.Println(LevelERROR, "node name not set", os.Args, len(os.Args), os.Args[0])
-			return
-		}
-		if *user == "" {
-			gLog.Println(LevelERROR, "user name not set")
-			return
-		}
-		if *password == "" {
-			gLog.Println(LevelERROR, "password not set")
-			return
-		}
+		checkParams(*node, *user, *password)
 		if *peerNode != "" {
 			if *dstPort == 0 {
 				gLog.Println(LevelERROR, "dstPort not set")
@@ -109,7 +107,7 @@ func main() {
 			UDPPort1:       27182,
 			UDPPort2:       27183,
 			ipv6:           "240e:3b7:621:def0:fda4:dd7f:36a1:2803", // TODO: detect real ipv6
-			shareBandwidth: *shareBandwidth,
+			ShareBandwidth: *shareBandwidth,
 		}
 	}
 	// gConf.save() // not change config file

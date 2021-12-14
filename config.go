@@ -77,7 +77,7 @@ type NetworkConfig struct {
 	os             string
 	publicIP       string
 	natType        int
-	shareBandwidth int
+	ShareBandwidth int
 	// server info
 	ServerHost string
 	ServerPort int

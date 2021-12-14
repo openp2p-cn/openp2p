@@ -129,6 +129,27 @@ func install() {
 	shareBandwidth := installFlag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
 	// logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])
+	checkParams(*node, *user, *password)
+	gConf.Network.ServerHost = *serverHost
+	gConf.Network.User = *user
+	gConf.Network.Node = *node
+	gConf.Network.Password = *password
+	gConf.Network.ServerPort = 27182
+	gConf.Network.UDPPort1 = 27182
+	gConf.Network.UDPPort2 = 27183
+	gConf.Network.NoShare = *noShare
+	gConf.Network.ShareBandwidth = *shareBandwidth
+	config := AppConfig{}
+	config.PeerNode = *peerNode
+	config.PeerUser = *peerUser
+	config.PeerPassword = *peerPassword
+	config.DstHost = *dstIP
+	config.DstPort = *dstPort
+	config.SrcPort = *srcPort
+	config.Protocol = *protocol
+	gConf.add(config)
+	os.Chdir(defaultInstallPath)
+	gConf.save()
 
 	// copy files
 	os.MkdirAll(defaultInstallPath, 0775)
@@ -153,27 +174,6 @@ func install() {
 	}
 	src.Close()
 	dst.Close()
-	gConf.Network.ServerHost = *serverHost
-	gConf.Network.User = *user
-	gConf.Network.Node = *node
-	gConf.Network.Password = *password
-	gConf.Network.ServerPort = 27182
-	gConf.Network.UDPPort1 = 27182
-	gConf.Network.UDPPort2 = 27183
-	gConf.Network.NoShare = *noShare
-	gConf.Network.shareBandwidth = *shareBandwidth
-	config := AppConfig{}
-	config.PeerNode = *peerNode
-	config.PeerUser = *peerUser
-	config.PeerPassword = *peerPassword
-	config.DstHost = *dstIP
-	config.DstPort = *dstPort
-	config.SrcPort = *srcPort
-	config.Protocol = *protocol
-	gConf.add(config)
-	// TODO other params
-	os.Chdir(defaultInstallPath)
-	gConf.save()
 
 	// install system service
 	d := daemon{}
@@ -209,4 +209,19 @@ func uninstall() {
 	os.Remove(binPath + "0")
 	os.Rename(binPath, binPath+"0")
 	os.RemoveAll(defaultInstallPath)
+}
+
+func checkParams(node, user, password string) {
+	if len(node) < 8 {
+		gLog.Println(LevelERROR, "node name too short, it must >=8 charaters")
+		os.Exit(9)
+	}
+	if len(user) < 8 {
+		gLog.Println(LevelERROR, "user name too short, it must >=8 charaters")
+		os.Exit(9)
+	}
+	if len(password) < 8 {
+		gLog.Println(LevelERROR, "password too short, it must >=8 charaters")
+		os.Exit(9)
+	}
 }
