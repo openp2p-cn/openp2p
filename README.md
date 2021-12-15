@@ -4,22 +4,29 @@ Website: [openp2p.cn](https://openp2p.cn)
 It is an open source, free, and lightweight P2P sharing network. As long as any device joins in, you can access them anywhere. Compared with the BT network used to share files, the OpenP2P network is used to share bandwidth.
 Our goal is to make full use of bandwidth, use shared nodes to relay data, and build a common infrastructure for remote connections.
 ## Why OpenP2P
-### Free
+### 1. Free
 Totaly free, fullfills most of users(especially free-rider). Unlike other similar products, OpenP2p doesn't need a server with public IP, and doesn't need to pay for services.By understanding its principle, you can understand why it can be done for free.
+### 2. Share
+Your devices will form a private P2P network, share bandwidth between them, and provide network data forwarding services.
+When there is no node that can provide forwarding services in your private P2P network, you will try to find forwarding nodes in the public P2P network.
+10mbps is its default setting of share speed limit. Only when you have shared their nodes, you are allowed to use others' shared nodes. This is very fair, and it is also the original intention of this project.
+We recommend that you join a shared network in a place with sufficient bandwidth (such as an office or home with 100M optical fiber).
+If you are not willing to contribute any node to the OpenP2P share network, please refer to the [usage](/USAGE.md) for your own setting.
+### 3. Safe
+The code is open source, the P2P tunnel uses TLS1.3+AES double encryption, and the shared node temporarily authorizes the use of the TOTP one-time password
+  
+[details](#Safety)
 
-### Safe
-Open source, trustable(see details below)
-
-### Lightweight
+### 4. Lightweight
 2MB+ filesize, 2MB+ memory. It runs at appllication layer, no vitrual NIC, no kernel driver.
 
-### Cross-platform
+### 5. Cross-platform
 Benefit from lightweight, it easily supports most of major OS, like Windows, Linux, MacOS, also most of CPU architecture, like 386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64.
 
-### Efficient
+### 6. Efficient
 P2P direct connection lets your devices make good use of bandwidth.  Your device can be connected in any network environments, even supports NAT1-4 (Cone or Symmetric). Relying on the excellent congestion algorithm of the Quic protocol, high bandwidth and low latency can be obtained in a bad network environment.
 
-### Integration
+### 7. Integration
 Your applicaiton can call OpenP2P with a few code to make any internal networks communicate with each other.
 
 ## Get Started
@@ -88,19 +95,16 @@ Especially suitable for large traffic intranet access.
 P2PAPP is the most import concept in this project, one P2PApp is able to map the remote service(mstsc/ssh) to the local listening. The main job of re-development or restful API we provide is to manage P2PApp.
 
 ![image](/doc/images/appdetail.png)
-## Share
-10mbps is its default setting of share speed limit. Only when your users have shared their nodes, they are allowed to use others' shared nodes. This is very fair, and it is also the original intention of this project.
-We recommend that you join a shared network in a place with sufficient bandwidth (such as an office or home with 100M optical fiber).
-If you are still not willing to contribute any node to the OpenP2P share network, please refer to the [usage](/USAGE.md) for your own setting.
+
 ## Safety
 The nodes which have joined the OpenP2P share network can vist each other by authentications. Shared nodes will only relay data, and others cannot access any resources in the intranet.
 
-### TLS1.3+AES
+### 1. TLS1.3+AES
 The communication data between the two nodes uses the industry's most secure TLS1.3 channel. The communication content will also use AES encryption, double security, the key is exchanged through the server. Effectively prevent man-in-the-middle attacks.
 
-### Will the shared node capture my data?
+### 2. Will the shared node capture my data?
 That's right, the relay node is naturally an man-in-middle, so AES encryption is added to ensure the security of the communication content. The relay node cannot obtain the plaintext.
-### How does the shared relay node verify the authority?
+### 3. How does the shared relay node verify the authority?
 The server side has a scheduling model, which calculate  bandwith, ping value,stability and service duration to provide a well-proportioned service to every share node. It uses TOTP(Time-based One-time Password) with hmac-sha256 algorithem, its theory as same as the cellphone validation code or bank cipher coder.
 
 ## Build
