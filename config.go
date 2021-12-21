@@ -48,7 +48,10 @@ func (c *Config) add(app AppConfig) {
 
 func (c *Config) save() {
 	data, _ := json.MarshalIndent(c, "", "")
-	ioutil.WriteFile("config.json", data, 0644)
+	err := ioutil.WriteFile("config.json", data, 0644)
+	if err != nil {
+		gLog.Println(LevelERROR, "save config.json error:", err)
+	}
 }
 
 func (c *Config) load() error {

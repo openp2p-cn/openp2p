@@ -148,11 +148,15 @@ func install() {
 	config.SrcPort = *srcPort
 	config.Protocol = *protocol
 	gConf.add(config)
-	os.Chdir(defaultInstallPath)
+	os.MkdirAll(defaultInstallPath, 0775)
+	err := os.Chdir(defaultInstallPath)
+	if err != nil {
+		gLog.Println(LevelERROR, "cd error:", err)
+	}
 	gConf.save()
 
 	// copy files
-	os.MkdirAll(defaultInstallPath, 0775)
+
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 	binPath, _ := os.Executable()
 	src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
@@ -180,7 +184,7 @@ func install() {
 
 	// args := []string{""}
 	gLog.Println(LevelINFO, "targetPath:", targetPath)
-	err := d.Control("install", targetPath, []string{"-d", "-f"})
+	err = d.Control("install", targetPath, []string{"-d", "-f"})
 	if err != nil {
 		gLog.Println(LevelERROR, "install system service error:", err)
 	} else {

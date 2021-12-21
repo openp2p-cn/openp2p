@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"hash/crc64"
 	"math/big"
 	"net"
 	"time"
 )
 
-const OpenP2PVersion = "0.97.0"
+const OpenP2PVersion = "0.97.1"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -129,14 +128,6 @@ const (
 	RetryInterval                = time.Second * 30
 	PublicIPEchoTimeout          = time.Second * 3
 	NatTestTimeout               = time.Second * 10
-)
-
-// error message
-var (
-	// ErrorS2S string = "s2s is not supported"
-	// ErrorHandshake string = "handshake error"
-	ErrorS2S       = errors.New("s2s is not supported")
-	ErrorHandshake = errors.New("handshake error")
 )
 
 // NATNone has public ip
