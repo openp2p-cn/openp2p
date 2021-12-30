@@ -38,7 +38,6 @@ func (d *daemon) Stop(s service.Service) error {
 func (d *daemon) run() {
 	gLog.Println(LevelINFO, "daemon run start")
 	defer gLog.Println(LevelINFO, "daemon run end")
-	os.Chdir(filepath.Dir(os.Args[0])) // for system service
 	d.running = true
 	binPath, _ := os.Executable()
 	mydir, err := os.Getwd()
@@ -106,9 +105,9 @@ func (d *daemon) Control(ctrlComm string, exeAbsPath string, args []string) erro
 
 // examples:
 // listen:
-// ./openp2p install -node hhd1207-222 -user tenderiron -password 13760636579 -noshare
+// ./openp2p install -node hhd1207-222 -user tenderiron -password 13760636579 -sharebandwidth 0
 // listen and build p2papp:
-// ./openp2p install -node hhd1207-222 -user tenderiron -password 13760636579 -noshare -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
+// ./openp2p install -node hhd1207-222 -user tenderiron -password 13760636579 -sharebandwidth 0 -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
 func install() {
 	gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p-install", LevelDEBUG, 1024*1024, LogConsole)
 	// save config file
@@ -125,11 +124,13 @@ func install() {
 	dstPort := installFlag.Int("dstport", 0, "destination port ")
 	srcPort := installFlag.Int("srcport", 0, "source port ")
 	protocol := installFlag.String("protocol", "tcp", "tcp or udp")
-	noShare := installFlag.Bool("noshare", false, "disable using the huge numbers of shared nodes in OpenP2P network, your connectivity will be weak. also this node will not shared with others")
+	appName := flag.String("appname", "", "app name")
+	installFlag.Bool("noshare", false, "deprecated. uses -sharebandwidth -1")
 	shareBandwidth := installFlag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
-	// logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
+	logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])
 	checkParams(*node, *user, *password)
+	gConf.logLevel = *logLevel
 	gConf.Network.ServerHost = *serverHost
 	gConf.Network.User = *user
 	gConf.Network.Node = *node
@@ -137,7 +138,6 @@ func install() {
 	gConf.Network.ServerPort = 27182
 	gConf.Network.UDPPort1 = 27182
 	gConf.Network.UDPPort2 = 27183
-	gConf.Network.NoShare = *noShare
 	gConf.Network.ShareBandwidth = *shareBandwidth
 	config := AppConfig{}
 	config.PeerNode = *peerNode
@@ -147,6 +147,7 @@ func install() {
 	config.DstPort = *dstPort
 	config.SrcPort = *srcPort
 	config.Protocol = *protocol
+	config.AppName = *appName
 	gConf.add(config)
 	os.MkdirAll(defaultInstallPath, 0775)
 	err := os.Chdir(defaultInstallPath)
@@ -184,14 +185,14 @@ func install() {
 
 	// args := []string{""}
 	gLog.Println(LevelINFO, "targetPath:", targetPath)
-	err = d.Control("install", targetPath, []string{"-d", "-f"})
+	err = d.Control("install", targetPath, []string{"-d"})
 	if err != nil {
 		gLog.Println(LevelERROR, "install system service error:", err)
 	} else {
 		gLog.Println(LevelINFO, "install system service ok.")
 	}
 	time.Sleep(time.Second * 2)
-	err = d.Control("start", targetPath, []string{"-d", "-f"})
+	err = d.Control("start", targetPath, []string{"-d"})
 	if err != nil {
 		gLog.Println(LevelERROR, "start openp2p service error:", err)
 	} else {

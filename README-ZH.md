@@ -45,7 +45,7 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
    ![image](/doc/images/officelisten.png)
 3. 在家里下载最新的OpenP2P,解压出来,在命令行执行
    ```
-   openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 3389 --srcport 23389 --protocol tcp
+   openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname WindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
    ```
    > :warning: **切记将标记大写的参数改成自己的**
 

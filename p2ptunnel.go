@@ -52,7 +52,7 @@ func (t *P2PTunnel) init() {
 }
 
 func (t *P2PTunnel) connect() error {
-	gLog.Printf(LevelINFO, "start p2pTunnel to %s ", t.config.PeerNode)
+	gLog.Printf(LevelDEBUG, "start p2pTunnel to %s ", t.config.PeerNode)
 	t.isServer = false
 	req := PushConnectReq{
 		User:        t.config.PeerUser,
@@ -144,7 +144,7 @@ func (t *P2PTunnel) handshake() error {
 			return err
 		}
 	}
-	gLog.Println(LevelINFO, "handshake to ", t.config.PeerNode)
+	gLog.Println(LevelDEBUG, "handshake to ", t.config.PeerNode)
 	var err error
 	// TODO: handle NATNone, nodes with public ip has no punching
 	if (t.pn.config.natType == NATCone && t.config.peerNatType == NATCone) || (t.pn.config.natType == NATNone || t.config.peerNatType == NATNone) {
@@ -163,7 +163,7 @@ func (t *P2PTunnel) handshake() error {
 		gLog.Println(LevelERROR, "punch handshake error:", err)
 		return err
 	}
-	gLog.Printf(LevelINFO, "handshake to %s ok", t.config.PeerNode)
+	gLog.Printf(LevelDEBUG, "handshake to %s ok", t.config.PeerNode)
 	err = t.run()
 	if err != nil {
 		gLog.Println(LevelERROR, err)
@@ -198,7 +198,7 @@ func (t *P2PTunnel) run() error {
 			gLog.Println(LevelDEBUG, string(buff))
 		}
 		qConn.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, []byte("OpenP2P,hello2"))
-		gLog.Println(LevelINFO, "quic connection ok")
+		gLog.Println(LevelDEBUG, "quic connection ok")
 		t.conn = qConn
 		t.setRun(true)
 		go t.readLoop()
@@ -216,7 +216,7 @@ func (t *P2PTunnel) run() error {
 		}
 	}
 	t.pn.read(t.config.PeerNode, MsgPush, MsgPushQuicConnect, time.Second*5)
-	gLog.Println(LevelINFO, "quic dial to ", t.ra.String())
+	gLog.Println(LevelDEBUG, "quic dial to ", t.ra.String())
 	qConn, e := dialQuic(conn, t.ra, TunnelIdleTimeout)
 	if e != nil {
 		return fmt.Errorf("quic dial to %s error:%s", t.ra.String(), e)
@@ -233,7 +233,7 @@ func (t *P2PTunnel) run() error {
 	}
 
 	gLog.Println(LevelINFO, "rtt=", time.Since(handshakeBegin))
-	gLog.Println(LevelINFO, "quic connection ok")
+	gLog.Println(LevelDEBUG, "quic connection ok")
 	t.conn = qConn
 	t.setRun(true)
 	go t.readLoop()
@@ -243,7 +243,7 @@ func (t *P2PTunnel) run() error {
 
 func (t *P2PTunnel) readLoop() {
 	decryptData := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
-	gLog.Printf(LevelINFO, "%d tunnel readloop start", t.id)
+	gLog.Printf(LevelDEBUG, "%d tunnel readloop start", t.id)
 	for t.isRuning() {
 		t.conn.SetReadDeadline(time.Now().Add(TunnelIdleTimeout))
 		head, body, err := t.conn.ReadMessage()
@@ -333,7 +333,7 @@ func (t *P2PTunnel) readLoop() {
 			}
 
 			overlayID := req.ID
-			gLog.Printf(LevelINFO, "App:%d overlayID:%d connect %+v", req.AppID, overlayID, req)
+			gLog.Printf(LevelDEBUG, "App:%d overlayID:%d connect %+v", req.AppID, overlayID, req)
 			if req.Protocol == "tcp" {
 				conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
 				if err != nil {
@@ -368,7 +368,7 @@ func (t *P2PTunnel) readLoop() {
 				continue
 			}
 			overlayID := req.ID
-			gLog.Printf(LevelINFO, "%d disconnect overlay connection %d", t.id, overlayID)
+			gLog.Printf(LevelDEBUG, "%d disconnect overlay connection %d", t.id, overlayID)
 			i, ok := t.overlayConns.Load(overlayID)
 			if ok {
 				otcp := i.(*overlayTCP)
@@ -379,13 +379,13 @@ func (t *P2PTunnel) readLoop() {
 	}
 	t.setRun(false)
 	t.conn.Close()
-	gLog.Printf(LevelINFO, "%d tunnel readloop end", t.id)
+	gLog.Printf(LevelDEBUG, "%d tunnel readloop end", t.id)
 }
 
 func (t *P2PTunnel) writeLoop() {
 	tc := time.NewTicker(TunnelHeartbeatTime)
 	defer tc.Stop()
-	defer gLog.Printf(LevelINFO, "%d tunnel writeloop end", t.id)
+	defer gLog.Printf(LevelDEBUG, "%d tunnel writeloop end", t.id)
 	for t.isRuning() {
 		select {
 		case <-tc.C:
@@ -402,7 +402,7 @@ func (t *P2PTunnel) writeLoop() {
 }
 
 func (t *P2PTunnel) listen() error {
-	gLog.Printf(LevelINFO, "p2ptunnel wait for connecting")
+	gLog.Printf(LevelDEBUG, "p2ptunnel wait for connecting")
 	t.isServer = true
 	return t.handshake()
 }

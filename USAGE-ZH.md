@@ -14,17 +14,17 @@
 >* -node: 独一无二的节点名字，唯一标识
 >* -user: 独一无二的用户名字，该节点属于这个user
 >* -password: 密码
->* -sharebandwidth: 作为共享节点时提供带宽，默认10mbps. 如果是光纤大带宽，设置越大效果越好
+>* -sharebandwidth: 作为共享节点时提供带宽，默认10mbps. 如果是光纤大带宽，设置越大效果越好. -1表示不共享，该节点只在私有的P2P网络使用。不加入共享的P2P网络，这样也意味着无法使用别人的共享节点
 >* -loglevel: 需要查看更多调试日志，设置0；默认是1
->* -noshare: 不共享，该节点只在私有的P2P网络使用。不加入共享的P2P网络，这样也意味着无法使用别人的共享节点
 
 ## 连接
 ```
-./openp2p -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
+./openp2p -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname OfficeWindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
 使用配置文件，建立多个P2PApp
 ./openp2p -d -f    
 ./openp2p -f 
 ```
+>* -appname: 这个P2P应用名字
 >* -peernode: 目标节点名字
 >* -dstip: 目标服务地址，默认本机127.0.0.1
 >* -dstport: 目标服务端口，常见的如windows远程桌面3389，Linux ssh 22

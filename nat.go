@@ -43,7 +43,7 @@ func natTest(serverHost string, serverPort int, localPort int, echoPort int) (pu
 	// testing for public ip
 	if echoPort != 0 {
 		for {
-			gLog.Printf(LevelINFO, "public ip test start %s:%d", natRsp.IP, echoPort)
+			gLog.Printf(LevelDEBUG, "public ip test start %s:%d", natRsp.IP, echoPort)
 			conn, err := net.ListenUDP("udp", nil)
 			if err != nil {
 				break
@@ -60,10 +60,10 @@ func natTest(serverHost string, serverPort int, localPort int, echoPort int) (pu
 			conn.SetReadDeadline(time.Now().Add(PublicIPEchoTimeout))
 			_, _, err = conn.ReadFromUDP(buf)
 			if err == nil {
-				gLog.Println(LevelINFO, "public ip:YES")
+				gLog.Println(LevelDEBUG, "public ip:YES")
 				natRsp.IsPublicIP = 1
 			} else {
-				gLog.Println(LevelINFO, "public ip:NO")
+				gLog.Println(LevelDEBUG, "public ip:NO")
 			}
 			break
 		}

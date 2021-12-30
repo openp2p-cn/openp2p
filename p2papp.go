@@ -11,16 +11,17 @@ import (
 )
 
 type p2pApp struct {
-	config   AppConfig
-	listener net.Listener
-	tunnel   *P2PTunnel
-	rtid     uint64
-	hbTime   time.Time
-	hbMtx    sync.Mutex
-	running  bool
-	id       uint64
-	key      uint64
-	wg       sync.WaitGroup
+	config    AppConfig
+	listener  net.Listener
+	tunnel    *P2PTunnel
+	rtid      uint64
+	relayNode string
+	hbTime    time.Time
+	hbMtx     sync.Mutex
+	running   bool
+	id        uint64
+	key       uint64
+	wg        sync.WaitGroup
 }
 
 func (app *p2pApp) isActive() bool {
@@ -72,7 +73,7 @@ func (app *p2pApp) listenTCP() error {
 			otcp.appKeyBytes = encryptKey
 		}
 		app.tunnel.overlayConns.Store(otcp.id, &otcp)
-		gLog.Printf(LevelINFO, "Accept overlayID:%d", otcp.id)
+		gLog.Printf(LevelDEBUG, "Accept overlayID:%d", otcp.id)
 		// tell peer connect
 		req := OverlayConnectReq{ID: otcp.id,
 			User:     app.config.PeerUser,

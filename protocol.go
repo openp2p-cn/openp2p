@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "0.97.1"
+const OpenP2PVersion = "0.98.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -79,6 +79,7 @@ const (
 	MsgPushUpdate            = 6
 	MsgPushReportApps        = 7
 	MsgPushQuicConnect       = 8
+	MsgPushEditApp           = 9
 )
 
 // MsgP2P sub type message
@@ -109,6 +110,7 @@ const (
 	MsgReportBasic = iota
 	MsgReportQuery
 	MsgReportConnect
+	MsgReportApps
 )
 
 const (
@@ -128,6 +130,7 @@ const (
 	RetryInterval                = time.Second * 30
 	PublicIPEchoTimeout          = time.Second * 3
 	NatTestTimeout               = time.Second * 10
+	ClientAPITimeout             = time.Second * 10
 )
 
 // NATNone has public ip
@@ -135,6 +138,7 @@ const (
 	NATNone      = 0
 	NATCone      = 1
 	NATSymmetric = 2
+	NATUnknown   = 314
 )
 
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
@@ -269,6 +273,31 @@ type ReportConnect struct {
 	ShareBandwidth int    `json:"shareBandWidth,omitempty"`
 	RelayNode      string `json:"relayNode,omitempty"`
 	Version        string `json:"version,omitempty"`
+}
+
+type AppInfo struct {
+	AppName        string `json:"appName,omitempty"`
+	Error          string `json:"error,omitempty"`
+	Protocol       string `json:"protocol,omitempty"`
+	SrcPort        int    `json:"srcPort,omitempty"`
+	Protocol0      string `json:"protocol0,omitempty"`
+	SrcPort0       int    `json:"srcPort0,omitempty"`
+	NatType        int    `json:"natType,omitempty"`
+	PeerNode       string `json:"peerNode,omitempty"`
+	DstPort        int    `json:"dstPort,omitempty"`
+	DstHost        string `json:"dstHost,omitempty"`
+	PeerUser       string `json:"peerUser,omitempty"`
+	PeerNatType    int    `json:"peerNatType,omitempty"`
+	PeerIP         string `json:"peerIP,omitempty"`
+	ShareBandwidth int    `json:"shareBandWidth,omitempty"`
+	RelayNode      string `json:"relayNode,omitempty"`
+	Version        string `json:"version,omitempty"`
+	RetryTime      string `json:"retryTime,omitempty"`
+	IsActive       int    `json:"isActive,omitempty"`
+}
+
+type ReportApps struct {
+	Apps []AppInfo
 }
 
 type UpdateInfo struct {

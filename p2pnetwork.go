@@ -37,7 +37,7 @@ type P2PNetwork struct {
 	msgMapMtx  sync.Mutex
 	config     NetworkConfig
 	allTunnels sync.Map
-	apps       sync.Map
+	apps       sync.Map //key: protocol+srcport; value: p2pApp
 	limiter    *BandwidthLimiter
 }
 
@@ -63,7 +63,7 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 }
 
 func (pn *P2PNetwork) run() {
-	go pn.autoReconnectApp()
+	go pn.autorunApp()
 	heartbeatTimer := time.NewTicker(NetworkHeartbeatTime)
 	for pn.running {
 		select {
@@ -93,55 +93,61 @@ func (pn *P2PNetwork) Connect(timeout int) bool {
 	return false
 }
 
-func (pn *P2PNetwork) autoReconnectApp() {
-	gLog.Println(LevelINFO, "autoReconnectApp start")
-	retryApps := make([]AppConfig, 0)
+func (pn *P2PNetwork) runAll() {
+	gConf.mtx.Lock()
+	defer gConf.mtx.Unlock()
+	for _, config := range gConf.Apps {
+		// set default peer user password
+		if config.PeerPassword == "" {
+			config.PeerPassword = gConf.Network.Password
+		}
+		if config.PeerUser == "" {
+			config.PeerUser = gConf.Network.User
+		}
+		if config.AppName == "" {
+			config.AppName = fmt.Sprintf("%s%d", config.Protocol, config.SrcPort)
+		}
+		appExist := false
+		appActive := false
+		i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+		if ok {
+			app := i.(*p2pApp)
+			appExist = true
+			if app.isActive() {
+				appActive = true
+			}
+		}
+		if appExist && appActive {
+			continue
+		}
+		if appExist && !appActive {
+			gLog.Printf(LevelINFO, "detect app %s disconnect, reconnecting...", config.AppName)
+			pn.DeleteApp(config)
+			if config.retryTime.Add(time.Minute * 15).Before(time.Now()) {
+				config.retryNum = 0
+			}
+			config.retryNum++
+			config.retryTime = time.Now()
+			if config.retryNum > MaxRetry {
+				gLog.Printf(LevelERROR, "app %s%d retry more than %d times, exit.", config.Protocol, config.SrcPort, MaxRetry)
+				continue
+			}
+		}
+		go pn.AddApp(config)
+	}
+}
+func (pn *P2PNetwork) autorunApp() {
+	gLog.Println(LevelINFO, "autorunApp start")
+	// TODO: use gConf to check reconnect
 	for pn.running {
 		time.Sleep(time.Second)
 		if !pn.online {
 			continue
 		}
-		if len(retryApps) > 0 {
-			gLog.Printf(LevelINFO, "retryApps len=%d", len(retryApps))
-			thisRound := make([]AppConfig, 0)
-			for i := 0; i < len(retryApps); i++ {
-				// reset retryNum when running 15min continuously
-				if retryApps[i].retryTime.Add(time.Minute * 15).Before(time.Now()) {
-					retryApps[i].retryNum = 0
-				}
-				retryApps[i].retryNum++
-				retryApps[i].retryTime = time.Now()
-				if retryApps[i].retryNum > MaxRetry {
-					gLog.Printf(LevelERROR, "app %s%d retry more than %d times, exit.", retryApps[i].Protocol, retryApps[i].SrcPort, MaxRetry)
-					continue
-				}
-				pn.DeleteApp(retryApps[i])
-				if err := pn.AddApp(retryApps[i]); err != nil {
-					gLog.Printf(LevelERROR, "AddApp %s%d error:%s", retryApps[i].Protocol, retryApps[i].SrcPort, err)
-					thisRound = append(thisRound, retryApps[i])
-					time.Sleep(RetryInterval)
-				}
-			}
-			retryApps = thisRound
-		}
-		pn.apps.Range(func(_, i interface{}) bool {
-			app := i.(*p2pApp)
-			if app.isActive() {
-				return true
-			}
-			gLog.Printf(LevelINFO, "detect app %s%d disconnect,last hb %s reconnecting...", app.config.Protocol, app.config.SrcPort, app.hbTime)
-			config := app.config
-			// clear peerinfo
-			config.peerConeNatPort = 0
-			config.peerIP = ""
-			config.peerNatType = 0
-			config.peerToken = 0
-			pn.DeleteApp(config)
-			retryApps = append(retryApps, config)
-			return true
-		})
+		pn.runAll()
+		time.Sleep(time.Second * 10)
 	}
-	gLog.Println(LevelINFO, "autoReconnectApp end")
+	gLog.Println(LevelINFO, "autorunApp end")
 }
 
 func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint64) (*P2PTunnel, uint64, error) {
@@ -198,21 +204,17 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint
 }
 
 func (pn *P2PNetwork) AddApp(config AppConfig) error {
-	gLog.Printf(LevelINFO, "addApp %s%d to %s:%s:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
-	defer gLog.Printf(LevelINFO, "addApp %s%d to %s:%s:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
+	gLog.Printf(LevelINFO, "addApp %s to %s:%s:%d start", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
+	defer gLog.Printf(LevelINFO, "addApp %s to %s:%s:%d end", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
 	if !pn.online {
 		return errors.New("P2PNetwork offline")
 	}
 	// check if app already exist?
 	appExist := false
-	pn.apps.Range(func(_, i interface{}) bool {
-		app := i.(*p2pApp)
-		if app.config.Protocol == config.Protocol && app.config.SrcPort == config.SrcPort {
-			appExist = true
-			return false
-		}
-		return true
-	})
+	_, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+	if ok {
+		appExist = true
+	}
 	if appExist {
 		return errors.New("P2PApp already exist")
 	}
@@ -221,7 +223,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 	t, err := pn.addDirectTunnel(config, 0)
 	var rtid uint64
 	relayNode := ""
-	peerNatType := 100
+	peerNatType := NATUnknown
 	peerIP := ""
 	errMsg := ""
 	if err != nil && err == ErrorHandshake {
@@ -257,13 +259,14 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 	pn.write(MsgReport, MsgReportConnect, &req)
 
 	app := p2pApp{
-		id:     appID,
-		key:    appKey,
-		tunnel: t,
-		config: config,
-		rtid:   rtid,
-		hbTime: time.Now()}
-	pn.apps.Store(appID, &app)
+		id:        appID,
+		key:       appKey,
+		tunnel:    t,
+		config:    config,
+		rtid:      rtid,
+		relayNode: relayNode,
+		hbTime:    time.Now()}
+	pn.apps.Store(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort), &app)
 	if err == nil {
 		go app.listen()
 	}
@@ -274,22 +277,18 @@ func (pn *P2PNetwork) DeleteApp(config AppConfig) {
 	gLog.Printf(LevelINFO, "DeleteApp %s%d start", config.Protocol, config.SrcPort)
 	defer gLog.Printf(LevelINFO, "DeleteApp %s%d end", config.Protocol, config.SrcPort)
 	// close the apps of this config
-	pn.apps.Range(func(_, i interface{}) bool {
+	i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+	if ok {
 		app := i.(*p2pApp)
-		if app.config.Protocol == config.Protocol && app.config.SrcPort == config.SrcPort {
-			gLog.Printf(LevelINFO, "app %s exist, delete it", fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
-			app := i.(*p2pApp)
-			app.close()
-			pn.apps.Delete(app.id)
-			return false
-		}
-		return true
-	})
+		gLog.Printf(LevelINFO, "app %s exist, delete it", fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+		app.close()
+		pn.apps.Delete(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+	}
 }
 
 func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel, error) {
-	gLog.Printf(LevelINFO, "addDirectTunnel %s%d to %s:%s:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
-	defer gLog.Printf(LevelINFO, "addDirectTunnel %s%d to %s:%s:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
+	gLog.Printf(LevelDEBUG, "addDirectTunnel %s%d to %s:%s:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
+	defer gLog.Printf(LevelDEBUG, "addDirectTunnel %s%d to %s:%s:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
 	isClient := false
 	// client side tid=0, assign random uint64
 	if tid == 0 {
@@ -377,10 +376,10 @@ func (pn *P2PNetwork) init() error {
 			pn.config.natType = NATSymmetric
 		}
 		if err != nil {
-			gLog.Println(LevelINFO, "detect NAT type error:", err)
+			gLog.Println(LevelDEBUG, "detect NAT type error:", err)
 			break
 		}
-		gLog.Println(LevelINFO, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
+		gLog.Println(LevelDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
 		forwardPath := "/openp2p/v1/login"
 		config := tls.Config{InsecureSkipVerify: true} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
@@ -392,12 +391,7 @@ func (pn *P2PNetwork) init() error {
 		q.Add("password", pn.config.Password)
 		q.Add("version", OpenP2PVersion)
 		q.Add("nattype", fmt.Sprintf("%d", pn.config.natType))
-
-		noShareStr := "false"
-		if pn.config.NoShare {
-			noShareStr = "true"
-		}
-		q.Add("noshare", noShareStr)
+		q.Add("sharebandwidth", fmt.Sprintf("%d", pn.config.ShareBandwidth))
 		u.RawQuery = q.Encode()
 		var ws *websocket.Conn
 		ws, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
@@ -425,7 +419,7 @@ func (pn *P2PNetwork) init() error {
 			Version: OpenP2PVersion,
 		}
 		rsp := netInfo()
-		gLog.Println(LevelINFO, rsp)
+		gLog.Println(LevelDEBUG, "netinfo:", rsp)
 		if rsp != nil && rsp.Country != "" {
 			if len(rsp.IP) == net.IPv6len {
 				pn.config.ipv6 = rsp.IP.String()
@@ -434,7 +428,7 @@ func (pn *P2PNetwork) init() error {
 			req.NetInfo = *rsp
 		}
 		pn.write(MsgReport, MsgReportBasic, &req)
-		gLog.Println(LevelINFO, "P2PNetwork init ok")
+		gLog.Println(LevelDEBUG, "P2PNetwork init ok")
 		break
 	}
 	if err != nil {
@@ -472,7 +466,7 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 	case MsgHeartbeat:
 		gLog.Printf(LevelDEBUG, "P2PNetwork heartbeat ok")
 	case MsgPush:
-		pn.handlePush(head.SubType, msg)
+		handlePush(pn, head.SubType, msg)
 	default:
 		pn.msgMapMtx.Lock()
 		ch := pn.msgMap[0]
@@ -483,7 +477,7 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 }
 
 func (pn *P2PNetwork) readLoop() {
-	gLog.Printf(LevelINFO, "P2PNetwork readLoop start")
+	gLog.Printf(LevelDEBUG, "P2PNetwork readLoop start")
 	pn.wg.Add(1)
 	defer pn.wg.Done()
 	for pn.running {
@@ -497,7 +491,7 @@ func (pn *P2PNetwork) readLoop() {
 		}
 		pn.handleMessage(t, msg)
 	}
-	gLog.Printf(LevelINFO, "P2PNetwork readLoop end")
+	gLog.Printf(LevelDEBUG, "P2PNetwork readLoop end")
 }
 
 func (pn *P2PNetwork) write(mainType uint16, subType uint16, packet interface{}) error {
@@ -592,106 +586,12 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 	}
 }
 
-func (pn *P2PNetwork) handlePush(subType uint16, msg []byte) error {
-	pushHead := PushHeader{}
-	err := binary.Read(bytes.NewReader(msg[openP2PHeaderSize:openP2PHeaderSize+PushHeaderSize]), binary.LittleEndian, &pushHead)
-	if err != nil {
-		return err
-	}
-	gLog.Printf(LevelDEBUG, "handle push msg type:%d, push header:%+v", subType, pushHead)
-	switch subType {
-	case MsgPushConnectReq:
-		req := PushConnectReq{}
-		err := json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req)
-		if err != nil {
-			gLog.Printf(LevelERROR, "wrong MsgPushConnectReq:%s", err)
-			return err
-		}
-		gLog.Printf(LevelINFO, "%s is connecting...", req.From)
-		gLog.Println(LevelDEBUG, "push connect response to ", req.From)
-		// verify token or name&password
-		if VerifyTOTP(req.Token, pn.config.User, pn.config.Password, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
-			VerifyTOTP(req.Token, pn.config.User, pn.config.Password, time.Now().Unix()) ||
-			(req.User == pn.config.User && req.Password == pn.config.Password) {
-			gLog.Printf(LevelINFO, "Access Granted\n")
-			config := AppConfig{}
-			config.peerNatType = req.NatType
-			config.peerConeNatPort = req.ConeNatPort
-			config.peerIP = req.FromIP
-			config.PeerNode = req.From
-			// share relay node will limit bandwidth
-			if req.User != pn.config.User || req.Password != pn.config.Password {
-				gLog.Printf(LevelINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
-				config.shareBandwidth = pn.config.ShareBandwidth
-			}
-			// go pn.AddTunnel(config, req.ID)
-			go pn.addDirectTunnel(config, req.ID)
-			break
-		}
-		gLog.Println(LevelERROR, "Access Denied:", req.From)
-		rsp := PushConnectRsp{
-			Error:  1,
-			Detail: fmt.Sprintf("connect to %s error: Access Denied", pn.config.Node),
-			To:     req.From,
-			From:   pn.config.Node,
-		}
-		pn.push(req.From, MsgPushConnectRsp, rsp)
-	case MsgPushRsp:
-		rsp := PushRsp{}
-		err := json.Unmarshal(msg[openP2PHeaderSize:], &rsp)
-		if err != nil {
-			gLog.Printf(LevelERROR, "wrong pushRsp:%s", err)
-			return err
-		}
-		if rsp.Error == 0 {
-			gLog.Printf(LevelDEBUG, "push ok, detail:%s", rsp.Detail)
-		} else {
-			gLog.Printf(LevelERROR, "push error:%d, detail:%s", rsp.Error, rsp.Detail)
-		}
-	case MsgPushAddRelayTunnelReq:
-		req := AddRelayTunnelReq{}
-		err := json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req)
-		if err != nil {
-			gLog.Printf(LevelERROR, "wrong RelayNodeRsp:%s", err)
-			return err
-		}
-		config := AppConfig{}
-		config.PeerNode = req.RelayName
-		config.peerToken = req.RelayToken
-		// set user password, maybe the relay node is your private node
-		config.PeerUser = pn.config.User
-		config.PeerPassword = pn.config.Password
-		go func(r AddRelayTunnelReq) {
-			t, errDt := pn.addDirectTunnel(config, 0)
-			if errDt == nil {
-				// notify peer relay ready
-				msg := TunnelMsg{ID: t.id}
-				pn.push(r.From, MsgPushAddRelayTunnelRsp, msg)
-				SaveKey(req.AppID, req.AppKey)
-			}
-
-		}(req)
-	case MsgPushUpdate:
-		update()
-		if gConf.daemonMode {
-			os.Exit(0)
-		}
-	default:
-		pn.msgMapMtx.Lock()
-		ch := pn.msgMap[pushHead.From]
-		pn.msgMapMtx.Unlock()
-		ch <- msg
-	}
-	return nil
-}
-
 func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
 	pn.apps.Range(func(id, i interface{}) bool {
-		key := id.(uint64)
-		if key != appID {
+		app := i.(*p2pApp)
+		if app.id != appID {
 			return true
 		}
-		app := i.(*p2pApp)
 		app.updateHeartbeat()
 		return false
 	})

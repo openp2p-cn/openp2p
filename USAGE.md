@@ -15,17 +15,17 @@ Or
 >* -node: Unique node name, unique identification
 >* -user: Unique user name, the node belongs to this user
 >* -password: Password
->* -sharebandwidth: Provides bandwidth when used as a shared node, the default is 10mbps. If it is a large bandwidth of optical fiber, the larger the setting, the better the effect
+>* -sharebandwidth: Provides bandwidth when used as a shared node, the default is 10mbps. If it is a large bandwidth of optical fiber, the larger the setting, the better the effect. -1 means not shared, the node is only used in a private P2P network. Do not join the shared P2P network, which also means that you CAN NOT use other people’s shared nodes
 >* -loglevel: Need to view more debug logs, set 0; the default is 1
->* -noshare: Not shared, the node is only used in a private P2P network. Do not join the shared P2P network, which also means that you CAN NOT use other people’s shared nodes
 
 ## Connect
 ```
-./openp2p -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
+./openp2p -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname OfficeWindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
 Create multiple P2PApp by config file
 ./openp2p -d -f    
 ./openp2p -f 
 ```
+>* -appname: This P2PApp name
 >* -peernode: Target node name
 >* -dstip: Target service address, default local 127.0.0.1
 >* -dstport: Target service port, such as windows remote desktop 3389, Linux ssh 22

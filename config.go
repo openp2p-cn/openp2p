@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io/ioutil"
+	"sync"
 	"time"
 )
 
@@ -10,6 +11,7 @@ var gConf Config
 
 type AppConfig struct {
 	// required
+	AppName      string
 	Protocol     string
 	SrcPort      int
 	PeerNode     string
@@ -32,9 +34,13 @@ type Config struct {
 	Network    NetworkConfig `json:"network"`
 	Apps       []AppConfig   `json:"apps"`
 	daemonMode bool
+	logLevel   int
+	mtx        sync.Mutex
 }
 
 func (c *Config) add(app AppConfig) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	if app.SrcPort == 0 || app.DstPort == 0 {
 		return
 	}
@@ -46,8 +52,24 @@ func (c *Config) add(app AppConfig) {
 	c.Apps = append(c.Apps, app)
 }
 
+func (c *Config) delete(app AppConfig) {
+	if app.SrcPort == 0 || app.DstPort == 0 {
+		return
+	}
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	for i := 0; i < len(c.Apps); i++ {
+		if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
+			c.Apps = append(c.Apps[:i], c.Apps[i+1:]...)
+			return
+		}
+	}
+}
+
 func (c *Config) save() {
-	data, _ := json.MarshalIndent(c, "", "")
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	data, _ := json.MarshalIndent(c, "", "  ")
 	err := ioutil.WriteFile("config.json", data, 0644)
 	if err != nil {
 		gLog.Println(LevelERROR, "save config.json error:", err)
@@ -55,6 +77,8 @@ func (c *Config) save() {
 }
 
 func (c *Config) load() error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
 		gLog.Println(LevelERROR, "read config.json error:", err)
@@ -72,7 +96,6 @@ type NetworkConfig struct {
 	Node           string
 	User           string
 	Password       string
-	NoShare        bool
 	localIP        string
 	ipv6           string
 	hostName       string

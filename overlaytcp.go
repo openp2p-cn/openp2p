@@ -21,8 +21,8 @@ type overlayTCP struct {
 }
 
 func (otcp *overlayTCP) run() {
-	gLog.Printf(LevelINFO, "%d overlayTCP run start", otcp.id)
-	defer gLog.Printf(LevelINFO, "%d overlayTCP run end", otcp.id)
+	gLog.Printf(LevelDEBUG, "%d overlayTCP run start", otcp.id)
+	defer gLog.Printf(LevelDEBUG, "%d overlayTCP run end", otcp.id)
 	otcp.running = true
 	buffer := make([]byte, ReadBuffLen+PaddingSize)
 	readBuf := buffer[:ReadBuffLen]

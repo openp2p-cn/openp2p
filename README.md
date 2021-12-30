@@ -56,7 +56,7 @@ Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamenta
 
 3. Download OpenP2P on your home device，unzip and execute below command line.
    ```
-   openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 --peernode OFFICEPC1 --dstip 127.0.0.1 --dstport 22 --srcport 22022 --protocol tcp
+   openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname OfficeSSH -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 22 -srcport 22022 -protocol tcp
    ```
    
    > :warning: **Must change the parameters marked in UPPERCASE to your own**
