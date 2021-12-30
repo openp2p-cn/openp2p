@@ -47,7 +47,7 @@ const (
 type V8log struct {
 	loggers    map[LogLevel]*log.Logger
 	files      map[LogLevel]*os.File
-	llevel     LogLevel
+	level      LogLevel
 	stopSig    chan bool
 	logDir     string
 	mtx        *sync.Mutex
@@ -92,17 +92,10 @@ func InitLogger(path string, filePrefix string, level LogLevel, maxLogSize int64
 	return pLog
 }
 
-// UninitLogger ...
-func (vl *V8log) UninitLogger() {
-	if !vl.stoped {
-		vl.stoped = true
-		close(vl.stopSig)
-		for l := range logFileNames {
-			if l >= vl.llevel {
-				vl.files[l].Close()
-			}
-		}
-	}
+func (vl *V8log) setLevel(level LogLevel) {
+	vl.mtx.Lock()
+	defer vl.mtx.Unlock()
+	vl.level = level
 }
 
 func (vl *V8log) checkFile() {
@@ -150,7 +143,7 @@ func (vl *V8log) Printf(level LogLevel, format string, params ...interface{}) {
 	if vl.stoped {
 		return
 	}
-	if level < vl.llevel {
+	if level < vl.level {
 		return
 	}
 	pidAndLevel := []interface{}{vl.pid, loglevel[level]}
@@ -170,7 +163,7 @@ func (vl *V8log) Println(level LogLevel, params ...interface{}) {
 	if vl.stoped {
 		return
 	}
-	if level < vl.llevel {
+	if level < vl.level {
 		return
 	}
 	pidAndLevel := []interface{}{vl.pid, " ", loglevel[level], " "}

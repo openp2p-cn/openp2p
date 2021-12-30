@@ -13,6 +13,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	binDir := filepath.Dir(os.Args[0])
 	os.Chdir(binDir) // for system service
+	gLog = InitLogger(binDir, "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
 	// TODO: install sub command, deamon process
 	// groups := flag.String("groups", "", "you could join in several groups. like: GroupName1:Password1;GroupName2:Password2; group name 8-31 characters")
 	if len(os.Args) > 1 {
@@ -74,7 +75,7 @@ func main() {
 	gConf.add(config)
 	gConf.load()
 	gConf.mtx.Lock()
-
+	gLog.setLevel(LogLevel(gConf.logLevel))
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "sharebandwidth" {
 			gConf.Network.ShareBandwidth = *shareBandwidth
@@ -95,7 +96,21 @@ func main() {
 			gConf.logLevel = *logLevel
 		}
 	})
-	gLog = InitLogger(binDir, "openp2p", LogLevel(gConf.logLevel), 1024*1024, LogFileAndConsole)
+	if gConf.Network.ServerHost == "" {
+		gConf.Network.ServerHost = *serverHost
+	}
+	if gConf.Network.Node == "" {
+		gConf.Network.Node = *node
+	}
+	if gConf.Network.User == "" {
+		gConf.Network.User = *user
+	}
+	if gConf.Network.Password == "" {
+		gConf.Network.Password = *password
+	}
+	gConf.Network.ServerPort = 27182
+	gConf.Network.UDPPort1 = 27182
+	gConf.Network.UDPPort2 = 27183
 	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
 	gConf.mtx.Unlock()
 	gConf.save()
