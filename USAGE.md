@@ -32,8 +32,48 @@ Create multiple P2PApp by config file
 >* -protocol: Target service protocol tcp, udp
 >* -peeruser: The target user, if it is a node under the same user, no need to set
 >* -peerpassword: The target password, if it is a node under the same user, no need to set
->* -f: Configuration file, if you want to configure multiple P2PApp refer to [config.json](/config.json)
 
+## Config file
+Generally saved in the current directory, in installation mode it will be saved to `C:\Program Files\OpenP2P\config.json` or `/usr/local/openp2p/config.json`
+If you want to modify the parameters, or configure multiple P2PApps, you can manually modify the configuration file
+
+Configuration example
+```
+{
+  "network": {
+    "Node": "hhd1207-222",
+    "User": "USERNAME1",
+    "Password": "PASSWORD1",
+    "ShareBandwidth": -1,
+    "ServerHost": "api.openp2p.cn",
+    "ServerPort": 27182,
+    "UDPPort1": 27182,
+    "UDPPort2": 27183
+  },
+  "apps": [
+    {
+      "AppName": "OfficeWindowsPC",
+      "Protocol": "tcp",
+      "SrcPort": 23389,
+      "PeerNode": "OFFICEPC1",
+      "DstPort": 3389,
+      "DstHost": "localhost",
+      "PeerUser": "",
+      "PeerPassword": ""
+    },
+    {
+      "AppName": "OfficeServerSSH",
+      "Protocol": "tcp",
+      "SrcPort": 22,
+      "PeerNode": "OFFICEPC1",
+      "DstPort": 22,
+      "DstHost": "192.168.1.5",
+      "PeerUser": "",
+      "PeerPassword": ""
+    }
+  ]
+}
+```
 ## Client update
 ```
 # update local client

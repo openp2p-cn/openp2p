@@ -31,7 +31,48 @@
 >* -protocol: 目标服务协议 tcp、udp
 >* -peeruser: 目标用户，如果是同一个用户下的节点，则无需设置
 >* -peerpassword: 目标密码，如果是同一个用户下的节点，则无需设置
->* -f: 配置文件,如果希望配置多个P2PApp参考[config.json](/config.json)
+
+## 配置文件
+一般保存在当前目录，安装模式下会保存到 `C:\Program Files\OpenP2P\config.json` 或 `/usr/local/openp2p/config.json`
+希望修改参数，或者配置多个P2PApp可手动修改配置文件
+
+配置实例
+```
+{
+  "network": {
+    "Node": "hhd1207-222",
+    "User": "USERNAME1",
+    "Password": "PASSWORD1",
+    "ShareBandwidth": -1,
+    "ServerHost": "api.openp2p.cn",
+    "ServerPort": 27182,
+    "UDPPort1": 27182,
+    "UDPPort2": 27183
+  },
+  "apps": [
+    {
+      "AppName": "OfficeWindowsPC",
+      "Protocol": "tcp",
+      "SrcPort": 23389,
+      "PeerNode": "OFFICEPC1",
+      "DstPort": 3389,
+      "DstHost": "localhost",
+      "PeerUser": "",
+      "PeerPassword": ""
+    },
+    {
+      "AppName": "OfficeServerSSH",
+      "Protocol": "tcp",
+      "SrcPort": 22,
+      "PeerNode": "OFFICEPC1",
+      "DstPort": 22,
+      "DstHost": "192.168.1.5",
+      "PeerUser": "",
+      "PeerPassword": ""
+    }
+  ]
+}
+```
 
 ## 升级客户端
 ```
