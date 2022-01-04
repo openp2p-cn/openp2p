@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 )
 
@@ -89,10 +93,23 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 
 		}(req)
 	case MsgPushUpdate:
-		update()
-		if gConf.daemonMode {
-			os.Exit(0)
+		targetPath := filepath.Join(defaultInstallPath, defaultBinName)
+		args := []string{"update"}
+		env := os.Environ()
+		// Windows does not support exec syscall.
+		if runtime.GOOS == "windows" {
+			cmd := exec.Command(targetPath, args...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Stdin = os.Stdin
+			cmd.Env = env
+			err := cmd.Run()
+			if err == nil {
+				os.Exit(0)
+			}
+			return err
 		}
+		return syscall.Exec(targetPath, args, env)
 	case MsgPushReportApps:
 		gLog.Println(LevelINFO, "MsgPushReportApps")
 		req := ReportApps{}
@@ -144,22 +161,23 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			gLog.Printf(LevelERROR, "wrong MsgPushEditApp:%s  %s", err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
-		var config AppConfig
+		var oldConf AppConfig
 		// protocol0+srcPort0 exist, delApp
-		config.AppName = newApp.AppName
-		config.Protocol = newApp.Protocol0
-		config.SrcPort = newApp.SrcPort0
-		config.PeerNode = newApp.PeerNode
-		config.DstHost = newApp.DstHost
-		config.DstPort = newApp.DstPort
+		oldConf.AppName = newApp.AppName
+		oldConf.Protocol = newApp.Protocol0
+		oldConf.SrcPort = newApp.SrcPort0
+		oldConf.PeerNode = newApp.PeerNode
+		oldConf.DstHost = newApp.DstHost
+		oldConf.DstPort = newApp.DstPort
 
-		gConf.delete(config)
+		gConf.delete(oldConf)
 		// AddApp
-		config.Protocol = newApp.Protocol
-		config.SrcPort = newApp.SrcPort
-		gConf.add(config)
+		newConf := oldConf
+		newConf.Protocol = newApp.Protocol
+		newConf.SrcPort = newApp.SrcPort
+		gConf.add(newConf)
 		gConf.save()
-		pn.DeleteApp(config) // save quickly for the next request reportApplist
+		pn.DeleteApp(oldConf) // save quickly for the next request reportApplist
 		// autoReconnect will auto AddApp
 		// pn.AddApp(config)
 		// TODO: report result

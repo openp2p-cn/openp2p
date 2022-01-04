@@ -9,6 +9,8 @@ import (
 
 var gConf Config
 
+const IntValueNotSet int = -99999999
+
 type AppConfig struct {
 	// required
 	AppName      string
@@ -31,11 +33,11 @@ type AppConfig struct {
 
 // TODO: add loglevel, maxlogfilesize
 type Config struct {
-	Network    NetworkConfig `json:"network"`
-	Apps       []AppConfig   `json:"apps"`
-	daemonMode bool
-	logLevel   int
-	mtx        sync.Mutex
+	Network  NetworkConfig `json:"network"`
+	Apps     []AppConfig   `json:"apps"`
+	LogLevel int
+
+	mtx sync.Mutex
 }
 
 func (c *Config) add(app AppConfig) {
@@ -78,6 +80,8 @@ func (c *Config) save() {
 
 func (c *Config) load() error {
 	c.mtx.Lock()
+	c.LogLevel = IntValueNotSet
+	c.Network.ShareBandwidth = IntValueNotSet
 	defer c.mtx.Unlock()
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {

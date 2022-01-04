@@ -62,7 +62,6 @@ func (d *daemon) run() {
 			break
 		}
 	}
-	args = append(args, "-bydaemon")
 	for {
 		// start worker
 		gLog.Println(LevelINFO, "start worker process")
@@ -130,7 +129,7 @@ func install() {
 	logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])
 	checkParams(*node, *user, *password)
-	gConf.logLevel = *logLevel
+	gConf.LogLevel = *logLevel
 	gConf.Network.ServerHost = *serverHost
 	gConf.Network.User = *user
 	gConf.Network.Node = *node

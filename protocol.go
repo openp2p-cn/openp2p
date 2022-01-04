@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "0.98.1"
+const OpenP2PVersion = "0.99.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {

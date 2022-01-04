@@ -14,6 +14,7 @@ func main() {
 	binDir := filepath.Dir(os.Args[0])
 	os.Chdir(binDir) // for system service
 	gLog = InitLogger(binDir, "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
+
 	// TODO: install sub command, deamon process
 	// groups := flag.String("groups", "", "you could join in several groups. like: GroupName1:Password1;GroupName2:Password2; group name 8-31 characters")
 	if len(os.Args) > 1 {
@@ -26,7 +27,7 @@ func main() {
 			update()
 			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 			d := daemon{}
-			err := d.Control("restart", targetPath, []string{"-d", "-f"})
+			err := d.Control("restart", targetPath, nil)
 			if err != nil {
 				gLog.Println(LevelERROR, "restart service error:", err)
 			} else {
@@ -54,11 +55,11 @@ func main() {
 	srcPort := flag.Int("srcport", 0, "source port ")
 	protocol := flag.String("protocol", "tcp", "tcp or udp")
 	appName := flag.String("appname", "", "app name")
-	flag.Bool("noshare", false, "deprecated. uses -sharebandwidth -1")
+	flag.Bool("noshare", false, "deprecated. uses -sharebandwidth -1") // Deprecated, rm later
 	shareBandwidth := flag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
-	flag.Bool("f", false, "deprecated. config file")
+	flag.Bool("f", false, "deprecated. config file") // Deprecated, rm later
 	daemonMode := flag.Bool("d", false, "daemonMode")
-	byDaemon := flag.Bool("bydaemon", false, "start by daemon")
+	flag.Bool("bydaemon", false, "start by daemon") // Deprecated, rm later
 	logLevel := flag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	flag.Parse()
 
@@ -75,7 +76,8 @@ func main() {
 	gConf.add(config)
 	gConf.load()
 	gConf.mtx.Lock()
-	gLog.setLevel(LogLevel(gConf.logLevel))
+
+	// spec paramters in commandline will always be used
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "sharebandwidth" {
 			gConf.Network.ShareBandwidth = *shareBandwidth
@@ -93,9 +95,10 @@ func main() {
 			gConf.Network.ServerHost = *serverHost
 		}
 		if f.Name == "loglevel" {
-			gConf.logLevel = *logLevel
+			gConf.LogLevel = *logLevel
 		}
 	})
+
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
 	}
@@ -108,13 +111,20 @@ func main() {
 	if gConf.Network.Password == "" {
 		gConf.Network.Password = *password
 	}
+	if gConf.LogLevel == IntValueNotSet {
+		gConf.LogLevel = *logLevel
+	}
+	if gConf.Network.ShareBandwidth == IntValueNotSet {
+		gConf.Network.ShareBandwidth = *shareBandwidth
+	}
+
 	gConf.Network.ServerPort = 27182
 	gConf.Network.UDPPort1 = 27182
 	gConf.Network.UDPPort2 = 27183
 	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
+	gLog.setLevel(LogLevel(gConf.LogLevel))
 	gConf.mtx.Unlock()
 	gConf.save()
-	gConf.daemonMode = *byDaemon
 	if *daemonMode {
 		d := daemon{}
 		d.run()

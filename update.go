@@ -16,18 +16,9 @@ import (
 	"time"
 )
 
-// type updateFileInfo struct {
-// 	Name         string `json:"name,omitempty"`
-// 	RelativePath string `json:"relativePath,omitempty"`
-// 	Length       int64  `json:"length,omitempty"`
-// 	URL          string `json:"url,omitempty"`
-// 	Hash         string `json:"hash,omitempty"`
-// }
-
 func update() {
 	gLog.Println(LevelINFO, "update start")
 	defer gLog.Println(LevelINFO, "update end")
-	// TODO: download from gitee. save flow
 	c := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -61,7 +52,6 @@ func update() {
 		gLog.Println(LevelERROR, "update error:", updateInfo.Error, updateInfo.ErrorDetail)
 		return
 	}
-	os.MkdirAll("download", 0666)
 	err = updateFile(updateInfo.Url, "", "openp2p")
 	if err != nil {
 		gLog.Println(LevelERROR, "update: download failed:", err)
@@ -112,6 +102,7 @@ func updateFile(url string, checksum string, dst string) error {
 		os.Rename(os.Args[0]+"0", os.Args[0])
 		return err
 	}
+	os.Remove(tmpFile)
 	return nil
 }
 
@@ -133,11 +124,6 @@ func unzip(dst, src string) (err error) {
 	for _, f := range archive.File {
 		filePath := filepath.Join(dst, f.Name)
 		fmt.Println("unzipping file ", filePath)
-
-		// if !strings.HasPrefix(filePath, filepath.Clean(dst)+string(os.PathSeparator)) {
-		// 	fmt.Println("invalid file path")
-		// 	return
-		// }
 		if f.FileInfo().IsDir() {
 			fmt.Println("creating directory...")
 			os.MkdirAll(filePath, os.ModePerm)
