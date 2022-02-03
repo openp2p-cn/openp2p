@@ -1,37 +1,35 @@
-# Parameters details
 
+
+# Parameters details
+In most cases, you can operate it through <https://console.openp2p.cn>. In some cases it is necessary to run manually
 > :warning: all commands in this doc, Windows env uses "openp2p.exe", Linux env uses "./openp2p" 
 
 
 ## Install and Listen
 ```
-./openp2p install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
+./openp2p install -node OFFICEPC1 -token TOKEN  
 Or
-./openp2p -d -node OFFICEPC1 -user USERNAME1 -password PASSWORD1 
+./openp2p -d -node OFFICEPC1 -token TOKEN  
 
 ```
 >* install: [recommand] will install as system service. So it will autorun when system booting.
 >* -d: daemon mode run once. When the worker process is found to exit unexpectedly, a new worker process will be automatically started
 >* -node: Unique node name, unique identification
->* -user: Unique user name, the node belongs to this user
->* -password: Password
+>* -token: See <console.openp2p.cn> "Profile"
 >* -sharebandwidth: Provides bandwidth when used as a shared node, the default is 10mbps. If it is a large bandwidth of optical fiber, the larger the setting, the better the effect. -1 means not shared, the node is only used in a private P2P network. Do not join the shared P2P network, which also means that you CAN NOT use other people’s shared nodes
 >* -loglevel: Need to view more debug logs, set 0; the default is 1
 
 ## Connect
 ```
-./openp2p -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname OfficeWindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
+./openp2p -d -node HOMEPC123 -token TOKEN -appname OfficeWindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389
 Create multiple P2PApp by config file
-./openp2p -d -f    
-./openp2p -f 
+./openp2p -d    
 ```
 >* -appname: This P2PApp name
 >* -peernode: Target node name
 >* -dstip: Target service address, default local 127.0.0.1
 >* -dstport: Target service port, such as windows remote desktop 3389, Linux ssh 22
 >* -protocol: Target service protocol tcp, udp
->* -peeruser: The target user, if it is a node under the same user, no need to set
->* -peerpassword: The target password, if it is a node under the same user, no need to set
 
 ## Config file
 Generally saved in the current directory, in installation mode it will be saved to `C:\Program Files\OpenP2P\config.json` or `/usr/local/openp2p/config.json`
@@ -42,11 +40,10 @@ Configuration example
 {
   "network": {
     "Node": "hhd1207-222",
-    "User": "USERNAME1",
-    "Password": "PASSWORD1",
+    "Token": "TOKEN",
     "ShareBandwidth": -1,
     "ServerHost": "api.openp2p.cn",
-    "ServerPort": 27182,
+    "ServerPort": 27183,
     "UDPPort1": 27182,
     "UDPPort2": 27183
   },
@@ -58,8 +55,6 @@ Configuration example
       "PeerNode": "OFFICEPC1",
       "DstPort": 3389,
       "DstHost": "localhost",
-      "PeerUser": "",
-      "PeerPassword": ""
     },
     {
       "AppName": "OfficeServerSSH",
@@ -68,8 +63,6 @@ Configuration example
       "PeerNode": "OFFICEPC1",
       "DstPort": 22,
       "DstHost": "192.168.1.5",
-      "PeerUser": "",
-      "PeerPassword": ""
     }
   ]
 }

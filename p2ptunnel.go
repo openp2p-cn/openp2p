@@ -55,10 +55,9 @@ func (t *P2PTunnel) connect() error {
 	gLog.Printf(LevelDEBUG, "start p2pTunnel to %s ", t.config.PeerNode)
 	t.isServer = false
 	req := PushConnectReq{
-		User:        t.config.PeerUser,
-		Password:    t.config.PeerPassword,
 		Token:       t.config.peerToken,
 		From:        t.pn.config.Node,
+		FromToken:   t.pn.config.Token,
 		FromIP:      t.pn.config.publicIP,
 		ConeNatPort: t.coneNatPort,
 		NatType:     t.pn.config.natType,
@@ -326,9 +325,9 @@ func (t *P2PTunnel) readLoop() {
 				gLog.Printf(LevelERROR, "wrong MsgOverlayConnectReq:%s", err)
 				continue
 			}
-			// app connect only accept user/password, avoid someone using the share relay node's token
-			if req.User != t.pn.config.User || req.Password != t.pn.config.Password {
-				gLog.Println(LevelERROR, "Access Denied:", req.User)
+			// app connect only accept token(not relay totp token), avoid someone using the share relay node's token
+			if req.Token != t.pn.config.Token {
+				gLog.Println(LevelERROR, "Access Denied:", req.Token)
 				continue
 			}
 

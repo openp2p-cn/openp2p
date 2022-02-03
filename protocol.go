@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "0.99.0"
+const OpenP2PVersion = "1.0.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -80,6 +80,9 @@ const (
 	MsgPushReportApps        = 7
 	MsgPushQuicConnect       = 8
 	MsgPushEditApp           = 9
+	MsgPushSwitchApp         = 10
+	MsgPushRestart           = 11
+	MsgPushEditNode          = 12
 )
 
 // MsgP2P sub type message
@@ -167,9 +170,8 @@ func nodeNameToID(name string) uint64 {
 
 type PushConnectReq struct {
 	From        string `json:"from,omitempty"`
-	User        string `json:"user,omitempty"`
-	Password    string `json:"password,omitempty"`
-	Token       uint64 `json:"token,omitempty"`
+	FromToken   uint64 `json:"fromToken,omitempty"` //my token
+	Token       uint64 `json:"token,omitempty"`     // totp token
 	ConeNatPort int    `json:"coneNatPort,omitempty"`
 	NatType     int    `json:"natType,omitempty"`
 	FromIP      string `json:"fromIP,omitempty"`
@@ -193,6 +195,8 @@ type PushRsp struct {
 type LoginRsp struct {
 	Error  int    `json:"error,omitempty"`
 	Detail string `json:"detail,omitempty"`
+	User   string `json:"user,omitempty"`
+	Token  uint64 `json:"token,omitempty"`
 	Ts     int64  `json:"ts,omitempty"`
 }
 
@@ -213,8 +217,7 @@ type P2PHandshakeReq struct {
 
 type OverlayConnectReq struct {
 	ID            uint64 `json:"id,omitempty"`
-	User          string `json:"user,omitempty"`
-	Password      string `json:"password,omitempty"`
+	Token         uint64 `json:"token,omitempty"` // not totp token
 	DstIP         string `json:"dstIP,omitempty"`
 	DstPort       int    `json:"dstPort,omitempty"`
 	Protocol      string `json:"protocol,omitempty"`
@@ -294,6 +297,7 @@ type AppInfo struct {
 	Version        string `json:"version,omitempty"`
 	RetryTime      string `json:"retryTime,omitempty"`
 	IsActive       int    `json:"isActive,omitempty"`
+	Enabled        int    `json:"enabled,omitempty"`
 }
 
 type ReportApps struct {
@@ -323,4 +327,18 @@ type NetInfo struct {
 	ASN        string   `json:"asn,omitempty"`
 	ASNOrg     string   `json:"asn_org,omitempty"`
 	Hostname   string   `json:"hostname,omitempty"`
+}
+
+type ProfileInfo struct {
+	User     string `json:"user,omitempty"`
+	Password string `json:"password,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Phone    string `json:"phone,omitempty"`
+	Token    string `json:"token,omitempty"`
+	Addtime  string `json:"addtime,omitempty"`
+}
+
+type EditNode struct {
+	NewName   string `json:"newName,omitempty"`
+	Bandwidth int    `json:"bandwidth,omitempty"`
 }

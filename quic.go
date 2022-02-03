@@ -99,7 +99,7 @@ func (conn *quicConn) Accept() error {
 }
 
 func listenQuic(addr string, idleTimeout time.Duration) (*quicConn, error) {
-	gLog.Println(LevelINFO, "quic listen on ", addr)
+	gLog.Println(LevelDEBUG, "quic listen on ", addr)
 	listener, err := quic.ListenAddr(addr, generateTLSConfig(),
 		&quic.Config{Versions: quicVersion, MaxIdleTimeout: idleTimeout, DisablePathMTUDiscovery: true})
 	if err != nil {

@@ -30,52 +30,45 @@ P2P direct connection lets your devices make good use of bandwidth.  Your device
 Your applicaiton can call OpenP2P with a few code to make any internal networks communicate with each other.
 
 ## Get Started
-A common scenario to introduce OpenP2P: remote work. At home connects to office's Linux PC .
-Under the outbreak of covid-19 pandemic, surely remote work becomes a fundamental demand.
+Just 4 simple steps to use.
+Here's an example of remote work: connecting to an office Windows computer at home.
+  
+### 1.Register
+Go to <https://console.openp2p.cn> register a new user
 
-> :warning: all commands in this doc, Windows env uses "openp2p.exe", Linux env uses "./openp2p"
- 
+   ![image](/doc/images/register.png)
+### 2.Install
+Download on local and remote computers and double-click to run, one-click installation
 
-1. Make sure your office device(Linux) has opened the access of ssh.
-   ```
-   netstat -nl | grep 22
-   ```
-   Output sample
-   ![image](/doc/images/officelisten_linux.png)
+   ![image](/doc/images/install.png)
 
-2. Download the latest version of `OpenP2P` [Download Page](https://openp2p.cn/),unzip the downloaded package, and execute below command line.
-   ```
-   tar xzvf ${PackageName}
-   ./openp2p install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1
-   ```
+   By default, Windows will block programs that have not been signed by the Microsoft's certificate, and you can select "Run anyway".
 
-   > :warning: **Must change the parameters marked in UPPERCASE to your own. These 3 parameters must >= 8 charaters**
+   ![image](/doc/images/win10warn.png)
 
-   Output sample
-   ![image](/doc/images/officeexecute_linux.png)
+   ![image](/doc/images/stillrun.png)
+### 3.New P2PApp
 
-3. Download OpenP2P on your home device，unzip and execute below command line.
-   ```
-   openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname OfficeSSH -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 22 -srcport 22022 -protocol tcp
-   ```
-   
-   > :warning: **Must change the parameters marked in UPPERCASE to your own**
+![image](/doc/images/devices.png)
 
-   Output sample  
-   ![image](/doc/images/homeconnect_windows.png)  
-   The log of `LISTEN ON PORT 22022 START` indicates P2PApp runs successfully on your home device, listing port is 22022. Once connects to local ip:port,127.0.0.1:22022, it means the home device has conneccted to the office device's port, 22.  
-   ![image](/doc/images/officelisten_2_linux.png)
+![image](/doc/images/newapp.png)
 
+![image](/doc/images/newappedit.png)
 
-4. Test the connection between office device and home device.In your home deivce, run SSH to login the office device. 
-   ```
-   ssh -p22022 root@127.0.0.1:22022
-   ```
-   ![image](/doc/images/sshconnect.png)
+### 4.Use P2PApp
+You can see the P2P application you just created on the "MyHomePC" device, just connect to the "local listening port" shown in the figure below.
+
+![image](/doc/images/p2pappok.png)
+
+On MyHomePC, press Win+R and enter MSTSC to open the remote desktop, input `127.0.0.1:23389 /admin`
+
+   ![image](/doc/images/mstscconnect.png)
+
+   ![image](/doc/images/afterconnect.png)
 
 
 ## Usage
-[Here](/USAGE.md) is a detailed description of how to use and running parameters
+[Here](/USAGE.md) describes how to run manually
 
 ## Scenarios 
 Especially suitable for large traffic intranet access.

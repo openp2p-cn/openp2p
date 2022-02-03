@@ -76,8 +76,7 @@ func (app *p2pApp) listenTCP() error {
 		gLog.Printf(LevelDEBUG, "Accept overlayID:%d", otcp.id)
 		// tell peer connect
 		req := OverlayConnectReq{ID: otcp.id,
-			User:     app.config.PeerUser,
-			Password: app.config.PeerPassword,
+			Token:    app.tunnel.pn.config.Token,
 			DstIP:    app.config.DstHost,
 			DstPort:  app.config.DstPort,
 			Protocol: app.config.Protocol,
@@ -109,7 +108,9 @@ func (app *p2pApp) listen() error {
 		go app.relayHeartbeatLoop()
 	}
 	for app.running {
-		if app.config.Protocol == "tcp" {
+		if app.config.Protocol == "udp" {
+			app.listenTCP()
+		} else {
 			app.listenTCP()
 		}
 		time.Sleep(time.Second * 5)

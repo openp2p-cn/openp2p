@@ -97,12 +97,8 @@ func (pn *P2PNetwork) runAll() {
 	gConf.mtx.Lock()
 	defer gConf.mtx.Unlock()
 	for _, config := range gConf.Apps {
-		// set default peer user password
-		if config.PeerPassword == "" {
-			config.PeerPassword = gConf.Network.Password
-		}
-		if config.PeerUser == "" {
-			config.PeerUser = gConf.Network.User
+		if config.Enabled == 0 {
+			continue
 		}
 		if config.AppName == "" {
 			config.AppName = fmt.Sprintf("%s%d", config.Protocol, config.SrcPort)
@@ -249,7 +245,6 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		PeerNode:       config.PeerNode,
 		DstPort:        config.DstPort,
 		DstHost:        config.DstHost,
-		PeerUser:       config.PeerUser,
 		PeerNatType:    peerNatType,
 		PeerIP:         peerIP,
 		ShareBandwidth: pn.config.ShareBandwidth,
@@ -257,7 +252,9 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		Version:        OpenP2PVersion,
 	}
 	pn.write(MsgReport, MsgReportConnect, &req)
-
+	if err != nil {
+		return err
+	}
 	app := p2pApp{
 		id:        appID,
 		key:       appKey,
@@ -387,8 +384,7 @@ func (pn *P2PNetwork) init() error {
 		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: forwardPath}
 		q := u.Query()
 		q.Add("node", pn.config.Node)
-		q.Add("user", pn.config.User)
-		q.Add("password", pn.config.Password)
+		q.Add("token", fmt.Sprintf("%d", pn.config.Token))
 		q.Add("version", OpenP2PVersion)
 		q.Add("nattype", fmt.Sprintf("%d", pn.config.natType))
 		q.Add("sharebandwidth", fmt.Sprintf("%d", pn.config.ShareBandwidth))
@@ -460,8 +456,15 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 			pn.running = false
 		} else {
 			pn.serverTs = rsp.Ts
+			pn.config.Token = rsp.Token
+			pn.config.User = rsp.User
+			gConf.mtx.Lock()
+			gConf.Network.Token = rsp.Token
+			gConf.Network.User = rsp.User
+			gConf.mtx.Unlock()
+			gConf.save()
 			pn.localTs = time.Now().Unix()
-			gLog.Printf(LevelINFO, "login ok. Server ts=%d, local ts=%d", rsp.Ts, pn.localTs)
+			gLog.Printf(LevelINFO, "login ok. user=%s,Server ts=%d, local ts=%d", rsp.User, rsp.Ts, pn.localTs)
 		}
 	case MsgHeartbeat:
 		gLog.Printf(LevelDEBUG, "P2PNetwork heartbeat ok")
@@ -561,12 +564,15 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 	} else {
 		nodeID = nodeNameToID(node)
 	}
+	pn.msgMapMtx.Lock()
+	ch := pn.msgMap[nodeID]
+	pn.msgMapMtx.Unlock()
 	for {
 		select {
 		case <-time.After(timeout):
 			gLog.Printf(LevelERROR, "wait msg%d:%d timeout", mainType, subType)
 			return
-		case msg := <-pn.msgMap[nodeID]:
+		case msg := <-ch:
 			head = &openP2PHeader{}
 			err := binary.Read(bytes.NewReader(msg[:openP2PHeaderSize]), binary.LittleEndian, head)
 			if err != nil {

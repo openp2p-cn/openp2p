@@ -28,38 +28,43 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 基于OpenP2P只需数行代码，就能让原来只能局域网通信的程序，变成任何内网都能通信
 
 ## 快速入门
+仅需简单4步就能用起来。  
+下面是一个远程办公例子：在家里连入办公室Windows电脑。  
+### 1.注册
+前往<https://console.openp2p.cn> 注册新用户，暂无需任何认证
 
-> :warning: 本文所有命令, Windows环境使用"openp2p.exe", Linux环境使用"./openp2p"
+   ![image](/doc/images/register.png)
+### 2.安装
+分别在本地和远程电脑下载后双击运行，一键安装
 
+   ![image](/doc/images/install.png)
 
-以一个最常见的例子说明OpenP2P如何使用：远程办公，在家里连入办公室Windows电脑。  
-相信很多人在疫情下远程办公是刚需。
-1. 先确认办公室电脑已开启远程桌面功能（如何开启参考官方说明https://docs.microsoft.com/zh-cn/windows-server/remote/remote-desktop-services/clients/remote-desktop-allow-access）
-2. 在办公室下载最新的`OpenP2P`[下载页](https://openp2p.cn/),解压出来,在命令行执行
-   ```
-   openp2p.exe install -node OFFICEPC1 -user USERNAME1 -password PASSWORD1  
-   ```
-   
-   > :warning: **切记将标记大写的参数改成自己的,3个参数的长度必须>=8个字符**
+   Windows默认会阻止没有花钱买它家证书签名过的程序，选择“仍要运行”即可。
 
-   ![image](/doc/images/officelisten.png)
-3. 在家里下载最新的OpenP2P,解压出来,在命令行执行
-   ```
-   openp2p.exe -d -node HOMEPC123 -user USERNAME1 -password PASSWORD1 -appname WindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389 -protocol tcp
-   ```
-   > :warning: **切记将标记大写的参数改成自己的**
+   ![image](/doc/images/win10warn.png)
 
-   ![image](/doc/images/homeconnect.png)
-   ![image](/doc/images/mem.png)
-   `LISTEN ON PORT 23389 START` 看到这行日志表示P2PApp建立成功，监听23389端口。只需连接本机的127.0.0.1:23389就相当于连接公司Windows电脑的3389端口。
-   
-4. 在家里Windows电脑，按Win+R输入mstsc打开远程桌面，输入127.0.0.1:23389 /admin  
+   ![image](/doc/images/stillrun.png)
+### 3.新建P2P应用
+
+![image](/doc/images/devices.png)
+
+![image](/doc/images/newapp.png)
+
+![image](/doc/images/newappedit.png)
+
+### 4.使用P2P应用
+在“MyHomePC”设备上能看到刚才创建的P2P应用，连接下图显示的“本地监听端口”即可。
+
+![image](/doc/images/p2pappok.png)
+
+在家里Windows电脑，按Win+R输入mstsc打开远程桌面，输入127.0.0.1:23389 /admin  
+
    ![image](/doc/images/mstscconnect.png)
 
    ![image](/doc/images/afterconnect.png)
 
 ## 详细使用说明
-[这里](/USAGE-ZH.md)详细介绍如何使用和运行参数
+[这里](/USAGE-ZH.md)介绍如何手动运行
 
 ## 典型应用场景
 特别适合大流量的内网访问

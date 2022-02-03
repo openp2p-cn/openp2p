@@ -8,9 +8,11 @@ import (
 )
 
 const TOTPStep = 30 // 30s
-func GenTOTP(user string, password string, ts int64) uint64 {
+func GenTOTP(token uint64, ts int64) uint64 {
 	step := ts / TOTPStep
-	mac := hmac.New(sha256.New, []byte(user+password))
+	tbuff := make([]byte, 8)
+	binary.LittleEndian.PutUint64(tbuff, token)
+	mac := hmac.New(sha256.New, tbuff)
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(step))
 	mac.Write(b)
@@ -19,11 +21,11 @@ func GenTOTP(user string, password string, ts int64) uint64 {
 	return num
 }
 
-func VerifyTOTP(code uint64, user string, password string, ts int64) bool {
+func VerifyTOTP(code uint64, token uint64, ts int64) bool {
 	if code == 0 {
 		return false
 	}
-	if code == GenTOTP(user, password, ts) || code == GenTOTP(user, password, ts-TOTPStep) || code == GenTOTP(user, password, ts+TOTPStep) {
+	if code == GenTOTP(token, ts) || code == GenTOTP(token, ts-TOTPStep) || code == GenTOTP(token, ts+TOTPStep) {
 		return true
 	}
 	return false
