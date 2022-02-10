@@ -132,11 +132,11 @@ func install() {
 	logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])
 	if *node != "" && len(*node) < 8 {
-		gLog.Println(LevelERROR, "node name too short, it must >=8 charaters")
+		gLog.Println(LevelERROR, ErrNodeTooShort)
 		os.Exit(9)
 	}
 	if *node == "" { // if node name not set. use os.Hostname
-		hostname, _ := os.Hostname()
+		hostname := defaultNodeName()
 		node = &hostname
 	}
 	gConf.load() // load old config. otherwise will clear all apps

@@ -36,35 +36,35 @@ Here's an example of remote work: connecting to an office Windows computer at ho
 ### 1.Register
 Go to <https://console.openp2p.cn> register a new user
 
-   ![image](/doc/images/register.png)
+   ![image](/doc/images/register_en.png)
 ### 2.Install
 Download on local and remote computers and double-click to run, one-click installation
 
-   ![image](/doc/images/install.png)
+   ![image](/doc/images/install_en.png)
 
    By default, Windows will block programs that have not been signed by the Microsoft's certificate, and you can select "Run anyway".
 
-   ![image](/doc/images/win10warn.png)
+   ![image](/doc/images/win10warn_en.png)
 
-   ![image](/doc/images/stillrun.png)
+   ![image](/doc/images/stillrun_en.png)
 ### 3.New P2PApp
 
-![image](/doc/images/devices.png)
+![image](/doc/images/devices_en.png)
 
-![image](/doc/images/newapp.png)
+![image](/doc/images/newapp_en.png)
 
-![image](/doc/images/newappedit.png)
+![image](/doc/images/newappedit_en.png)
 
 ### 4.Use P2PApp
 You can see the P2P application you just created on the "MyHomePC" device, just connect to the "local listening port" shown in the figure below.
 
-![image](/doc/images/p2pappok.png)
+![image](/doc/images/p2pappok_en.png)
 
 On MyHomePC, press Win+R and enter MSTSC to open the remote desktop, input `127.0.0.1:23389 /admin`
 
-   ![image](/doc/images/mstscconnect.png)
+   ![image](/doc/images/mstscconnect_en.png)
 
-   ![image](/doc/images/afterconnect.png)
+   ![image](/doc/images/afterconnect_en.png)
 
 
 ## Usage

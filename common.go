@@ -7,8 +7,10 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -147,4 +149,12 @@ func execOutput(name string, args ...string) string {
 	cmdGetOsName.Stdout = &cmdOut
 	cmdGetOsName.Run()
 	return cmdOut.String()
+}
+
+func defaultNodeName() string {
+	name, _ := os.Hostname()
+	for len(name) < 8 {
+		name = fmt.Sprintf("%s%d", name, rand.Int()%10)
+	}
+	return name
 }

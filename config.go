@@ -119,7 +119,6 @@ type NetworkConfig struct {
 	User           string
 	localIP        string
 	ipv6           string
-	hostName       string
 	mac            string
 	os             string
 	publicIP       string
@@ -184,6 +183,10 @@ func parseParams() {
 		gConf.Network.ServerHost = *serverHost
 	}
 	if gConf.Network.Node == "" {
+		if *node == "" { // config and param's node both empty
+			hostname := defaultNodeName()
+			node = &hostname
+		}
 		gConf.Network.Node = *node
 	}
 	if *token != 0 {

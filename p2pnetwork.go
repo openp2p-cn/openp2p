@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -361,11 +360,6 @@ func (pn *P2PNetwork) init() error {
 	gLog.Println(LevelINFO, "init start")
 	var err error
 	for {
-		pn.config.hostName, err = os.Hostname()
-		if err != nil {
-			break
-		}
-
 		// detect nat type
 		pn.config.publicIP, pn.config.natType, err = getNATType(pn.config.ServerHost, pn.config.UDPPort1, pn.config.UDPPort2)
 		// TODO rm test s2s
