@@ -16,7 +16,7 @@ Or
 >* -d: daemon mode run once. When the worker process is found to exit unexpectedly, a new worker process will be automatically started
 >* -node: Unique node name, unique identification
 >* -token: See <console.openp2p.cn> "Profile"
->* -sharebandwidth: Provides bandwidth when used as a shared node, the default is 10mbps. If it is a large bandwidth of optical fiber, the larger the setting, the better the effect. -1 means not shared, the node is only used in a private P2P network. Do not join the shared P2P network, which also means that you CAN NOT use other people’s shared nodes
+>* -sharebandwidth: Provides bandwidth when used as a shared node, the default is 10mbps. If it is a large bandwidth of optical fiber, the larger the setting, the better the effect. 0 means not shared, the node is only used in a private P2P network. Do not join the shared P2P network, which also means that you CAN NOT use other people’s shared nodes
 >* -loglevel: Need to view more debug logs, set 0; the default is 1
 
 ## Connect
@@ -41,7 +41,7 @@ Configuration example
   "network": {
     "Node": "hhd1207-222",
     "Token": "TOKEN",
-    "ShareBandwidth": -1,
+    "ShareBandwidth": 0,
     "ServerHost": "api.openp2p.cn",
     "ServerPort": 27183,
     "UDPPort1": 27182,

@@ -14,7 +14,7 @@
 >* -d: daemon模式。发现worker进程意外退出就会自动启动新的worker进程
 >* -node: 独一无二的节点名字，唯一标识
 >* -token: 在<console.openp2p.cn>“我的”里面找到
->* -sharebandwidth: 作为共享节点时提供带宽，默认10mbps. 如果是光纤大带宽，设置越大效果越好. -1表示不共享，该节点只在私有的P2P网络使用。不加入共享的P2P网络，这样也意味着无法使用别人的共享节点
+>* -sharebandwidth: 作为共享节点时提供带宽，默认10mbps. 如果是光纤大带宽，设置越大效果越好. 0表示不共享，该节点只在私有的P2P网络使用。不加入共享的P2P网络，这样也意味着无法使用别人的共享节点
 >* -loglevel: 需要查看更多调试日志，设置0；默认是1
 
 ## 连接
@@ -39,7 +39,7 @@
   "network": {
     "Node": "hhd1207-222",
     "Token": "TOKEN",
-    "ShareBandwidth": -1,
+    "ShareBandwidth": 0,
     "ServerHost": "api.openp2p.cn",
     "ServerPort": 27183,
     "UDPPort1": 27182,

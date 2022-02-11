@@ -106,9 +106,9 @@ func (d *daemon) Control(ctrlComm string, exeAbsPath string, args []string) erro
 
 // examples:
 // listen:
-// ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth -1
+// ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth 0
 // listen and build p2papp:
-// ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth -1 -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
+// ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth 0 -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
 func install() {
 	gLog.Println(LevelINFO, "install start")
 	defer gLog.Println(LevelINFO, "install end")
@@ -127,7 +127,7 @@ func install() {
 	srcPort := installFlag.Int("srcport", 0, "source port ")
 	protocol := installFlag.String("protocol", "tcp", "tcp or udp")
 	appName := flag.String("appname", "", "app name")
-	installFlag.Bool("noshare", false, "deprecated. uses -sharebandwidth -1")
+	installFlag.Bool("noshare", false, "deprecated. uses -sharebandwidth 0")
 	shareBandwidth := installFlag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
 	logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])

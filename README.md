@@ -1,7 +1,8 @@
 # English|[中文](/README-ZH.md)  
 Website: [openp2p.cn](https://openp2p.cn)
 ## What is OpenP2P
-It is an open source, free, and lightweight P2P sharing network. As long as any device joins in, you can access them anywhere. Compared with the BT network used to share files, the OpenP2P network is used to share bandwidth.
+It is an open source, free, and lightweight P2P sharing network. Your devices will form a private P2P network, in which devices can directly access other members, or indirectly access through other members forwarding data.
+If the private network cannot complete the communication, it will go to the public P2P network to find a shared node to assist in the communication. Compared with the BT network used to share files, the OpenP2P network is used to share bandwidth.
 Our goal is to make full use of bandwidth, use shared nodes to relay data, and build a common infrastructure for remote connections.
 ## Why OpenP2P
 ### 1. Free

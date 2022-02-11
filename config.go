@@ -142,7 +142,7 @@ func parseParams() {
 	srcPort := flag.Int("srcport", 0, "source port ")
 	protocol := flag.String("protocol", "tcp", "tcp or udp")
 	appName := flag.String("appname", "", "app name")
-	flag.Bool("noshare", false, "deprecated. uses -sharebandwidth -1") // Deprecated, rm later
+	flag.Bool("noshare", false, "deprecated. uses -sharebandwidth 0") // Deprecated, rm later
 	shareBandwidth := flag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
 	flag.Bool("f", false, "deprecated. config file") // Deprecated, rm later
 	daemonMode := flag.Bool("d", false, "daemonMode")
