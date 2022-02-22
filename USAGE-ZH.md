@@ -17,6 +17,12 @@
 >* -sharebandwidth: 作为共享节点时提供带宽，默认10mbps. 如果是光纤大带宽，设置越大效果越好. 0表示不共享，该节点只在私有的P2P网络使用。不加入共享的P2P网络，这样也意味着无法使用别人的共享节点
 >* -loglevel: 需要查看更多调试日志，设置0；默认是1
 
+### 在docker容器里运行openp2p
+我们暂时还没提供官方docker镜像，你可以在随便一个容器里运行
+```
+nohup ./openp2p -d -node OFFICEPC1 -token TOKEN  &
+#这里由于一般的镜像都精简过，install系统服务会失败，所以使用直接daemon模式后台运行
+```
 ## 连接
 ```
 ./openp2p -d -node HOMEPC123 -token TOKEN -appname OfficeWindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389

@@ -40,11 +40,6 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 
    ![image](/doc/images/install.png)
 
-   Windows默认会阻止没有花钱买它家证书签名过的程序，选择“仍要运行”即可。
-
-   ![image](/doc/images/win10warn.png)
-
-   ![image](/doc/images/stillrun.png)
 ### 3.新建P2P应用
 
 ![image](/doc/images/devices.png)

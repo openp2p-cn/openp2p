@@ -19,6 +19,13 @@ Or
 >* -sharebandwidth: Provides bandwidth when used as a shared node, the default is 10mbps. If it is a large bandwidth of optical fiber, the larger the setting, the better the effect. 0 means not shared, the node is only used in a private P2P network. Do not join the shared P2P network, which also means that you CAN NOT use other people’s shared nodes
 >* -loglevel: Need to view more debug logs, set 0; the default is 1
 
+### Run in Docker container
+We don't provide official docker image yet, you can run it in any container
+```
+nohup ./openp2p -d -node OFFICEPC1 -token TOKEN  &
+# Since many docker images have been simplified, the install system service will fail, so the daemon mode is used to run in the background
+```
+
 ## Connect
 ```
 ./openp2p -d -node HOMEPC123 -token TOKEN -appname OfficeWindowsRemote -peernode OFFICEPC1 -dstip 127.0.0.1 -dstport 3389 -srcport 23389

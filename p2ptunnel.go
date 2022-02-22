@@ -333,32 +333,35 @@ func (t *P2PTunnel) readLoop() {
 
 			overlayID := req.ID
 			gLog.Printf(LevelDEBUG, "App:%d overlayID:%d connect %+v", req.AppID, overlayID, req)
-			if req.Protocol == "tcp" {
-				conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
-				if err != nil {
-					gLog.Println(LevelERROR, err)
-					continue
-				}
-				otcp := overlayTCP{
-					tunnel:   t,
-					conn:     conn,
-					id:       overlayID,
-					isClient: false,
-					rtid:     req.RelayTunnelID,
-					appID:    req.AppID,
-					appKey:   GetKey(req.AppID),
-				}
-				// calc key bytes for encrypt
-				if otcp.appKey != 0 {
-					encryptKey := make([]byte, 16)
-					binary.LittleEndian.PutUint64(encryptKey, otcp.appKey)
-					binary.LittleEndian.PutUint64(encryptKey[8:], otcp.appKey)
-					otcp.appKeyBytes = encryptKey
-				}
-
-				t.overlayConns.Store(otcp.id, &otcp)
-				go otcp.run()
+			var conn net.Conn
+			if req.Protocol == "udp" {
+				conn, err = net.DialTimeout("udp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
+			} else {
+				conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
 			}
+			if err != nil {
+				gLog.Println(LevelERROR, err)
+				continue
+			}
+			otcp := overlayTCP{
+				tunnel:   t,
+				conn:     conn,
+				id:       overlayID,
+				isClient: false,
+				rtid:     req.RelayTunnelID,
+				appID:    req.AppID,
+				appKey:   GetKey(req.AppID),
+			}
+			// calc key bytes for encrypt
+			if otcp.appKey != 0 {
+				encryptKey := make([]byte, 16)
+				binary.LittleEndian.PutUint64(encryptKey, otcp.appKey)
+				binary.LittleEndian.PutUint64(encryptKey[8:], otcp.appKey)
+				otcp.appKeyBytes = encryptKey
+			}
+
+			t.overlayConns.Store(otcp.id, &otcp)
+			go otcp.run()
 		case MsgOverlayDisconnectReq:
 			req := OverlayDisconnectReq{}
 			err := json.Unmarshal(body, &req)

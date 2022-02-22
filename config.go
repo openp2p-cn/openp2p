@@ -30,13 +30,14 @@ type AppConfig struct {
 	peerConeNatPort int
 	retryNum        int
 	retryTime       time.Time
+	nextRetryTime   time.Time
 	shareBandwidth  int
 }
 
 // TODO: add loglevel, maxlogfilesize
 type Config struct {
 	Network  NetworkConfig `json:"network"`
-	Apps     []AppConfig   `json:"apps"`
+	Apps     []*AppConfig  `json:"apps"`
 	LogLevel int
 
 	mtx sync.Mutex
@@ -48,27 +49,29 @@ func (c *Config) switchApp(app AppConfig, enabled int) {
 	for i := 0; i < len(c.Apps); i++ {
 		if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
 			c.Apps[i].Enabled = enabled
+			c.Apps[i].retryNum = 0
+			c.Apps[i].nextRetryTime = time.Now()
 			return
 		}
 	}
 }
 
-func (c *Config) add(app AppConfig, force bool) {
+func (c *Config) add(app AppConfig, override bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if app.SrcPort == 0 || app.DstPort == 0 {
 		gLog.Println(LevelERROR, "invalid app ", app)
 		return
 	}
-	for i := 0; i < len(c.Apps); i++ {
-		if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
-			if force {
-				c.Apps[i] = app
+	if override {
+		for i := 0; i < len(c.Apps); i++ {
+			if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
+				c.Apps[i] = &app // override it
+				return
 			}
-			return
 		}
 	}
-	c.Apps = append(c.Apps, app)
+	c.Apps = append(c.Apps, &app)
 }
 
 func (c *Config) delete(app AppConfig) {
@@ -142,11 +145,8 @@ func parseParams() {
 	srcPort := flag.Int("srcport", 0, "source port ")
 	protocol := flag.String("protocol", "tcp", "tcp or udp")
 	appName := flag.String("appname", "", "app name")
-	flag.Bool("noshare", false, "deprecated. uses -sharebandwidth 0") // Deprecated, rm later
-	shareBandwidth := flag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
-	flag.Bool("f", false, "deprecated. config file") // Deprecated, rm later
+	shareBandwidth := flag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
 	daemonMode := flag.Bool("d", false, "daemonMode")
-	flag.Bool("bydaemon", false, "start by daemon") // Deprecated, rm later
 	logLevel := flag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	flag.Parse()
 

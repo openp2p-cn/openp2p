@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"net/url"
@@ -96,6 +97,9 @@ func (pn *P2PNetwork) runAll() {
 	gConf.mtx.Lock()
 	defer gConf.mtx.Unlock()
 	for _, config := range gConf.Apps {
+		if config.nextRetryTime.After(time.Now()) {
+			continue
+		}
 		if config.Enabled == 0 {
 			continue
 		}
@@ -116,19 +120,22 @@ func (pn *P2PNetwork) runAll() {
 			continue
 		}
 		if appExist && !appActive {
-			gLog.Printf(LevelINFO, "detect app %s disconnect, reconnecting...", config.AppName)
-			pn.DeleteApp(config)
-			if config.retryTime.Add(time.Minute * 15).Before(time.Now()) {
+			pn.DeleteApp(*config)
+		}
+		if config.retryNum > 0 {
+			gLog.Printf(LevelINFO, "detect app %s disconnect, reconnecting the %d times...", config.AppName, config.retryNum)
+			if time.Now().Add(-time.Minute * 15).After(config.retryTime) { // normal lasts 15min
 				config.retryNum = 0
 			}
-			config.retryNum++
-			config.retryTime = time.Now()
-			if config.retryNum > MaxRetry {
-				gLog.Printf(LevelERROR, "app %s%d retry more than %d times, exit.", config.Protocol, config.SrcPort, MaxRetry)
-				continue
-			}
 		}
-		go pn.AddApp(config)
+		config.retryNum++
+		config.retryTime = time.Now()
+		increase := math.Pow(1.3, float64(config.retryNum))
+		if increase > 900 {
+			increase = 900
+		}
+		config.nextRetryTime = time.Now().Add(time.Second * time.Duration(increase)) // exponential increase retry time. 1.3^x
+		go pn.AddApp(*config)
 	}
 }
 func (pn *P2PNetwork) autorunApp() {
@@ -145,23 +152,23 @@ func (pn *P2PNetwork) autorunApp() {
 	gLog.Println(LevelINFO, "autorunApp end")
 }
 
-func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint64) (*P2PTunnel, uint64, error) {
+func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint64) (*P2PTunnel, uint64, string, error) {
 	gLog.Printf(LevelINFO, "addRelayTunnel to %s start", config.PeerNode)
 	defer gLog.Printf(LevelINFO, "addRelayTunnel to %s end", config.PeerNode)
 	pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
 	head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, time.Second*10)
 	if head == nil {
-		return nil, 0, errors.New("read MsgRelayNodeRsp error")
+		return nil, 0, "", errors.New("read MsgRelayNodeRsp error")
 	}
 	rsp := RelayNodeRsp{}
 	err := json.Unmarshal(body, &rsp)
 	if err != nil {
 		gLog.Printf(LevelERROR, "wrong RelayNodeRsp:%s", err)
-		return nil, 0, errors.New("unmarshal MsgRelayNodeRsp error")
+		return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
 	}
 	if rsp.RelayName == "" || rsp.RelayToken == 0 {
 		gLog.Printf(LevelERROR, "MsgRelayNodeReq error")
-		return nil, 0, errors.New("MsgRelayNodeReq error")
+		return nil, 0, "", errors.New("MsgRelayNodeReq error")
 	}
 	gLog.Printf(LevelINFO, "got relay node:%s", rsp.RelayName)
 	relayConfig := config
@@ -170,7 +177,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint
 	t, err := pn.addDirectTunnel(relayConfig, 0)
 	if err != nil {
 		gLog.Println(LevelERROR, "direct connect error:", err)
-		return nil, 0, err
+		return nil, 0, "", err
 	}
 	// notify peer addRelayTunnel
 	req := AddRelayTunnelReq{
@@ -187,15 +194,15 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint
 	head, body = pn.read(config.PeerNode, MsgPush, MsgPushAddRelayTunnelRsp, PeerAddRelayTimeount) // TODO: const value
 	if head == nil {
 		gLog.Printf(LevelERROR, "read MsgPushAddRelayTunnelRsp error")
-		return nil, 0, errors.New("read MsgPushAddRelayTunnelRsp error")
+		return nil, 0, "", errors.New("read MsgPushAddRelayTunnelRsp error")
 	}
 	rspID := TunnelMsg{}
 	err = json.Unmarshal(body, &rspID)
 	if err != nil {
 		gLog.Printf(LevelERROR, "wrong RelayNodeRsp:%s", err)
-		return nil, 0, errors.New("unmarshal MsgRelayNodeRsp error")
+		return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
 	}
-	return t, rspID.ID, err
+	return t, rspID.ID, rsp.Mode, err
 }
 
 func (pn *P2PNetwork) AddApp(config AppConfig) error {
@@ -215,24 +222,26 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 	}
 	appID := rand.Uint64()
 	appKey := uint64(0)
-	t, err := pn.addDirectTunnel(config, 0)
 	var rtid uint64
 	relayNode := ""
+	relayMode := ""
 	peerNatType := NATUnknown
 	peerIP := ""
 	errMsg := ""
-	if err != nil && err == ErrorHandshake {
-		gLog.Println(LevelERROR, "direct connect failed, try to relay")
-		appKey = rand.Uint64()
-		t, rtid, err = pn.addRelayTunnel(config, appID, appKey)
-		if t != nil {
-			relayNode = t.config.PeerNode
-		}
-	}
+	t, err := pn.addDirectTunnel(config, 0)
 	if t != nil {
 		peerNatType = t.config.peerNatType
 		peerIP = t.config.peerIP
 	}
+	if err != nil && err == ErrorHandshake {
+		gLog.Println(LevelERROR, "direct connect failed, try to relay")
+		appKey = rand.Uint64()
+		t, rtid, relayMode, err = pn.addRelayTunnel(config, appID, appKey)
+		if t != nil {
+			relayNode = t.config.PeerNode
+		}
+	}
+
 	if err != nil {
 		errMsg = err.Error()
 	}
@@ -261,6 +270,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		config:    config,
 		rtid:      rtid,
 		relayNode: relayNode,
+		relayMode: relayMode,
 		hbTime:    time.Now()}
 	pn.apps.Store(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort), &app)
 	if err == nil {

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "1.1.0"
+const OpenP2PVersion = "1.2.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -236,6 +236,7 @@ type RelayNodeReq struct {
 }
 
 type RelayNodeRsp struct {
+	Mode       string `json:"mode,omitempty"` // private,public
 	RelayName  string `json:"relayName,omitempty"`
 	RelayToken uint64 `json:"relayToken,omitempty"`
 }
@@ -294,6 +295,7 @@ type AppInfo struct {
 	PeerIP         string `json:"peerIP,omitempty"`
 	ShareBandwidth int    `json:"shareBandWidth,omitempty"`
 	RelayNode      string `json:"relayNode,omitempty"`
+	RelayMode      string `json:"relayMode,omitempty"`
 	Version        string `json:"version,omitempty"`
 	RetryTime      string `json:"retryTime,omitempty"`
 	IsActive       int    `json:"isActive,omitempty"`

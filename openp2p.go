@@ -13,7 +13,7 @@ func main() {
 	binDir := filepath.Dir(os.Args[0])
 	os.Chdir(binDir) // for system service
 	gLog = InitLogger(binDir, "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
-	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
+
 	// TODO: install sub command, deamon process
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -41,7 +41,8 @@ func main() {
 	} else {
 		installByFilename()
 	}
-
+	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
+	gLog.Println(LevelINFO, "Contact: QQ Group: 16947733, Email: openp2p.cn@gmail.com")
 	parseParams()
 	gLog.Println(LevelINFO, &gConf)
 	setFirewall()

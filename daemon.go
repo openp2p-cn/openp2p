@@ -110,6 +110,8 @@ func (d *daemon) Control(ctrlComm string, exeAbsPath string, args []string) erro
 // listen and build p2papp:
 // ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth 0 -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
 func install() {
+	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
+	gLog.Println(LevelINFO, "Contact: QQ Group: 16947733, Email: openp2p.cn@gmail.com")
 	gLog.Println(LevelINFO, "install start")
 	defer gLog.Println(LevelINFO, "install end")
 	// auto uninstall
@@ -127,8 +129,7 @@ func install() {
 	srcPort := installFlag.Int("srcport", 0, "source port ")
 	protocol := installFlag.String("protocol", "tcp", "tcp or udp")
 	appName := flag.String("appname", "", "app name")
-	installFlag.Bool("noshare", false, "deprecated. uses -sharebandwidth 0")
-	shareBandwidth := installFlag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private node no limit")
+	shareBandwidth := installFlag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
 	logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])
 	if *node != "" && len(*node) < 8 {
@@ -195,7 +196,6 @@ func install() {
 	dst.Close()
 
 	// install system service
-	// args := []string{""}
 	gLog.Println(LevelINFO, "targetPath:", targetPath)
 	err = d.Control("install", targetPath, []string{"-d"})
 	if err == nil {

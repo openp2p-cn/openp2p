@@ -16,6 +16,7 @@ type p2pApp struct {
 	tunnel    *P2PTunnel
 	rtid      uint64
 	relayNode string
+	relayMode string
 	hbTime    time.Time
 	hbMtx     sync.Mutex
 	running   bool
@@ -45,7 +46,12 @@ func (app *p2pApp) updateHeartbeat() {
 
 func (app *p2pApp) listenTCP() error {
 	var err error
-	app.listener, err = net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
+	if app.config.Protocol == "udp" {
+		app.listener, err = net.Listen("udp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
+	} else {
+		app.listener, err = net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
+	}
+
 	if err != nil {
 		gLog.Printf(LevelERROR, "listen error:%s", err)
 		return err
@@ -108,13 +114,10 @@ func (app *p2pApp) listen() error {
 		go app.relayHeartbeatLoop()
 	}
 	for app.running {
-		if app.config.Protocol == "udp" {
-			app.listenTCP()
-		} else {
-			app.listenTCP()
-		}
+
+		app.listenTCP()
+
 		time.Sleep(time.Second * 5)
-		// TODO: listen UDP
 	}
 	return nil
 }

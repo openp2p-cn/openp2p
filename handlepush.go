@@ -115,18 +115,23 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		defer gConf.mtx.Unlock()
 		for _, config := range gConf.Apps {
 			appActive := 0
+			relayNode := ""
+			relayMode := ""
 			i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
 			if ok {
 				app := i.(*p2pApp)
 				if app.isActive() {
 					appActive = 1
 				}
+				relayNode = app.relayNode
+				relayMode = app.relayMode
 			}
 			appInfo := AppInfo{
-				AppName:  config.AppName,
-				Protocol: config.Protocol,
-				SrcPort:  config.SrcPort,
-				// RelayNode:   relayNode,
+				AppName:     config.AppName,
+				Protocol:    config.Protocol,
+				SrcPort:     config.SrcPort,
+				RelayNode:   relayNode,
+				RelayMode:   relayMode,
 				PeerNode:    config.PeerNode,
 				DstHost:     config.DstHost,
 				DstPort:     config.DstPort,
