@@ -110,7 +110,6 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 	case MsgPushReportApps:
 		gLog.Println(LevelINFO, "MsgPushReportApps")
 		req := ReportApps{}
-		// TODO: add the retrying apps
 		gConf.mtx.Lock()
 		defer gConf.mtx.Unlock()
 		for _, config := range gConf.Apps {

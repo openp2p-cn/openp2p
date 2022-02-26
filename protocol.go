@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "1.2.0"
+const OpenP2PVersion = "1.3.0"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -117,7 +117,7 @@ const (
 )
 
 const (
-	ReadBuffLen           = 1024
+	ReadBuffLen           = 4096             // for UDP maybe not enough
 	NetworkHeartbeatTime  = time.Second * 30 // TODO: server no response hb, save flow
 	TunnelHeartbeatTime   = time.Second * 15
 	TunnelIdleTimeout     = time.Minute

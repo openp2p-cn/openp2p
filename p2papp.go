@@ -6,23 +6,26 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 type p2pApp struct {
-	config    AppConfig
-	listener  net.Listener
-	tunnel    *P2PTunnel
-	rtid      uint64
-	relayNode string
-	relayMode string
-	hbTime    time.Time
-	hbMtx     sync.Mutex
-	running   bool
-	id        uint64
-	key       uint64
-	wg        sync.WaitGroup
+	config      AppConfig
+	listener    net.Listener
+	listenerUDP *net.UDPConn
+	tunnel      *P2PTunnel
+	rtid        uint64
+	relayNode   string
+	relayMode   string
+	hbTime      time.Time
+	hbMtx       sync.Mutex
+	running     bool
+	id          uint64
+	key         uint64
+	wg          sync.WaitGroup
 }
 
 func (app *p2pApp) isActive() bool {
@@ -45,43 +48,42 @@ func (app *p2pApp) updateHeartbeat() {
 }
 
 func (app *p2pApp) listenTCP() error {
+	gLog.Printf(LevelDEBUG, "tcp accept on port %d start", app.config.SrcPort)
+	defer gLog.Printf(LevelDEBUG, "tcp accept on port %d end", app.config.SrcPort)
 	var err error
-	if app.config.Protocol == "udp" {
-		app.listener, err = net.Listen("udp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
-	} else {
-		app.listener, err = net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
-	}
-
+	app.listener, err = net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
 	if err != nil {
 		gLog.Printf(LevelERROR, "listen error:%s", err)
 		return err
 	}
-	for {
+	for app.running {
 		conn, err := app.listener.Accept()
 		if err != nil {
-			gLog.Printf(LevelERROR, "%d accept error:%s", app.tunnel.id, err)
+			if app.running {
+				gLog.Printf(LevelERROR, "%d accept error:%s", app.tunnel.id, err)
+			}
 			break
 		}
-		otcp := overlayTCP{
+		oConn := overlayConn{
 			tunnel:   app.tunnel,
-			conn:     conn,
+			connTCP:  conn,
 			id:       rand.Uint64(),
 			isClient: true,
 			rtid:     app.rtid,
 			appID:    app.id,
 			appKey:   app.key,
 		}
-		// calc key bytes for encrypt
-		if otcp.appKey != 0 {
+		// pre-calc key bytes for encrypt
+		if oConn.appKey != 0 {
 			encryptKey := make([]byte, AESKeySize)
-			binary.LittleEndian.PutUint64(encryptKey, otcp.appKey)
-			binary.LittleEndian.PutUint64(encryptKey[8:], otcp.appKey)
-			otcp.appKeyBytes = encryptKey
+			binary.LittleEndian.PutUint64(encryptKey, oConn.appKey)
+			binary.LittleEndian.PutUint64(encryptKey[8:], oConn.appKey)
+			oConn.appKeyBytes = encryptKey
 		}
-		app.tunnel.overlayConns.Store(otcp.id, &otcp)
-		gLog.Printf(LevelDEBUG, "Accept overlayID:%d", otcp.id)
+		app.tunnel.overlayConns.Store(oConn.id, &oConn)
+		gLog.Printf(LevelDEBUG, "Accept TCP overlayID:%d", oConn.id)
 		// tell peer connect
-		req := OverlayConnectReq{ID: otcp.id,
+		req := OverlayConnectReq{ID: oConn.id,
 			Token:    app.tunnel.pn.config.Token,
 			DstIP:    app.config.DstHost,
 			DstPort:  app.config.DstPort,
@@ -98,26 +100,117 @@ func (app *p2pApp) listenTCP() error {
 			msgWithHead := append(relayHead.Bytes(), msg...)
 			app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
 		}
+		go oConn.run()
+	}
+	return nil
+}
 
-		go otcp.run()
+func (app *p2pApp) listenUDP() error {
+	gLog.Printf(LevelDEBUG, "udp accept on port %d start", app.config.SrcPort)
+	defer gLog.Printf(LevelDEBUG, "udp accept on port %d end", app.config.SrcPort)
+	var err error
+	app.listenerUDP, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: app.config.SrcPort})
+	if err != nil {
+		gLog.Printf(LevelERROR, "listen error:%s", err)
+		return err
+	}
+	buffer := make([]byte, 64*1024)
+	udpID := make([]byte, 8)
+	for {
+		app.listenerUDP.SetReadDeadline(time.Now().Add(time.Second * 10))
+		len, remoteAddr, err := app.listenerUDP.ReadFrom(buffer)
+		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			} else {
+				gLog.Printf(LevelERROR, "udp read failed:%s", err)
+				break
+			}
+		} else {
+			b := bytes.Buffer{}
+			b.Write(buffer[:len])
+			// load from app.tunnel.overlayConns by remoteAddr error, new udp connection
+			remoteIP := strings.Split(remoteAddr.String(), ":")[0]
+			port, _ := strconv.Atoi(strings.Split(remoteAddr.String(), ":")[1])
+			a := net.ParseIP(remoteIP)
+			udpID[0] = a[0]
+			udpID[1] = a[1]
+			udpID[2] = a[2]
+			udpID[3] = a[3]
+			udpID[4] = byte(port)
+			udpID[5] = byte(port >> 8)
+			id := binary.LittleEndian.Uint64(udpID)
+			s, ok := app.tunnel.overlayConns.Load(id)
+			if !ok {
+				oConn := overlayConn{
+					tunnel:       app.tunnel,
+					connUDP:      app.listenerUDP,
+					remoteAddr:   remoteAddr,
+					udpRelayData: make(chan []byte, 1000),
+					id:           id,
+					isClient:     true,
+					rtid:         app.rtid,
+					appID:        app.id,
+					appKey:       app.key,
+				}
+				// calc key bytes for encrypt
+				if oConn.appKey != 0 {
+					encryptKey := make([]byte, AESKeySize)
+					binary.LittleEndian.PutUint64(encryptKey, oConn.appKey)
+					binary.LittleEndian.PutUint64(encryptKey[8:], oConn.appKey)
+					oConn.appKeyBytes = encryptKey
+				}
+				app.tunnel.overlayConns.Store(oConn.id, &oConn)
+				gLog.Printf(LevelDEBUG, "Accept UDP overlayID:%d", oConn.id)
+				// tell peer connect
+				req := OverlayConnectReq{ID: oConn.id,
+					Token:    app.tunnel.pn.config.Token,
+					DstIP:    app.config.DstHost,
+					DstPort:  app.config.DstPort,
+					Protocol: app.config.Protocol,
+					AppID:    app.id,
+				}
+				if app.rtid == 0 {
+					app.tunnel.conn.WriteMessage(MsgP2P, MsgOverlayConnectReq, &req)
+				} else {
+					req.RelayTunnelID = app.tunnel.id
+					relayHead := new(bytes.Buffer)
+					binary.Write(relayHead, binary.LittleEndian, app.rtid)
+					msg, _ := newMessage(MsgP2P, MsgOverlayConnectReq, &req)
+					msgWithHead := append(relayHead.Bytes(), msg...)
+					app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
+				}
+				go oConn.run()
+				oConn.udpRelayData <- b.Bytes()
+			}
+
+			// load from app.tunnel.overlayConns by remoteAddr ok, write relay data
+			overlayConn, ok := s.(*overlayConn)
+			if !ok {
+				continue
+			}
+			overlayConn.udpRelayData <- b.Bytes()
+		}
 	}
 	return nil
 }
 
 func (app *p2pApp) listen() error {
-	gLog.Printf(LevelINFO, "LISTEN ON PORT %d START", app.config.SrcPort)
-	defer gLog.Printf(LevelINFO, "LISTEN ON PORT %d START", app.config.SrcPort)
+	gLog.Printf(LevelINFO, "LISTEN ON PORT %s:%d START", app.config.Protocol, app.config.SrcPort)
+	defer gLog.Printf(LevelINFO, "LISTEN ON PORT %s:%d END", app.config.Protocol, app.config.SrcPort)
 	app.wg.Add(1)
 	defer app.wg.Done()
 	app.running = true
 	if app.rtid != 0 {
 		go app.relayHeartbeatLoop()
 	}
-	for app.running {
-
-		app.listenTCP()
-
-		time.Sleep(time.Second * 5)
+	for app.tunnel.isRuning() && app.running {
+		if app.config.Protocol == "udp" {
+			app.listenUDP()
+		} else {
+			app.listenTCP()
+		}
+		time.Sleep(time.Second * 10)
 	}
 	return nil
 }
@@ -126,6 +219,9 @@ func (app *p2pApp) close() {
 	app.running = false
 	if app.listener != nil {
 		app.listener.Close()
+	}
+	if app.listenerUDP != nil {
+		app.listenerUDP.Close()
 	}
 	if app.tunnel != nil {
 		app.tunnel.closeOverlayConns(app.id)

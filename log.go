@@ -110,10 +110,10 @@ func (vl *V8log) checkFile() {
 			for l, logFile := range vl.files {
 				f, e := logFile.Stat()
 				if e != nil {
-					break
+					continue
 				}
 				if f.Size() <= vl.maxLogSize {
-					break
+					continue
 				}
 				logFile.Close()
 				fname := f.Name()

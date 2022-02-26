@@ -115,6 +115,17 @@ func install() {
 	gLog.Println(LevelINFO, "install start")
 	defer gLog.Println(LevelINFO, "install end")
 	// auto uninstall
+	err := os.MkdirAll(defaultInstallPath, 0775)
+
+	if err != nil {
+		gLog.Printf(LevelERROR, "MkdirAll %s error:%s", defaultInstallPath, err)
+		return
+	}
+	err = os.Chdir(defaultInstallPath)
+	if err != nil {
+		gLog.Println(LevelERROR, "cd error:", err)
+		return
+	}
 
 	uninstall()
 	// save config file
@@ -132,19 +143,22 @@ func install() {
 	shareBandwidth := installFlag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
 	logLevel := installFlag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	installFlag.Parse(os.Args[2:])
-	if *node != "" && len(*node) < 8 {
-		gLog.Println(LevelERROR, ErrNodeTooShort)
-		os.Exit(9)
-	}
-	if *node == "" { // if node name not set. use os.Hostname
-		hostname := defaultNodeName()
-		node = &hostname
-	}
+
 	gConf.load() // load old config. otherwise will clear all apps
 	gConf.LogLevel = *logLevel
 	gConf.Network.ServerHost = *serverHost
 	gConf.Network.Token = *token
-	gConf.Network.Node = *node
+	if *node != "" {
+		if len(*node) < 8 {
+			gLog.Println(LevelERROR, ErrNodeTooShort)
+			os.Exit(9)
+		}
+		gConf.Network.Node = *node
+	} else {
+		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
+			gConf.Network.Node = defaultNodeName()
+		}
+	}
 	gConf.Network.ServerPort = 27183
 	gConf.Network.UDPPort1 = 27182
 	gConf.Network.UDPPort2 = 27183
@@ -158,16 +172,6 @@ func install() {
 	config.AppName = *appName
 	if config.SrcPort != 0 {
 		gConf.add(config, true)
-	}
-	err := os.MkdirAll(defaultInstallPath, 0775)
-	if err != nil {
-		gLog.Printf(LevelERROR, "MkdirAll %s error:%s", defaultInstallPath, err)
-		return
-	}
-	err = os.Chdir(defaultInstallPath)
-	if err != nil {
-		gLog.Println(LevelERROR, "cd error:", err)
-		return
 	}
 	gConf.save()
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)

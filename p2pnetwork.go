@@ -107,23 +107,21 @@ func (pn *P2PNetwork) runAll() {
 			config.AppName = fmt.Sprintf("%s%d", config.Protocol, config.SrcPort)
 		}
 		appExist := false
-		appActive := false
+		var appID uint64
 		i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
 		if ok {
 			app := i.(*p2pApp)
 			appExist = true
+			appID = app.id
 			if app.isActive() {
-				appActive = true
+				continue
 			}
 		}
-		if appExist && appActive {
-			continue
-		}
-		if appExist && !appActive {
+		if appExist {
 			pn.DeleteApp(*config)
 		}
 		if config.retryNum > 0 {
-			gLog.Printf(LevelINFO, "detect app %s disconnect, reconnecting the %d times...", config.AppName, config.retryNum)
+			gLog.Printf(LevelINFO, "detect app %s(%d) disconnect, reconnecting the %d times...", config.AppName, appID, config.retryNum)
 			if time.Now().Add(-time.Minute * 15).After(config.retryTime) { // normal lasts 15min
 				config.retryNum = 0
 			}
@@ -135,12 +133,11 @@ func (pn *P2PNetwork) runAll() {
 			increase = 900
 		}
 		config.nextRetryTime = time.Now().Add(time.Second * time.Duration(increase)) // exponential increase retry time. 1.3^x
-		go pn.AddApp(*config)
+		pn.AddApp(*config)
 	}
 }
 func (pn *P2PNetwork) autorunApp() {
 	gLog.Println(LevelINFO, "autorunApp start")
-	// TODO: use gConf to check reconnect
 	for pn.running {
 		time.Sleep(time.Second)
 		if !pn.online {

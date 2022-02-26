@@ -13,7 +13,6 @@ func main() {
 	binDir := filepath.Dir(os.Args[0])
 	os.Chdir(binDir) // for system service
 	gLog = InitLogger(binDir, "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
-
 	// TODO: install sub command, deamon process
 	if len(os.Args) > 1 {
 		switch os.Args[1] {

@@ -276,7 +276,7 @@ func (t *P2PTunnel) readLoop() {
 				gLog.Printf(LevelDEBUG, "%d tunnel not found overlay connection %d", t.id, overlayID)
 				continue
 			}
-			overlayConn, ok := s.(*overlayTCP)
+			overlayConn, ok := s.(*overlayConn)
 			if !ok {
 				continue
 			}
@@ -333,35 +333,34 @@ func (t *P2PTunnel) readLoop() {
 
 			overlayID := req.ID
 			gLog.Printf(LevelDEBUG, "App:%d overlayID:%d connect %+v", req.AppID, overlayID, req)
-			var conn net.Conn
-			if req.Protocol == "udp" {
-				conn, err = net.DialTimeout("udp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
-			} else {
-				conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
-			}
-			if err != nil {
-				gLog.Println(LevelERROR, err)
-				continue
-			}
-			otcp := overlayTCP{
+			oConn := overlayConn{
 				tunnel:   t,
-				conn:     conn,
 				id:       overlayID,
 				isClient: false,
 				rtid:     req.RelayTunnelID,
 				appID:    req.AppID,
 				appKey:   GetKey(req.AppID),
 			}
-			// calc key bytes for encrypt
-			if otcp.appKey != 0 {
-				encryptKey := make([]byte, 16)
-				binary.LittleEndian.PutUint64(encryptKey, otcp.appKey)
-				binary.LittleEndian.PutUint64(encryptKey[8:], otcp.appKey)
-				otcp.appKeyBytes = encryptKey
+			if req.Protocol == "udp" {
+				oConn.connUDP, err = net.DialUDP("udp", nil, &net.UDPAddr{IP: net.ParseIP(req.DstIP), Port: req.DstPort})
+			} else {
+				oConn.connTCP, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), time.Second*5)
+			}
+			if err != nil {
+				gLog.Println(LevelERROR, err)
+				continue
 			}
 
-			t.overlayConns.Store(otcp.id, &otcp)
-			go otcp.run()
+			// calc key bytes for encrypt
+			if oConn.appKey != 0 {
+				encryptKey := make([]byte, 16)
+				binary.LittleEndian.PutUint64(encryptKey, oConn.appKey)
+				binary.LittleEndian.PutUint64(encryptKey[8:], oConn.appKey)
+				oConn.appKeyBytes = encryptKey
+			}
+
+			t.overlayConns.Store(oConn.id, &oConn)
+			go oConn.run()
 		case MsgOverlayDisconnectReq:
 			req := OverlayDisconnectReq{}
 			err := json.Unmarshal(body, &req)
@@ -373,8 +372,8 @@ func (t *P2PTunnel) readLoop() {
 			gLog.Printf(LevelDEBUG, "%d disconnect overlay connection %d", t.id, overlayID)
 			i, ok := t.overlayConns.Load(overlayID)
 			if ok {
-				otcp := i.(*overlayTCP)
-				otcp.running = false
+				oConn := i.(*overlayConn)
+				oConn.running = false
 			}
 		default:
 		}
@@ -411,9 +410,16 @@ func (t *P2PTunnel) listen() error {
 
 func (t *P2PTunnel) closeOverlayConns(appID uint64) {
 	t.overlayConns.Range(func(_, i interface{}) bool {
-		otcp := i.(*overlayTCP)
-		if otcp.appID == appID {
-			otcp.conn.Close()
+		oConn := i.(*overlayConn)
+		if oConn.appID == appID {
+			if oConn.connTCP != nil {
+				oConn.connTCP.Close()
+				oConn.connTCP = nil
+			}
+			if oConn.connUDP != nil {
+				oConn.connUDP.Close()
+				oConn.connUDP = nil
+			}
 		}
 		return true
 	})
