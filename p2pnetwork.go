@@ -94,9 +94,11 @@ func (pn *P2PNetwork) Connect(timeout int) bool {
 }
 
 func (pn *P2PNetwork) runAll() {
-	gConf.mtx.Lock()
+	gConf.mtx.Lock() // lock for copy gConf.Apps and the modification of config(it's pointer)
 	defer gConf.mtx.Unlock()
-	for _, config := range gConf.Apps {
+	allApps := gConf.Apps // read a copy, other thread will modify the gConf.Apps
+
+	for _, config := range allApps {
 		if config.nextRetryTime.After(time.Now()) {
 			continue
 		}
@@ -133,7 +135,13 @@ func (pn *P2PNetwork) runAll() {
 			increase = 900
 		}
 		config.nextRetryTime = time.Now().Add(time.Second * time.Duration(increase)) // exponential increase retry time. 1.3^x
-		pn.AddApp(*config)
+		config.connectTime = time.Now()
+		gConf.mtx.Unlock() // AddApp will take a period of time
+		err := pn.AddApp(*config)
+		gConf.mtx.Lock()
+		if err != nil {
+			config.errMsg = err.Error()
+		}
 	}
 }
 func (pn *P2PNetwork) autorunApp() {
@@ -202,6 +210,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig, appid uint64, appkey uint
 	return t, rspID.ID, rsp.Mode, err
 }
 
+// use *AppConfig to save status
 func (pn *P2PNetwork) AddApp(config AppConfig) error {
 	gLog.Printf(LevelINFO, "addApp %s to %s:%s:%d start", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
 	defer gLog.Printf(LevelINFO, "addApp %s to %s:%s:%d end", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
@@ -459,10 +468,8 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 			pn.serverTs = rsp.Ts
 			pn.config.Token = rsp.Token
 			pn.config.User = rsp.User
-			gConf.mtx.Lock()
-			gConf.Network.Token = rsp.Token
-			gConf.Network.User = rsp.User
-			gConf.mtx.Unlock()
+			gConf.setToken(rsp.Token)
+			gConf.setUser(rsp.User)
 			gConf.save()
 			pn.localTs = time.Now().Unix()
 			gLog.Printf(LevelINFO, "login ok. user=%s,Server ts=%d, local ts=%d", rsp.User, rsp.Ts, pn.localTs)

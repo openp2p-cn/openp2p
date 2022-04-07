@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "1.3.0"
+const OpenP2PVersion = "1.4.2"
 const ProducnName string = "openp2p"
 
 type openP2PHeader struct {
@@ -134,6 +134,7 @@ const (
 	PublicIPEchoTimeout          = time.Second * 3
 	NatTestTimeout               = time.Second * 10
 	ClientAPITimeout             = time.Second * 10
+	MaxDirectTry                 = 5
 )
 
 // NATNone has public ip
@@ -270,7 +271,7 @@ type ReportConnect struct {
 	NatType        int    `json:"natType,omitempty"`
 	PeerNode       string `json:"peerNode,omitempty"`
 	DstPort        int    `json:"dstPort,omitempty"`
-	DstHost        string `json:"dsdtHost,omitempty"`
+	DstHost        string `json:"dstHost,omitempty"`
 	PeerUser       string `json:"peerUser,omitempty"`
 	PeerNatType    int    `json:"peerNatType,omitempty"`
 	PeerIP         string `json:"peerIP,omitempty"`
@@ -298,6 +299,7 @@ type AppInfo struct {
 	RelayMode      string `json:"relayMode,omitempty"`
 	Version        string `json:"version,omitempty"`
 	RetryTime      string `json:"retryTime,omitempty"`
+	ConnectTime    string `json:"connectTime,omitempty"`
 	IsActive       int    `json:"isActive,omitempty"`
 	Enabled        int    `json:"enabled,omitempty"`
 }

@@ -97,6 +97,11 @@ func (vl *V8log) setLevel(level LogLevel) {
 	defer vl.mtx.Unlock()
 	vl.level = level
 }
+func (vl *V8log) setMode(mode int) {
+	vl.mtx.Lock()
+	defer vl.mtx.Unlock()
+	vl.mode = mode
+}
 
 func (vl *V8log) checkFile() {
 	if vl.maxLogSize <= 0 {

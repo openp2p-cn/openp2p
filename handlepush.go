@@ -127,6 +127,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			}
 			appInfo := AppInfo{
 				AppName:     config.AppName,
+				Error:       config.errMsg,
 				Protocol:    config.Protocol,
 				SrcPort:     config.SrcPort,
 				RelayNode:   relayNode,
@@ -137,7 +138,8 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 				PeerUser:    config.PeerUser,
 				PeerIP:      config.peerIP,
 				PeerNatType: config.peerNatType,
-				RetryTime:   config.retryTime.String(),
+				RetryTime:   config.retryTime.Local().Format("2006-01-02T15:04:05-0700"),
+				ConnectTime: config.connectTime.Local().Format("2006-01-02T15:04:05-0700"),
 				IsActive:    appActive,
 				Enabled:     config.Enabled,
 			}
@@ -180,10 +182,8 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			gLog.Printf(LevelERROR, "wrong MsgPushEditNode:%s  %s", err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
-		gConf.mtx.Lock()
-		gConf.Network.Node = req.NewName
-		gConf.Network.ShareBandwidth = req.Bandwidth
-		gConf.mtx.Unlock()
+		gConf.setNode(req.NewName)
+		gConf.setShareBandwidth(req.Bandwidth)
 		gConf.save()
 		// TODO: hot reload
 		os.Exit(0)

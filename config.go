@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
-	"os"
 	"sync"
 	"time"
 )
@@ -32,15 +31,17 @@ type AppConfig struct {
 	retryTime       time.Time
 	nextRetryTime   time.Time
 	shareBandwidth  int
+	errMsg          string
+	connectTime     time.Time
 }
 
 // TODO: add loglevel, maxlogfilesize
 type Config struct {
-	Network  NetworkConfig `json:"network"`
-	Apps     []*AppConfig  `json:"apps"`
-	LogLevel int
-
-	mtx sync.Mutex
+	Network    NetworkConfig `json:"network"`
+	Apps       []*AppConfig  `json:"apps"`
+	LogLevel   int
+	daemonMode bool
+	mtx        sync.Mutex
 }
 
 func (c *Config) switchApp(app AppConfig, enabled int) {
@@ -115,6 +116,27 @@ func (c *Config) load() error {
 	return err
 }
 
+func (c *Config) setToken(token uint64) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.Network.Token = token
+}
+func (c *Config) setUser(user string) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.Network.User = user
+}
+func (c *Config) setNode(node string) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.Network.Node = node
+}
+func (c *Config) setShareBandwidth(bw int) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.Network.ShareBandwidth = bw
+}
+
 type NetworkConfig struct {
 	// local info
 	Token          uint64
@@ -147,6 +169,7 @@ func parseParams() {
 	appName := flag.String("appname", "", "app name")
 	shareBandwidth := flag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
 	daemonMode := flag.Bool("d", false, "daemonMode")
+	notVerbose := flag.Bool("nv", false, "not log console")
 	logLevel := flag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	flag.Parse()
 
@@ -161,8 +184,8 @@ func parseParams() {
 	if config.SrcPort != 0 {
 		gConf.add(config, true)
 	}
-	gConf.mtx.Lock()
-
+	// gConf.mtx.Lock() // when calling this func it's single-thread no lock
+	gConf.daemonMode = *daemonMode
 	// spec paramters in commandline will always be used
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "sharebandwidth" {
@@ -203,11 +226,9 @@ func parseParams() {
 	gConf.Network.UDPPort1 = 27182
 	gConf.Network.UDPPort2 = 27183
 	gLog.setLevel(LogLevel(gConf.LogLevel))
-	gConf.mtx.Unlock()
-	gConf.save()
-	if *daemonMode {
-		d := daemon{}
-		d.run()
-		os.Exit(0)
+	if *notVerbose {
+		gLog.setMode(LogFile)
 	}
+	// gConf.mtx.Unlock()
+	gConf.save()
 }

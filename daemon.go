@@ -64,10 +64,18 @@ func (d *daemon) run() {
 			break
 		}
 	}
+	args = append(args, "-nv")
 	for {
 		// start worker
+		tmpDump := filepath.Join("log", "dump.log.tmp")
+		dumpFile := filepath.Join("log", "dump.log")
+		f, err := os.Create(filepath.Join(tmpDump))
+		if err != nil {
+			gLog.Printf(LevelERROR, "start worker error:%s", err)
+			return
+		}
 		gLog.Println(LevelINFO, "start worker process, args:", args)
-		execSpec := &os.ProcAttr{Files: []*os.File{os.Stdin, os.Stdout, os.Stderr}}
+		execSpec := &os.ProcAttr{Env: append(os.Environ(), "GOTRACEBACK=crash"), Files: []*os.File{os.Stdin, os.Stdout, f}}
 		p, err := os.StartProcess(binPath, args, execSpec)
 		if err != nil {
 			gLog.Printf(LevelERROR, "start worker error:%s", err)
@@ -75,6 +83,12 @@ func (d *daemon) run() {
 		}
 		d.proc = p
 		_, _ = p.Wait()
+		f.Close()
+		time.Sleep(time.Second)
+		err = os.Rename(tmpDump, dumpFile)
+		if err != nil {
+			gLog.Printf(LevelERROR, "rename dump error:%s", err)
+		}
 		if !d.running {
 			return
 		}

@@ -43,6 +43,12 @@ Download on local and remote computers and double-click to run, one-click instal
 
    ![image](/doc/images/install_en.png)
 
+By default, Windows will block programs that have not been signed by the Microsoft's certificate, and you can select "Run anyway".
+
+   ![image](/doc/images/win10warn_en.png)
+
+   ![image](/doc/images/stillrun_en.png)
+   
 ### 3.New P2PApp
 
 ![image](/doc/images/devices_en.png)

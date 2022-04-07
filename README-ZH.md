@@ -39,7 +39,12 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 分别在本地和远程电脑下载后双击运行，一键安装
 
    ![image](/doc/images/install.png)
+   
+Windows默认会阻止没有花钱买它家证书签名过的程序，选择“仍要运行”即可。
 
+   ![image](/doc/images/win10warn.png)
+
+   ![image](/doc/images/stillrun.png)
 ### 3.新建P2P应用
 
 ![image](/doc/images/devices.png)
@@ -120,8 +125,7 @@ go build
 
 ## 参与贡献
 TODO或ISSUE里如果有你擅长的领域，或者你有特别好的主意，可以加入OpenP2P项目，贡献你的代码。待项目茁壮成长后，你们就是知名开源项目的主要代码贡献者，岂不快哉。
-## 商业合作
-它是一个中国人发起的项目，更懂国内网络环境，更懂用户需求，更好的企业级支持
+
 ## 技术交流
 QQ群：16947733  
 邮箱：openp2p.cn@gmail.com tenderiron@139.com  

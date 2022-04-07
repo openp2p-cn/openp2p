@@ -40,9 +40,16 @@ func main() {
 	} else {
 		installByFilename()
 	}
+	parseParams()
 	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
 	gLog.Println(LevelINFO, "Contact: QQ Group: 16947733, Email: openp2p.cn@gmail.com")
-	parseParams()
+
+	if gConf.daemonMode {
+		d := daemon{}
+		d.run()
+		return
+	}
+
 	gLog.Println(LevelINFO, &gConf)
 	setFirewall()
 	network := P2PNetworkInstance(&gConf.Network)
