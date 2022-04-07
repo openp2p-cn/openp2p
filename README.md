@@ -113,17 +113,17 @@ go build
 ## TODO
 Short-Term:
 1. Support IPv6.
-2. Support auto run when system boot, setup system service.
-3. Provide free servers to some low-performance network.
-4. Build website, users can manage all P2PApp and devices via it. View devices' online status, upgrade, restart or CURD P2PApp .
+2. Support auto run when system boot, setup system service.(100%)
+3. Provide free servers to some low-performance network.(100%)
+4. Build website, users can manage all P2PApp and devices via it. View devices' online status, upgrade, restart or CURD P2PApp .(100%)
 5. Provide wechat official account, user can manage P2PApp nodes and deivce as same as website.
 6. Provide WebUI on client side.
 7. Support high concurrency on server side.
 8. Optimize our share scheduling model for different network operators.
 9. Provide REST APIs and libary for secondary development.
-10. Support UDP at application layer, it is easy to implement but not urgent due to only a few applicaitons using UDP protocol.
+10. Support UDP at application layer, it is easy to implement but not urgent due to only a few applicaitons using UDP protocol.(100%)
 11. Support KCP protocol underlay, currently support Quic only. KCP focus on delay optimization,which has been widely used as game accelerator,it can sacrifice part of bandwidth to reduce timelag. 
-12. Support Android platform, let the phones to be mobile gateway .
+12. Support Android platform, let the phones to be mobile gateway.
 13. Support SMB Windows neighborhood.
 14. Direct connection on intranet, for testing.
 
