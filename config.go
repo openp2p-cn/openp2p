@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"os"
 	"sync"
 	"time"
 )
@@ -23,8 +24,12 @@ type AppConfig struct {
 	PeerUser string
 	Enabled  int // default:1
 	// runtime info
+	peerVersion     string
 	peerToken       uint64
 	peerNatType     int
+	hasIPv4         int
+	IPv6            string
+	hasUPNPorNATPMP int
 	peerIP          string
 	peerConeNatPort int
 	retryNum        int
@@ -61,7 +66,7 @@ func (c *Config) add(app AppConfig, override bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	if app.SrcPort == 0 || app.DstPort == 0 {
-		gLog.Println(LevelERROR, "invalid app ", app)
+		gLog.Println(LvERROR, "invalid app ", app)
 		return
 	}
 	if override {
@@ -95,7 +100,7 @@ func (c *Config) save() {
 	data, _ := json.MarshalIndent(c, "", "  ")
 	err := ioutil.WriteFile("config.json", data, 0644)
 	if err != nil {
-		gLog.Println(LevelERROR, "save config.json error:", err)
+		gLog.Println(LvERROR, "save config.json error:", err)
 	}
 }
 
@@ -111,7 +116,7 @@ func (c *Config) load() error {
 	}
 	err = json.Unmarshal(data, &c)
 	if err != nil {
-		gLog.Println(LevelERROR, "parse config.json error:", err)
+		gLog.Println(LvERROR, "parse config.json error:", err)
 	}
 	return err
 }
@@ -139,16 +144,19 @@ func (c *Config) setShareBandwidth(bw int) {
 
 type NetworkConfig struct {
 	// local info
-	Token          uint64
-	Node           string
-	User           string
-	localIP        string
-	ipv6           string
-	mac            string
-	os             string
-	publicIP       string
-	natType        int
-	ShareBandwidth int
+	Token           uint64
+	Node            string
+	User            string
+	localIP         string
+	ipv6            string
+	mac             string
+	os              string
+	publicIP        string
+	natType         int
+	hasIPv4         int
+	IPv6            string
+	hasUPNPorNATPMP int
+	ShareBandwidth  int
 	// server info
 	ServerHost string
 	ServerPort int
@@ -156,22 +164,28 @@ type NetworkConfig struct {
 	UDPPort2   int
 }
 
-func parseParams() {
-	serverHost := flag.String("serverhost", "api.openp2p.cn", "server host ")
+func parseParams(subCommand string) {
+	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
+	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
-	node := flag.String("node", "", "node name. 8-31 characters")
-	token := flag.Uint64("token", 0, "token")
-	peerNode := flag.String("peernode", "", "peer node name that you want to connect")
-	dstIP := flag.String("dstip", "127.0.0.1", "destination ip ")
-	dstPort := flag.Int("dstport", 0, "destination port ")
-	srcPort := flag.Int("srcport", 0, "source port ")
-	protocol := flag.String("protocol", "tcp", "tcp or udp")
-	appName := flag.String("appname", "", "app name")
-	shareBandwidth := flag.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
-	daemonMode := flag.Bool("d", false, "daemonMode")
-	notVerbose := flag.Bool("nv", false, "not log console")
-	logLevel := flag.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
-	flag.Parse()
+	token := fset.Uint64("token", 0, "token")
+	node := fset.String("node", "", "node name. 8-31 characters. if not set, it will be hostname")
+	peerNode := fset.String("peernode", "", "peer node name that you want to connect")
+	dstIP := fset.String("dstip", "127.0.0.1", "destination ip ")
+	dstPort := fset.Int("dstport", 0, "destination port ")
+	srcPort := fset.Int("srcport", 0, "source port ")
+	protocol := fset.String("protocol", "tcp", "tcp or udp")
+	appName := fset.String("appname", "", "app name")
+	shareBandwidth := fset.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
+	daemonMode := fset.Bool("d", false, "daemonMode")
+	notVerbose := fset.Bool("nv", false, "not log console")
+	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
+	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
+	if subCommand == "" { // no subcommand
+		fset.Parse(os.Args[1:])
+	} else {
+		fset.Parse(os.Args[2:])
+	}
 
 	config := AppConfig{Enabled: 1}
 	config.PeerNode = *peerNode
@@ -180,14 +194,17 @@ func parseParams() {
 	config.SrcPort = *srcPort
 	config.Protocol = *protocol
 	config.AppName = *appName
-	gConf.load()
+	if !*newconfig {
+		gConf.load() // load old config. otherwise will clear all apps
+	}
+	gConf.LogLevel = *logLevel
 	if config.SrcPort != 0 {
 		gConf.add(config, true)
 	}
 	// gConf.mtx.Lock() // when calling this func it's single-thread no lock
 	gConf.daemonMode = *daemonMode
 	// spec paramters in commandline will always be used
-	flag.Visit(func(f *flag.Flag) {
+	fset.Visit(func(f *flag.Flag) {
 		if f.Name == "sharebandwidth" {
 			gConf.Network.ShareBandwidth = *shareBandwidth
 		}
@@ -205,15 +222,19 @@ func parseParams() {
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
 	}
-	if gConf.Network.Node == "" {
-		if *node == "" { // config and param's node both empty
-			hostname := defaultNodeName()
-			node = &hostname
-		}
-		gConf.Network.Node = *node
-	}
 	if *token != 0 {
 		gConf.Network.Token = *token
+	}
+	if *node != "" {
+		if len(*node) < 8 {
+			gLog.Println(LvERROR, ErrNodeTooShort)
+			os.Exit(9)
+		}
+		gConf.Network.Node = *node
+	} else {
+		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
+			gConf.Network.Node = defaultNodeName()
+		}
 	}
 	if gConf.LogLevel == IntValueNotSet {
 		gConf.LogLevel = *logLevel

@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -77,6 +79,7 @@ func pkcs7UnPadding(origData []byte, dataLen int) ([]byte, error) {
 	return origData[:(dataLen - unPadLen)], nil
 }
 
+// AES-CBC
 func encryptBytes(key []byte, out, in []byte, plainLen int) ([]byte, error) {
 	if len(key) == 0 {
 		return in[:plainLen], nil
@@ -122,20 +125,20 @@ func netInfo() *NetInfo {
 		client := &http.Client{Transport: tr, Timeout: time.Second * 10}
 		r, err := client.Get("https://ifconfig.co/json")
 		if err != nil {
-			gLog.Println(LevelINFO, "netInfo error:", err)
+			gLog.Println(LvINFO, "netInfo error:", err)
 			continue
 		}
 		defer r.Body.Close()
 		buf := make([]byte, 1024*64)
 		n, err := r.Body.Read(buf)
 		if err != nil {
-			gLog.Println(LevelINFO, "netInfo error:", err)
+			gLog.Println(LvINFO, "netInfo error:", err)
 			continue
 		}
 		rsp := NetInfo{}
 		err = json.Unmarshal(buf[:n], &rsp)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong NetInfo:%s", err)
+			gLog.Printf(LvERROR, "wrong NetInfo:%s", err)
 			continue
 		}
 		return &rsp
@@ -157,4 +160,34 @@ func defaultNodeName() string {
 		name = fmt.Sprintf("%s%d", name, rand.Int()%10)
 	}
 	return name
+}
+
+const EQUAL int = 0
+const GREATER int = 1
+const LESS int = -1
+
+func compareVersion(v1, v2 string) int {
+	if v1 == v2 {
+		return EQUAL
+	}
+	v1Arr := strings.Split(v1, ".")
+	v2Arr := strings.Split(v2, ".")
+	for i, subVer := range v1Arr {
+		if len(v2Arr) <= i {
+			return GREATER
+		}
+		subv1, _ := strconv.Atoi(subVer)
+		subv2, _ := strconv.Atoi(v2Arr[i])
+		if subv1 > subv2 {
+			return GREATER
+		}
+		if subv1 < subv2 {
+			return LESS
+		}
+	}
+	return LESS
+}
+
+func IsIPv6(address string) bool {
+	return strings.Count(address, ":") >= 2
 }

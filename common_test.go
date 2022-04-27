@@ -43,3 +43,29 @@ func TestAESCBC(t *testing.T) {
 func TestNetInfo(t *testing.T) {
 	log.Println(netInfo())
 }
+
+func assertCompareVersion(t *testing.T, v1 string, v2 string, result int) {
+	if compareVersion(v1, v2) != result {
+		t.Errorf("compare version %s %s fail\n", v1, v2)
+	}
+}
+func TestCompareVersion(t *testing.T) {
+	// test =
+	assertCompareVersion(t, "0.98.0", "0.98.0", EQUAL)
+	assertCompareVersion(t, "0.98", "0.98", EQUAL)
+	assertCompareVersion(t, "1.4.0", "1.4.0", EQUAL)
+	assertCompareVersion(t, "1.5.0", "1.5.0", EQUAL)
+	// test >
+	assertCompareVersion(t, "0.98.0.22345", "0.98.0.12345", GREATER)
+	assertCompareVersion(t, "1.98.0.12345", "0.98", GREATER)
+	assertCompareVersion(t, "10.98.0.12345", "9.98.0.12345", GREATER)
+	assertCompareVersion(t, "1.4.0", "0.98.0.12345", GREATER)
+	assertCompareVersion(t, "1.4", "0.98.0.12345", GREATER)
+	assertCompareVersion(t, "1", "0.98.0.12345", GREATER)
+	// test <
+	assertCompareVersion(t, "0.98.0.12345", "0.98.0.12346", LESS)
+	assertCompareVersion(t, "9.98.0.12345", "10.98.0.12345", LESS)
+	assertCompareVersion(t, "1.4.2", "1.5.0", LESS)
+	assertCompareVersion(t, "", "1.5.0", LESS)
+
+}

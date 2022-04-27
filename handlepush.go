@@ -17,37 +17,38 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	gLog.Printf(LevelDEBUG, "handle push msg type:%d, push header:%+v", subType, pushHead)
+	gLog.Printf(LvDEBUG, "handle push msg type:%d, push header:%+v", subType, pushHead)
 	switch subType {
 	case MsgPushConnectReq:
 		req := PushConnectReq{}
 		err := json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong MsgPushConnectReq:%s", err)
+			gLog.Printf(LvERROR, "wrong MsgPushConnectReq:%s", err)
 			return err
 		}
-		gLog.Printf(LevelINFO, "%s is connecting...", req.From)
-		gLog.Println(LevelDEBUG, "push connect response to ", req.From)
+		gLog.Printf(LvINFO, "%s is connecting...", req.From)
+		gLog.Println(LvDEBUG, "push connect response to ", req.From)
 		// verify totp token or token
 		if VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
 			VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()) ||
 			(req.FromToken == pn.config.Token) {
-			gLog.Printf(LevelINFO, "Access Granted\n")
+			gLog.Printf(LvINFO, "Access Granted\n")
 			config := AppConfig{}
 			config.peerNatType = req.NatType
 			config.peerConeNatPort = req.ConeNatPort
 			config.peerIP = req.FromIP
 			config.PeerNode = req.From
+			config.peerVersion = req.Version
 			// share relay node will limit bandwidth
 			if req.FromToken != pn.config.Token {
-				gLog.Printf(LevelINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
+				gLog.Printf(LvINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
 				config.shareBandwidth = pn.config.ShareBandwidth
 			}
 			// go pn.AddTunnel(config, req.ID)
 			go pn.addDirectTunnel(config, req.ID)
 			break
 		}
-		gLog.Println(LevelERROR, "Access Denied:", req.From)
+		gLog.Println(LvERROR, "Access Denied:", req.From)
 		rsp := PushConnectRsp{
 			Error:  1,
 			Detail: fmt.Sprintf("connect to %s error: Access Denied", pn.config.Node),
@@ -59,19 +60,19 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		rsp := PushRsp{}
 		err := json.Unmarshal(msg[openP2PHeaderSize:], &rsp)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong pushRsp:%s", err)
+			gLog.Printf(LvERROR, "wrong pushRsp:%s", err)
 			return err
 		}
 		if rsp.Error == 0 {
-			gLog.Printf(LevelDEBUG, "push ok, detail:%s", rsp.Detail)
+			gLog.Printf(LvDEBUG, "push ok, detail:%s", rsp.Detail)
 		} else {
-			gLog.Printf(LevelERROR, "push error:%d, detail:%s", rsp.Error, rsp.Detail)
+			gLog.Printf(LvERROR, "push error:%d, detail:%s", rsp.Error, rsp.Detail)
 		}
 	case MsgPushAddRelayTunnelReq:
 		req := AddRelayTunnelReq{}
 		err := json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong RelayNodeRsp:%s", err)
+			gLog.Printf(LvERROR, "wrong RelayNodeRsp:%s", err)
 			return err
 		}
 		config := AppConfig{}
@@ -83,12 +84,19 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 				// notify peer relay ready
 				msg := TunnelMsg{ID: t.id}
 				pn.push(r.From, MsgPushAddRelayTunnelRsp, msg)
-				SaveKey(req.AppID, req.AppKey)
 			}
 
 		}(req)
+	case MsgPushAPPKey:
+		req := APPKeySync{}
+		err := json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req)
+		if err != nil {
+			gLog.Printf(LvERROR, "wrong APPKeySync:%s", err)
+			return err
+		}
+		SaveKey(req.AppID, req.AppKey)
 	case MsgPushUpdate:
-		gLog.Println(LevelINFO, "MsgPushUpdate")
+		gLog.Println(LvINFO, "MsgPushUpdate")
 		update() // download new version first, then exec ./openp2p update
 		targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 		args := []string{"update"}
@@ -104,11 +112,11 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		return err
 	case MsgPushRestart:
-		gLog.Println(LevelINFO, "MsgPushRestart")
+		gLog.Println(LvINFO, "MsgPushRestart")
 		os.Exit(0)
 		return err
 	case MsgPushReportApps:
-		gLog.Println(LevelINFO, "MsgPushReportApps")
+		gLog.Println(LvINFO, "MsgPushReportApps")
 		req := ReportApps{}
 		gConf.mtx.Lock()
 		defer gConf.mtx.Unlock()
@@ -147,11 +155,11 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		pn.write(MsgReport, MsgReportApps, &req)
 	case MsgPushEditApp:
-		gLog.Println(LevelINFO, "MsgPushEditApp")
+		gLog.Println(LvINFO, "MsgPushEditApp")
 		newApp := AppInfo{}
 		err := json.Unmarshal(msg[openP2PHeaderSize:], &newApp)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong MsgPushEditApp:%s  %s", err, string(msg[openP2PHeaderSize:]))
+			gLog.Printf(LvERROR, "wrong MsgPushEditApp:%s  %s", err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
 		oldConf := AppConfig{Enabled: 1}
@@ -175,11 +183,11 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		// pn.AddApp(config)
 		// TODO: report result
 	case MsgPushEditNode:
-		gLog.Println(LevelINFO, "MsgPushEditNode")
+		gLog.Println(LvINFO, "MsgPushEditNode")
 		req := EditNode{}
 		err := json.Unmarshal(msg[openP2PHeaderSize:], &req)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong MsgPushEditNode:%s  %s", err, string(msg[openP2PHeaderSize:]))
+			gLog.Printf(LvERROR, "wrong MsgPushEditNode:%s  %s", err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
 		gConf.setNode(req.NewName)
@@ -188,15 +196,15 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		// TODO: hot reload
 		os.Exit(0)
 	case MsgPushSwitchApp:
-		gLog.Println(LevelINFO, "MsgPushSwitchApp")
+		gLog.Println(LvINFO, "MsgPushSwitchApp")
 		app := AppInfo{}
 		err := json.Unmarshal(msg[openP2PHeaderSize:], &app)
 		if err != nil {
-			gLog.Printf(LevelERROR, "wrong MsgPushSwitchApp:%s  %s", err, string(msg[openP2PHeaderSize:]))
+			gLog.Printf(LvERROR, "wrong MsgPushSwitchApp:%s  %s", err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
 		config := AppConfig{Enabled: app.Enabled, SrcPort: app.SrcPort, Protocol: app.Protocol}
-		gLog.Println(LevelINFO, app.AppName, " switch to ", app.Enabled)
+		gLog.Println(LvINFO, app.AppName, " switch to ", app.Enabled)
 		gConf.switchApp(config, app.Enabled)
 		if app.Enabled == 0 {
 			// disable APP

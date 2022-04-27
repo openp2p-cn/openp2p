@@ -10,8 +10,9 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "1.4.2"
+const OpenP2PVersion = "1.5.6"
 const ProducnName string = "openp2p"
+const LeastSupportTCPVersion = "1.5.0"
 
 type openP2PHeader struct {
 	DataLen  uint32
@@ -69,6 +70,7 @@ const (
 	MsgReport    = 6
 )
 
+// TODO: seperate node push and web push.
 const (
 	MsgPushRsp               = 0
 	MsgPushConnectReq        = 1
@@ -78,11 +80,12 @@ const (
 	MsgPushAddRelayTunnelRsp = 5
 	MsgPushUpdate            = 6
 	MsgPushReportApps        = 7
-	MsgPushQuicConnect       = 8
+	MsgPushUnderlayConnect   = 8
 	MsgPushEditApp           = 9
 	MsgPushSwitchApp         = 10
 	MsgPushRestart           = 11
 	MsgPushEditNode          = 12
+	MsgPushAPPKey            = 13
 )
 
 // MsgP2P sub type message
@@ -131,7 +134,7 @@ const (
 	AESKeySize                   = 16
 	MaxRetry                     = 10
 	RetryInterval                = time.Second * 30
-	PublicIPEchoTimeout          = time.Second * 3
+	PublicIPEchoTimeout          = time.Second * 1
 	NatTestTimeout               = time.Second * 10
 	ClientAPITimeout             = time.Second * 10
 	MaxDirectTry                 = 5
@@ -143,6 +146,13 @@ const (
 	NATCone      = 1
 	NATSymmetric = 2
 	NATUnknown   = 314
+)
+
+// underlay protocol
+const (
+	UderlayAuto = "auto"
+	UderlayQUIC = "quic"
+	UderlayTCP  = "tcp"
 )
 
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
@@ -170,23 +180,32 @@ func nodeNameToID(name string) uint64 {
 }
 
 type PushConnectReq struct {
-	From        string `json:"from,omitempty"`
-	FromToken   uint64 `json:"fromToken,omitempty"` //my token
-	Token       uint64 `json:"token,omitempty"`     // totp token
-	ConeNatPort int    `json:"coneNatPort,omitempty"`
-	NatType     int    `json:"natType,omitempty"`
-	FromIP      string `json:"fromIP,omitempty"`
-	ID          uint64 `json:"id,omitempty"`
+	From            string `json:"from,omitempty"`
+	FromToken       uint64 `json:"fromToken,omitempty"` //my token
+	Version         string `json:"version,omitempty"`
+	Token           uint64 `json:"token,omitempty"`       // totp token
+	ConeNatPort     int    `json:"coneNatPort,omitempty"` // if isPublic, is public port
+	NatType         int    `json:"natType,omitempty"`
+	HasIPv4         int    `json:"hasIPv4,omitempty"`
+	IPv6            string `json:"IPv6,omitempty"`
+	HasUPNPorNATPMP int    `json:"hasUPNPorNATPMP,omitempty"`
+	FromIP          string `json:"fromIP,omitempty"`
+	ID              uint64 `json:"id,omitempty"`
+	AppKey          uint64 `json:"appKey,omitempty"` // for underlay tcp
 }
 type PushConnectRsp struct {
-	Error       int    `json:"error,omitempty"`
-	From        string `json:"from,omitempty"`
-	To          string `json:"to,omitempty"`
-	Detail      string `json:"detail,omitempty"`
-	NatType     int    `json:"natType,omitempty"`
-	ConeNatPort int    `json:"coneNatPort,omitempty"`
-	FromIP      string `json:"fromIP,omitempty"`
-	ID          uint64 `json:"id,omitempty"`
+	Error           int    `json:"error,omitempty"`
+	From            string `json:"from,omitempty"`
+	To              string `json:"to,omitempty"`
+	Detail          string `json:"detail,omitempty"`
+	NatType         int    `json:"natType,omitempty"`
+	HasIPv4         int    `json:"hasIPv4,omitempty"`
+	IPv6            string `json:"IPv6,omitempty"`
+	HasUPNPorNATPMP int    `json:"hasUPNPorNATPMP,omitempty"`
+	ConeNatPort     int    `json:"coneNatPort,omitempty"` //it's not only cone, but also upnp or nat-pmp hole
+	FromIP          string `json:"fromIP,omitempty"`
+	ID              uint64 `json:"id,omitempty"`
+	Version         string `json:"version,omitempty"`
 }
 type PushRsp struct {
 	Error  int    `json:"error,omitempty"`
@@ -246,8 +265,13 @@ type AddRelayTunnelReq struct {
 	From       string `json:"from,omitempty"`
 	RelayName  string `json:"relayName,omitempty"`
 	RelayToken uint64 `json:"relayToken,omitempty"`
-	AppID      uint64 `json:"appID,omitempty"`
-	AppKey     uint64 `json:"appKey,omitempty"`
+	AppID      uint64 `json:"appID,omitempty"`  // deprecated
+	AppKey     uint64 `json:"appKey,omitempty"` // deprecated
+}
+
+type APPKeySync struct {
+	AppID  uint64 `json:"appID,omitempty"`
+	AppKey uint64 `json:"appKey,omitempty"`
 }
 
 type RelayHeartbeat struct {
@@ -256,12 +280,14 @@ type RelayHeartbeat struct {
 }
 
 type ReportBasic struct {
-	OS      string  `json:"os,omitempty"`
-	Mac     string  `json:"mac,omitempty"`
-	LanIP   string  `json:"lanIP,omitempty"`
-	IPv6    string  `json:"IPv6,omitempty"`
-	Version string  `json:"version,omitempty"`
-	NetInfo NetInfo `json:"netInfo,omitempty"`
+	OS              string  `json:"os,omitempty"`
+	Mac             string  `json:"mac,omitempty"`
+	LanIP           string  `json:"lanIP,omitempty"`
+	HasIPv4         int     `json:"hasIPv4,omitempty"`
+	IPv6            string  `json:"IPv6,omitempty"`
+	HasUPNPorNATPMP int     `json:"hasUPNPorNATPMP,omitempty"`
+	Version         string  `json:"version,omitempty"`
+	NetInfo         NetInfo `json:"netInfo,omitempty"`
 }
 
 type ReportConnect struct {

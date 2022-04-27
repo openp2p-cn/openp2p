@@ -12,7 +12,7 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	binDir := filepath.Dir(os.Args[0])
 	os.Chdir(binDir) // for system service
-	gLog = InitLogger(binDir, "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
+	gLog = NewLogger(binDir, "openp2p", LvDEBUG, 1024*1024, LogFileAndConsole)
 	// TODO: install sub command, deamon process
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -20,14 +20,14 @@ func main() {
 			fmt.Println(OpenP2PVersion)
 			return
 		case "update":
-			gLog = InitLogger(filepath.Dir(os.Args[0]), "openp2p", LevelDEBUG, 1024*1024, LogFileAndConsole)
+			gLog = NewLogger(filepath.Dir(os.Args[0]), "openp2p", LvDEBUG, 1024*1024, LogFileAndConsole)
 			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 			d := daemon{}
 			err := d.Control("restart", targetPath, nil)
 			if err != nil {
-				gLog.Println(LevelERROR, "restart service error:", err)
+				gLog.Println(LvERROR, "restart service error:", err)
 			} else {
-				gLog.Println(LevelINFO, "restart service ok.")
+				gLog.Println(LvINFO, "restart service ok.")
 			}
 			return
 		case "install":
@@ -40,9 +40,9 @@ func main() {
 	} else {
 		installByFilename()
 	}
-	parseParams()
-	gLog.Println(LevelINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LevelINFO, "Contact: QQ Group: 16947733, Email: openp2p.cn@gmail.com")
+	parseParams("")
+	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
+	gLog.Println(LvINFO, "Contact: QQ Group: 16947733, Email: openp2p.cn@gmail.com")
 
 	if gConf.daemonMode {
 		d := daemon{}
@@ -50,14 +50,14 @@ func main() {
 		return
 	}
 
-	gLog.Println(LevelINFO, &gConf)
+	gLog.Println(LvINFO, &gConf)
 	setFirewall()
 	network := P2PNetworkInstance(&gConf.Network)
 	if ok := network.Connect(30000); !ok {
-		gLog.Println(LevelERROR, "P2PNetwork login error")
+		gLog.Println(LvERROR, "P2PNetwork login error")
 		return
 	}
-	gLog.Println(LevelINFO, "waiting for connection...")
+	gLog.Println(LvINFO, "waiting for connection...")
 	forever := make(chan bool)
 	<-forever
 }

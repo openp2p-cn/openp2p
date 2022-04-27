@@ -17,8 +17,8 @@ import (
 )
 
 func update() {
-	gLog.Println(LevelINFO, "update start")
-	defer gLog.Println(LevelINFO, "update end")
+	gLog.Println(LvINFO, "update start")
+	defer gLog.Println(LvINFO, "update end")
 	c := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -29,43 +29,43 @@ func update() {
 	goarch := runtime.GOARCH
 	rsp, err := c.Get(fmt.Sprintf("https://openp2p.cn:27183/api/v1/update?fromver=%s&os=%s&arch=%s", OpenP2PVersion, goos, goarch))
 	if err != nil {
-		gLog.Println(LevelERROR, "update:query update list failed:", err)
+		gLog.Println(LvERROR, "update:query update list failed:", err)
 		return
 	}
 	defer rsp.Body.Close()
 	if rsp.StatusCode != http.StatusOK {
-		gLog.Println(LevelERROR, "get update info error:", rsp.Status)
+		gLog.Println(LvERROR, "get update info error:", rsp.Status)
 		return
 	}
 	rspBuf, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
-		gLog.Println(LevelERROR, "update:read update list failed:", err)
+		gLog.Println(LvERROR, "update:read update list failed:", err)
 		return
 	}
 	updateInfo := UpdateInfo{}
 	err = json.Unmarshal(rspBuf, &updateInfo)
 	if err != nil {
-		gLog.Println(LevelERROR, rspBuf, " update info decode error:", err)
+		gLog.Println(LvERROR, rspBuf, " update info decode error:", err)
 		return
 	}
 	if updateInfo.Error != 0 {
-		gLog.Println(LevelERROR, "update error:", updateInfo.Error, updateInfo.ErrorDetail)
+		gLog.Println(LvERROR, "update error:", updateInfo.Error, updateInfo.ErrorDetail)
 		return
 	}
 	err = updateFile(updateInfo.Url, "", "openp2p")
 	if err != nil {
-		gLog.Println(LevelERROR, "update: download failed:", err)
+		gLog.Println(LvERROR, "update: download failed:", err)
 		return
 	}
 }
 
 // todo rollback on error
 func updateFile(url string, checksum string, dst string) error {
-	gLog.Println(LevelINFO, "download ", url)
+	gLog.Println(LvINFO, "download ", url)
 	tmpFile := filepath.Dir(os.Args[0]) + "/openp2p.tmp"
 	output, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0776)
 	if err != nil {
-		gLog.Printf(LevelERROR, "OpenFile %s error:%s", tmpFile, err)
+		gLog.Printf(LvERROR, "OpenFile %s error:%s", tmpFile, err)
 		return err
 	}
 	tr := &http.Transport{
@@ -74,31 +74,31 @@ func updateFile(url string, checksum string, dst string) error {
 	client := &http.Client{Transport: tr}
 	response, err := client.Get(url)
 	if err != nil {
-		gLog.Printf(LevelERROR, "download url %s error:%s", url, err)
+		gLog.Printf(LvERROR, "download url %s error:%s", url, err)
 		output.Close()
 		return err
 	}
 	defer response.Body.Close()
 	n, err := io.Copy(output, response.Body)
 	if err != nil {
-		gLog.Printf(LevelERROR, "io.Copy error:%s", err)
+		gLog.Printf(LvERROR, "io.Copy error:%s", err)
 		output.Close()
 		return err
 	}
 	output.Sync()
 	output.Close()
-	gLog.Println(LevelINFO, "download ", url, " ok")
-	gLog.Printf(LevelINFO, "size: %d bytes", n)
+	gLog.Println(LvINFO, "download ", url, " ok")
+	gLog.Printf(LvINFO, "size: %d bytes", n)
 
 	err = os.Rename(os.Args[0], os.Args[0]+"0")
 	if err != nil && os.IsExist(err) {
-		gLog.Printf(LevelINFO, " rename %s error:%s", os.Args[0], err)
+		gLog.Printf(LvINFO, " rename %s error:%s", os.Args[0], err)
 	}
 	// extract
-	gLog.Println(LevelINFO, "extract files")
+	gLog.Println(LvINFO, "extract files")
 	err = extract(filepath.Dir(os.Args[0]), tmpFile)
 	if err != nil {
-		gLog.Printf(LevelERROR, "extract error:%s. revert rename", err)
+		gLog.Printf(LvERROR, "extract error:%s. revert rename", err)
 		os.Rename(os.Args[0]+"0", os.Args[0])
 		return err
 	}

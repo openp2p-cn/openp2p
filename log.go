@@ -8,17 +8,15 @@ import (
 	"time"
 )
 
-// LogLevel ...
 type LogLevel int
 
-var gLog *V8log
+var gLog *logger
 
-// LevelDEBUG ...
 const (
-	LevelDEBUG LogLevel = iota
-	LevelINFO
-	LevelWARN
-	LevelERROR
+	LvDEBUG LogLevel = iota
+	LvINFO
+	LvWARN
+	LvERROR
 )
 
 var (
@@ -30,10 +28,10 @@ func init() {
 	logFileNames = make(map[LogLevel]string)
 	loglevel = make(map[LogLevel]string)
 	logFileNames[0] = ".log"
-	loglevel[LevelDEBUG] = "DEBUG"
-	loglevel[LevelINFO] = "INFO"
-	loglevel[LevelWARN] = "WARN"
-	loglevel[LevelERROR] = "ERROR"
+	loglevel[LvDEBUG] = "DEBUG"
+	loglevel[LvINFO] = "INFO"
+	loglevel[LvWARN] = "WARN"
+	loglevel[LvERROR] = "ERROR"
 
 }
 
@@ -43,25 +41,21 @@ const (
 	LogFileAndConsole
 )
 
-// V8log ...
-type V8log struct {
+type logger struct {
 	loggers    map[LogLevel]*log.Logger
 	files      map[LogLevel]*os.File
 	level      LogLevel
-	stopSig    chan bool
 	logDir     string
 	mtx        *sync.Mutex
-	stoped     bool
 	lineEnding string
 	pid        int
 	maxLogSize int64
 	mode       int
 }
 
-// InitLogger ...
-func InitLogger(path string, filePrefix string, level LogLevel, maxLogSize int64, mode int) *V8log {
-	logger := make(map[LogLevel]*log.Logger)
-	openedfile := make(map[LogLevel]*os.File)
+func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64, mode int) *logger {
+	loggers := make(map[LogLevel]*log.Logger)
+	logfiles := make(map[LogLevel]*os.File)
 	var (
 		logdir string
 	)
@@ -71,15 +65,15 @@ func InitLogger(path string, filePrefix string, level LogLevel, maxLogSize int64
 		logdir = path + "/log/"
 	}
 	os.MkdirAll(logdir, 0777)
-	for l := range logFileNames {
-		logFilePath := logdir + filePrefix + logFileNames[l]
+	for lv := range logFileNames {
+		logFilePath := logdir + filePrefix + logFileNames[lv]
 		f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			log.Fatal(err)
 		}
 		os.Chmod(logFilePath, 0666)
-		openedfile[l] = f
-		logger[l] = log.New(f, "", log.LstdFlags)
+		logfiles[lv] = f
+		loggers[lv] = log.New(f, "", log.LstdFlags)
 	}
 	var le string
 	if runtime.GOOS == "windows" {
@@ -87,97 +81,84 @@ func InitLogger(path string, filePrefix string, level LogLevel, maxLogSize int64
 	} else {
 		le = "\n"
 	}
-	pLog := &V8log{logger, openedfile, level, make(chan bool, 10), logdir, &sync.Mutex{}, false, le, os.Getpid(), maxLogSize, mode}
+	pLog := &logger{loggers, logfiles, level, logdir, &sync.Mutex{}, le, os.Getpid(), maxLogSize, mode}
 	go pLog.checkFile()
 	return pLog
 }
 
-func (vl *V8log) setLevel(level LogLevel) {
-	vl.mtx.Lock()
-	defer vl.mtx.Unlock()
-	vl.level = level
+func (l *logger) setLevel(level LogLevel) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	l.level = level
 }
-func (vl *V8log) setMode(mode int) {
-	vl.mtx.Lock()
-	defer vl.mtx.Unlock()
-	vl.mode = mode
+func (l *logger) setMode(mode int) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	l.mode = mode
 }
 
-func (vl *V8log) checkFile() {
-	if vl.maxLogSize <= 0 {
+func (l *logger) checkFile() {
+	if l.maxLogSize <= 0 {
 		return
 	}
 	ticker := time.NewTicker(time.Minute)
 	for {
 		select {
 		case <-ticker.C:
-			vl.mtx.Lock()
-			for l, logFile := range vl.files {
+			l.mtx.Lock()
+			for lv, logFile := range l.files {
 				f, e := logFile.Stat()
 				if e != nil {
 					continue
 				}
-				if f.Size() <= vl.maxLogSize {
+				if f.Size() <= l.maxLogSize {
 					continue
 				}
 				logFile.Close()
 				fname := f.Name()
-				backupPath := vl.logDir + fname + ".0"
+				backupPath := l.logDir + fname + ".0"
 				os.Remove(backupPath)
-				os.Rename(vl.logDir+fname, backupPath)
-				newFile, e := os.OpenFile(vl.logDir+fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+				os.Rename(l.logDir+fname, backupPath)
+				newFile, e := os.OpenFile(l.logDir+fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 				if e == nil {
-					vl.loggers[l].SetOutput(newFile)
-					vl.files[l] = newFile
+					l.loggers[lv].SetOutput(newFile)
+					l.files[lv] = newFile
 				}
-
 			}
-			vl.mtx.Unlock()
-		case <-vl.stopSig:
-		}
-		if vl.stoped {
-			break
+			l.mtx.Unlock()
 		}
 	}
 }
 
-// Printf  Warning: report error log depends on this Print format.
-func (vl *V8log) Printf(level LogLevel, format string, params ...interface{}) {
-	vl.mtx.Lock()
-	defer vl.mtx.Unlock()
-	if vl.stoped {
+func (l *logger) Printf(level LogLevel, format string, params ...interface{}) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	if level < l.level {
 		return
 	}
-	if level < vl.level {
-		return
-	}
-	pidAndLevel := []interface{}{vl.pid, loglevel[level]}
+	pidAndLevel := []interface{}{l.pid, loglevel[level]}
 	params = append(pidAndLevel, params...)
-	if vl.mode == LogFile || vl.mode == LogFileAndConsole {
-		vl.loggers[0].Printf("%d %s "+format+vl.lineEnding, params...)
+	if l.mode == LogFile || l.mode == LogFileAndConsole {
+		l.loggers[0].Printf("%d %s "+format+l.lineEnding, params...)
 	}
-	if vl.mode == LogConsole || vl.mode == LogFileAndConsole {
-		log.Printf("%d %s "+format+vl.lineEnding, params...)
+	if l.mode == LogConsole || l.mode == LogFileAndConsole {
+		log.Printf("%d %s "+format+l.lineEnding, params...)
 	}
 }
 
-// Println ...
-func (vl *V8log) Println(level LogLevel, params ...interface{}) {
-	vl.mtx.Lock()
-	defer vl.mtx.Unlock()
-	if vl.stoped {
+func (l *logger) Println(level LogLevel, params ...interface{}) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	if level < l.level {
 		return
 	}
-	if level < vl.level {
-		return
-	}
-	pidAndLevel := []interface{}{vl.pid, " ", loglevel[level], " "}
+	pidAndLevel := []interface{}{l.pid, " ", loglevel[level], " "}
 	params = append(pidAndLevel, params...)
-	params = append(params, vl.lineEnding)
-	if vl.mode == LogFile || vl.mode == LogFileAndConsole {
-		vl.loggers[0].Print(params...)
+	params = append(params, l.lineEnding)
+	if l.mode == LogFile || l.mode == LogFileAndConsole {
+		l.loggers[0].Print(params...)
 	}
-	if vl.mode == LogConsole || vl.mode == LogFileAndConsole {
+	if l.mode == LogConsole || l.mode == LogFileAndConsole {
 		log.Print(params...)
 	}
 }

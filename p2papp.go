@@ -17,7 +17,7 @@ type p2pApp struct {
 	listener    net.Listener
 	listenerUDP *net.UDPConn
 	tunnel      *P2PTunnel
-	rtid        uint64
+	rtid        uint64 // relay tunnelID
 	relayNode   string
 	relayMode   string
 	hbTime      time.Time
@@ -48,19 +48,19 @@ func (app *p2pApp) updateHeartbeat() {
 }
 
 func (app *p2pApp) listenTCP() error {
-	gLog.Printf(LevelDEBUG, "tcp accept on port %d start", app.config.SrcPort)
-	defer gLog.Printf(LevelDEBUG, "tcp accept on port %d end", app.config.SrcPort)
+	gLog.Printf(LvDEBUG, "tcp accept on port %d start", app.config.SrcPort)
+	defer gLog.Printf(LvDEBUG, "tcp accept on port %d end", app.config.SrcPort)
 	var err error
 	app.listener, err = net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
 	if err != nil {
-		gLog.Printf(LevelERROR, "listen error:%s", err)
+		gLog.Printf(LvERROR, "listen error:%s", err)
 		return err
 	}
 	for app.running {
 		conn, err := app.listener.Accept()
 		if err != nil {
 			if app.running {
-				gLog.Printf(LevelERROR, "%d accept error:%s", app.tunnel.id, err)
+				gLog.Printf(LvERROR, "%d accept error:%s", app.id, err)
 			}
 			break
 		}
@@ -81,7 +81,7 @@ func (app *p2pApp) listenTCP() error {
 			oConn.appKeyBytes = encryptKey
 		}
 		app.tunnel.overlayConns.Store(oConn.id, &oConn)
-		gLog.Printf(LevelDEBUG, "Accept TCP overlayID:%d", oConn.id)
+		gLog.Printf(LvDEBUG, "Accept TCP overlayID:%d", oConn.id)
 		// tell peer connect
 		req := OverlayConnectReq{ID: oConn.id,
 			Token:    app.tunnel.pn.config.Token,
@@ -106,12 +106,12 @@ func (app *p2pApp) listenTCP() error {
 }
 
 func (app *p2pApp) listenUDP() error {
-	gLog.Printf(LevelDEBUG, "udp accept on port %d start", app.config.SrcPort)
-	defer gLog.Printf(LevelDEBUG, "udp accept on port %d end", app.config.SrcPort)
+	gLog.Printf(LvDEBUG, "udp accept on port %d start", app.config.SrcPort)
+	defer gLog.Printf(LvDEBUG, "udp accept on port %d end", app.config.SrcPort)
 	var err error
 	app.listenerUDP, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: app.config.SrcPort})
 	if err != nil {
-		gLog.Printf(LevelERROR, "listen error:%s", err)
+		gLog.Printf(LvERROR, "listen error:%s", err)
 		return err
 	}
 	buffer := make([]byte, 64*1024)
@@ -123,7 +123,7 @@ func (app *p2pApp) listenUDP() error {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			} else {
-				gLog.Printf(LevelERROR, "udp read failed:%s", err)
+				gLog.Printf(LvERROR, "udp read failed:%s", err)
 				break
 			}
 		} else {
@@ -161,7 +161,7 @@ func (app *p2pApp) listenUDP() error {
 					oConn.appKeyBytes = encryptKey
 				}
 				app.tunnel.overlayConns.Store(oConn.id, &oConn)
-				gLog.Printf(LevelDEBUG, "Accept UDP overlayID:%d", oConn.id)
+				gLog.Printf(LvDEBUG, "Accept UDP overlayID:%d", oConn.id)
 				// tell peer connect
 				req := OverlayConnectReq{ID: oConn.id,
 					Token:    app.tunnel.pn.config.Token,
@@ -196,8 +196,8 @@ func (app *p2pApp) listenUDP() error {
 }
 
 func (app *p2pApp) listen() error {
-	gLog.Printf(LevelINFO, "LISTEN ON PORT %s:%d START", app.config.Protocol, app.config.SrcPort)
-	defer gLog.Printf(LevelINFO, "LISTEN ON PORT %s:%d END", app.config.Protocol, app.config.SrcPort)
+	gLog.Printf(LvINFO, "LISTEN ON PORT %s:%d START", app.config.Protocol, app.config.SrcPort)
+	defer gLog.Printf(LvINFO, "LISTEN ON PORT %s:%d END", app.config.Protocol, app.config.SrcPort)
 	app.wg.Add(1)
 	defer app.wg.Done()
 	app.running = true
@@ -233,8 +233,8 @@ func (app *p2pApp) close() {
 func (app *p2pApp) relayHeartbeatLoop() {
 	app.wg.Add(1)
 	defer app.wg.Done()
-	gLog.Printf(LevelDEBUG, "relayHeartbeat to %d start", app.rtid)
-	defer gLog.Printf(LevelDEBUG, "relayHeartbeat to %d end", app.rtid)
+	gLog.Printf(LvDEBUG, "relayHeartbeat to %d start", app.rtid)
+	defer gLog.Printf(LvDEBUG, "relayHeartbeat to %d end", app.rtid)
 	relayHead := new(bytes.Buffer)
 	binary.Write(relayHead, binary.LittleEndian, app.rtid)
 	req := RelayHeartbeat{RelayTunnelID: app.tunnel.id,

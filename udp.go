@@ -23,7 +23,7 @@ func UDPRead(conn *net.UDPConn, timeout int) (ra net.Addr, head *openP2PHeader, 
 		deadline := time.Now().Add(time.Millisecond * time.Duration(timeout))
 		err = conn.SetReadDeadline(deadline)
 		if err != nil {
-			gLog.Println(LevelERROR, "SetReadDeadline error")
+			gLog.Println(LvERROR, "SetReadDeadline error")
 			return nil, nil, nil, 0, err
 		}
 	}
@@ -37,7 +37,7 @@ func UDPRead(conn *net.UDPConn, timeout int) (ra net.Addr, head *openP2PHeader, 
 	head = &openP2PHeader{}
 	err = binary.Read(bytes.NewReader(result[:openP2PHeaderSize]), binary.LittleEndian, head)
 	if err != nil {
-		gLog.Println(LevelERROR, "parse p2pheader error:", err)
+		gLog.Println(LvERROR, "parse p2pheader error:", err)
 		return nil, nil, nil, 0, err
 	}
 	return
