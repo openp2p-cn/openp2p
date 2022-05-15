@@ -28,6 +28,7 @@ type P2PTunnel struct {
 	tunnelServer  bool // different from underlayServer
 	coneLocalPort int
 	coneNatPort   int
+	linkMode      string
 }
 
 func (t *P2PTunnel) init() {
@@ -65,11 +66,11 @@ func (t *P2PTunnel) init() {
 func (t *P2PTunnel) connect() error {
 	gLog.Printf(LvDEBUG, "start p2pTunnel to %s ", t.config.PeerNode)
 	t.tunnelServer = false
+	t.pn.refreshIPv6()
 	appKey := uint64(0)
 	req := PushConnectReq{
 		Token:           t.config.peerToken,
 		From:            t.pn.config.Node,
-		FromToken:       t.pn.config.Token,
 		FromIP:          t.pn.config.publicIP,
 		ConeNatPort:     t.coneNatPort,
 		NatType:         t.pn.config.natType,
@@ -79,6 +80,9 @@ func (t *P2PTunnel) connect() error {
 		ID:              t.id,
 		AppKey:          appKey,
 		Version:         OpenP2PVersion,
+	}
+	if req.Token == 0 { // no relay token
+		req.Token = t.pn.config.Token
 	}
 	t.pn.push(t.config.PeerNode, MsgPushConnectReq, req)
 	head, body := t.pn.read(t.config.PeerNode, MsgPush, MsgPushConnectRsp, time.Second*10)
@@ -158,7 +162,7 @@ func (t *P2PTunnel) close() {
 }
 
 func (t *P2PTunnel) start() error {
-	if !t.isSupportTCP() {
+	if !t.config.isSupportTCP(t.pn.config) {
 		if err := t.handshake(); err != nil {
 			return err
 		}
@@ -182,7 +186,7 @@ func (t *P2PTunnel) handshake() error {
 	gLog.Println(LvDEBUG, "handshake to ", t.config.PeerNode)
 	var err error
 	// TODO: handle NATNone, nodes with public ip has no punching
-	if (t.pn.config.natType == NATCone && t.config.peerNatType == NATCone) || (t.pn.config.natType == NATNone || t.config.peerNatType == NATNone) {
+	if t.pn.config.natType == NATCone && t.config.peerNatType == NATCone {
 		err = handshakeC2C(t)
 	} else if t.config.peerNatType == NATSymmetric && t.pn.config.natType == NATSymmetric {
 		err = ErrorS2S
@@ -203,28 +207,23 @@ func (t *P2PTunnel) handshake() error {
 }
 
 func (t *P2PTunnel) connectUnderlay() (err error) {
-	if !t.isSupportTCP() {
+	if !t.config.isSupportTCP(t.pn.config) {
 		t.conn, err = t.connectUnderlayQuic()
 		if err != nil {
 			return err
 		}
 	} else {
-		// TODO: udp or tcp first?
-		// prepare a la ra for udp
-		// t.conn, err = t.connectUnderlayQuic()
-		// TODO: support ipv6
-		// if t.pn.config.hasIPv4 == 1 || t.config.hasIPv4 == 1 {
-		t.conn, err = t.connectUnderlayTCP()
-		if err != nil {
-			return err
+		if IsIPv6(t.pn.config.IPv6) && IsIPv6(t.config.IPv6) { // both have ipv6
+			t.conn, err = t.connectUnderlayTCP6()
+			if err != nil {
+				return err
+			}
+		} else { // hasipv4 or upnp
+			t.conn, err = t.connectUnderlayTCP()
+			if err != nil {
+				return err
+			}
 		}
-		// }
-		// if IsIPv6(t.pn.config.IPv6) && IsIPv6(t.config.IPv6) { // both have ipv6
-		// 	t.conn, err = t.connectUnderlayTCP6()
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// }
 	}
 	t.setRun(true)
 	go t.readLoop()
@@ -289,6 +288,7 @@ func (t *P2PTunnel) connectUnderlayQuic() (c underlay, err error) {
 
 	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
 	gLog.Println(LvDEBUG, "quic connection ok")
+	t.linkMode = LinkModeUDPPunch
 	return qConn, nil
 }
 
@@ -336,18 +336,19 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 
 	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
 	gLog.Println(LvDEBUG, "TCP connection ok")
+	t.linkMode = LinkModeIPv4
 	return qConn, nil
 }
 
 func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
-	gLog.Println(LvINFO, "connectUnderlayTCP start")
-	defer gLog.Println(LvINFO, "connectUnderlayTCP end")
+	gLog.Println(LvINFO, "connectUnderlayTCP6 start")
+	defer gLog.Println(LvINFO, "connectUnderlayTCP6 end")
 	var qConn *underlayTCP6
 	if t.isUnderlayServer() {
 		t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
 		qConn, err = listenTCP6(t.coneNatPort, TunnelIdleTimeout)
 		if err != nil {
-			return nil, fmt.Errorf("listen TCP error:%s", err)
+			return nil, fmt.Errorf("listen TCP6 error:%s", err)
 		}
 		_, buff, err := qConn.ReadBuffer()
 		if err != nil {
@@ -358,16 +359,16 @@ func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
 			gLog.Println(LvDEBUG, string(buff))
 		}
 		qConn.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, []byte("OpenP2P,hello2"))
-		gLog.Println(LvDEBUG, "TCP connection ok")
+		gLog.Println(LvDEBUG, "TCP6 connection ok")
 		return qConn, nil
 	}
 
 	//else
 	t.pn.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, time.Second*5)
-	gLog.Println(LvDEBUG, "TCP dial to ", t.ra.String())
+	gLog.Println(LvDEBUG, "TCP6 dial to ", t.config.IPv6)
 	qConn, err = dialTCP6(t.config.IPv6, t.config.peerConeNatPort)
 	if err != nil {
-		return nil, fmt.Errorf("TCP dial to %s error:%s", t.ra.String(), err)
+		return nil, fmt.Errorf("TCP6 dial to %s:%d error:%s", t.config.IPv6, t.config.peerConeNatPort, err)
 	}
 	handshakeBegin := time.Now()
 	qConn.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
@@ -381,7 +382,8 @@ func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
 	}
 
 	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
-	gLog.Println(LvDEBUG, "TCP connection ok")
+	gLog.Println(LvDEBUG, "TCP6 connection ok")
+	t.linkMode = LinkModeIPv6
 	return qConn, nil
 }
 
@@ -551,19 +553,25 @@ func (t *P2PTunnel) heartbeatLoop() {
 func (t *P2PTunnel) listen() error {
 	// notify client to connect
 	rsp := PushConnectRsp{
-		Error:           0,
-		Detail:          "connect ok",
-		To:              t.config.PeerNode,
-		From:            t.pn.config.Node,
-		NatType:         t.pn.config.natType,
-		HasIPv4:         t.pn.config.hasIPv4,
-		IPv6:            t.pn.config.IPv6,
+		Error:   0,
+		Detail:  "connect ok",
+		To:      t.config.PeerNode,
+		From:    t.pn.config.Node,
+		NatType: t.pn.config.natType,
+		HasIPv4: t.pn.config.hasIPv4,
+		// IPv6:            t.pn.config.IPv6,
 		HasUPNPorNATPMP: t.pn.config.hasUPNPorNATPMP,
 		FromIP:          t.pn.config.publicIP,
 		ConeNatPort:     t.coneNatPort,
 		ID:              t.id,
 		Version:         OpenP2PVersion,
 	}
+	// only private node set ipv6
+	if t.config.fromToken == t.pn.config.Token {
+		t.pn.refreshIPv6()
+		rsp.IPv6 = t.pn.config.IPv6
+	}
+
 	t.pn.push(t.config.PeerNode, MsgPushConnectRsp, rsp)
 	gLog.Printf(LvDEBUG, "p2ptunnel wait for connecting")
 	t.tunnelServer = true
@@ -588,22 +596,12 @@ func (t *P2PTunnel) closeOverlayConns(appID uint64) {
 }
 
 func (t *P2PTunnel) isUnderlayServer() bool {
-	if t.pn.config.natType == NATNone && t.config.peerNatType != NATNone {
+	if (t.pn.config.hasIPv4 == 1 || t.pn.config.hasUPNPorNATPMP == 1) && (t.config.hasIPv4 != 1 || t.config.hasUPNPorNATPMP != 1) {
 		return true
 	}
-	if t.pn.config.natType != NATNone && t.config.peerNatType == NATNone {
+	if (t.pn.config.hasIPv4 != 1 || t.pn.config.hasUPNPorNATPMP != 1) && (t.config.hasIPv4 == 1 || t.config.hasUPNPorNATPMP == 1) {
 		return false
 	}
 	// NAT or both has public IP
 	return t.tunnelServer
-}
-
-func (t *P2PTunnel) isSupportTCP() bool {
-	if t.config.peerVersion == "" || compareVersion(t.config.peerVersion, LeastSupportTCPVersion) == LESS {
-		return false
-	}
-	if t.pn.config.natType == NATNone || t.config.peerNatType == NATNone {
-		return true
-	}
-	return false
 }

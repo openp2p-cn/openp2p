@@ -96,33 +96,29 @@ func natTest(serverHost string, serverPort int, localPort int, echoPort int) (pu
 	return natRsp.IP, hasPublicIP, hasUPNPorNATPMP, natRsp.Port, nil
 }
 
-func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, hasUPNPorNATPMP int, err error) {
+func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, hasIPvr int, hasUPNPorNATPMP int, err error) {
 	// the random local port may be used by other.
 	localPort := int(rand.Uint32()%10000 + 50000)
 	echoPort := int(rand.Uint32()%10000 + 50000)
 	go echo(echoPort)
-	ip1, hasPublicIP, hasUPNPorNATPMP, port1, err := natTest(host, udp1, localPort, echoPort)
+	ip1, hasIPv4, hasUPNPorNATPMP, port1, err := natTest(host, udp1, localPort, echoPort)
 	gLog.Printf(LvDEBUG, "local port:%d  nat port:%d", localPort, port1)
 	if err != nil {
-		return "", 0, hasUPNPorNATPMP, err
+		return "", 0, hasIPv4, hasUPNPorNATPMP, err
 	}
-	if hasPublicIP == 1 || hasUPNPorNATPMP == 1 {
-		return ip1, NATNone, hasUPNPorNATPMP, nil
-	}
-	ip2, _, _, port2, err := natTest(host, udp2, localPort, 0) // 2rd nat test not need testing publicip
+	// if hasPublicIP == 1 || hasUPNPorNATPMP == 1 {
+	// 	return ip1, NATNone, hasUPNPorNATPMP, nil
+	// }
+	_, _, _, port2, err := natTest(host, udp2, localPort, 0) // 2rd nat test not need testing publicip
 	gLog.Printf(LvDEBUG, "local port:%d  nat port:%d", localPort, port2)
 	if err != nil {
-		return "", 0, hasUPNPorNATPMP, err
-	}
-	if ip1 != ip2 {
-		return "", 0, hasUPNPorNATPMP, fmt.Errorf("ip have changed, please retry again")
+		return "", 0, hasIPv4, hasUPNPorNATPMP, err
 	}
 	natType := NATSymmetric
 	if port1 == port2 {
 		natType = NATCone
 	}
-	//TODO: NATNone
-	return ip1, natType, hasUPNPorNATPMP, nil
+	return ip1, natType, hasIPv4, hasUPNPorNATPMP, nil
 }
 
 func echo(echoPort int) {

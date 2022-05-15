@@ -25,7 +25,7 @@ The code is open source, the P2P tunnel uses TLS1.3+AES double encryption, and t
 Benefit from lightweight, it easily supports most of major OS, like Windows, Linux, MacOS, also most of CPU architecture, like 386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64.
 
 ### 6. Efficient
-P2P direct connection lets your devices make good use of bandwidth.  Your device can be connected in any network environments, even supports NAT1-4 (Cone or Symmetric). Relying on the excellent congestion algorithm of the Quic protocol, high bandwidth and low latency can be obtained in a bad network environment.
+P2P direct connection lets your devices make good use of bandwidth.  Your device can be connected in any network environments, even supports NAT1-4 (Cone or Symmetric),UPNP,IPv6.  Relying on the excellent congestion algorithm of the Quic protocol, high bandwidth and low latency can be obtained in a bad network environment.
 
 ### 7. Integration
 Your applicaiton can call OpenP2P with a few code to make any internal networks communicate with each other.
@@ -113,7 +113,7 @@ go build
 
 ## TODO
 Short-Term:
-1. Support IPv6.
+1. Support IPv6.(100%)
 2. Support auto run when system boot, setup system service.(100%)
 3. Provide free servers to some low-performance network.(100%)
 4. Build website, users can manage all P2PApp and devices via it. View devices' online status, upgrade, restart or CURD P2PApp .(100%)

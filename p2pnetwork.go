@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -236,6 +237,14 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		peerNatType = t.config.peerNatType
 		peerIP = t.config.peerIP
 	}
+	// TODO: if tcp failed, should try udp punching, nattype should refactor also, when NATNONE and failed we don't know the peerNatType
+	// if err != nil && err == ErrorHandshake && t.isSupportTCP() {
+	// 	t, err = pn.addDirectTunnel(config, 0)
+	// 	if t != nil {
+	// 		peerNatType = t.config.peerNatType
+	// 		peerIP = t.config.peerIP
+	// 	}
+	// }
 	if err != nil && err == ErrorHandshake {
 		gLog.Println(LvERROR, "direct connect failed, try to relay")
 		t, rtid, relayMode, err = pn.addRelayTunnel(config)
@@ -373,13 +382,18 @@ func (pn *P2PNetwork) init() error {
 	var err error
 	for {
 		// detect nat type
-		pn.config.publicIP, pn.config.natType, pn.config.hasUPNPorNATPMP, err = getNATType(pn.config.ServerHost, pn.config.UDPPort1, pn.config.UDPPort2)
+		pn.config.publicIP, pn.config.natType, pn.config.hasIPv4, pn.config.hasUPNPorNATPMP, err = getNATType(pn.config.ServerHost, pn.config.UDPPort1, pn.config.UDPPort2)
 		// for testcase
 		if strings.Contains(pn.config.Node, "openp2pS2STest") {
 			pn.config.natType = NATSymmetric
+			pn.config.hasIPv4 = 0
+			pn.config.hasUPNPorNATPMP = 0
+
 		}
 		if strings.Contains(pn.config.Node, "openp2pC2CTest") {
 			pn.config.natType = NATCone
+			pn.config.hasIPv4 = 0
+			pn.config.hasUPNPorNATPMP = 0
 		}
 		if err != nil {
 			gLog.Println(LvDEBUG, "detect NAT type error:", err)
@@ -429,7 +443,7 @@ func (pn *P2PNetwork) init() error {
 		gLog.Println(LvDEBUG, "netinfo:", rsp)
 		if rsp != nil && rsp.Country != "" {
 			if IsIPv6(rsp.IP.String()) {
-				pn.config.ipv6 = rsp.IP.String()
+				pn.config.IPv6 = rsp.IP.String()
 				req.IPv6 = rsp.IP.String()
 			}
 			req.NetInfo = *rsp
@@ -610,4 +624,24 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
 		app.updateHeartbeat()
 		return false
 	})
+}
+
+func (pn *P2PNetwork) refreshIPv6() {
+	if !IsIPv6(pn.config.IPv6) { // not support ipv6, not refresh
+		return
+	}
+	client := &http.Client{Timeout: time.Second * 10}
+	r, err := client.Get("http://6.ipw.cn")
+	if err != nil {
+		gLog.Println(LvINFO, "refreshIPv6 error:", err)
+		return
+	}
+	defer r.Body.Close()
+	buf := make([]byte, 1024)
+	n, err := r.Body.Read(buf)
+	if n <= 0 {
+		gLog.Println(LvINFO, "netInfo error:", err, n)
+		return
+	}
+	pn.config.IPv6 = string(buf[:n])
 }

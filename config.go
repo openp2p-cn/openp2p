@@ -38,6 +38,7 @@ type AppConfig struct {
 	shareBandwidth  int
 	errMsg          string
 	connectTime     time.Time
+	fromToken       uint64
 }
 
 // TODO: add loglevel, maxlogfilesize
@@ -148,7 +149,6 @@ type NetworkConfig struct {
 	Node            string
 	User            string
 	localIP         string
-	ipv6            string
 	mac             string
 	os              string
 	publicIP        string
@@ -252,4 +252,14 @@ func parseParams(subCommand string) {
 	}
 	// gConf.mtx.Unlock()
 	gConf.save()
+}
+
+func (conf *AppConfig) isSupportTCP(pnConf NetworkConfig) bool {
+	if conf.peerVersion == "" || compareVersion(conf.peerVersion, LeastSupportTCPVersion) == LESS {
+		return false
+	}
+	if pnConf.hasIPv4 == 1 || pnConf.hasUPNPorNATPMP == 1 || conf.hasIPv4 == 1 || conf.hasUPNPorNATPMP == 1 || (IsIPv6(pnConf.IPv6) && IsIPv6(conf.IPv6)) {
+		return true
+	}
+	return false
 }

@@ -77,7 +77,7 @@ nohup ./openp2p -d -node OFFICEPC1 -token TOKEN  &
 # update local client
 ./openp2p update  
 # update remote client
-curl --insecure 'https://openp2p.cn:27182/api/v1/device/YOUR-NODE-NAME/update?user=&password='
+curl --insecure 'https://api.openp2p.cn:27183/api/v1/device/YOUR-NODE-NAME/update?user=&password='
 ```
 
 Windows系统需要设置防火墙放行本程序，程序会自动设置，如果设置失败会影响连接功能。

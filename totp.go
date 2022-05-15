@@ -25,6 +25,9 @@ func VerifyTOTP(code uint64, token uint64, ts int64) bool {
 	if code == 0 {
 		return false
 	}
+	if code == token {
+		return true
+	}
 	if code == GenTOTP(token, ts) || code == GenTOTP(token, ts-TOTPStep) || code == GenTOTP(token, ts+TOTPStep) {
 		return true
 	}

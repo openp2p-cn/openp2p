@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "1.5.6"
+const OpenP2PVersion = "2.0.1"
 const ProducnName string = "openp2p"
 const LeastSupportTCPVersion = "1.5.0"
 
@@ -155,6 +155,13 @@ const (
 	UderlayTCP  = "tcp"
 )
 
+// linkmode
+const (
+	LinkModeUDPPunch = "udppunch"
+	LinkModeIPv4     = "ipv4"
+	LinkModeIPv6     = "ipv6"
+)
+
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
 	data, err := json.Marshal(packet)
 	if err != nil {
@@ -181,9 +188,9 @@ func nodeNameToID(name string) uint64 {
 
 type PushConnectReq struct {
 	From            string `json:"from,omitempty"`
-	FromToken       uint64 `json:"fromToken,omitempty"` //my token
+	FromToken       uint64 `json:"fromToken,omitempty"` // deprecated
 	Version         string `json:"version,omitempty"`
-	Token           uint64 `json:"token,omitempty"`       // totp token
+	Token           uint64 `json:"token,omitempty"`       // if public totp token
 	ConeNatPort     int    `json:"coneNatPort,omitempty"` // if isPublic, is public port
 	NatType         int    `json:"natType,omitempty"`
 	HasIPv4         int    `json:"hasIPv4,omitempty"`
@@ -200,7 +207,7 @@ type PushConnectRsp struct {
 	Detail          string `json:"detail,omitempty"`
 	NatType         int    `json:"natType,omitempty"`
 	HasIPv4         int    `json:"hasIPv4,omitempty"`
-	IPv6            string `json:"IPv6,omitempty"`
+	IPv6            string `json:"IPv6,omitempty"` // if public relay node, ipv6 not set
 	HasUPNPorNATPMP int    `json:"hasUPNPorNATPMP,omitempty"`
 	ConeNatPort     int    `json:"coneNatPort,omitempty"` //it's not only cone, but also upnp or nat-pmp hole
 	FromIP          string `json:"fromIP,omitempty"`
@@ -323,6 +330,7 @@ type AppInfo struct {
 	ShareBandwidth int    `json:"shareBandWidth,omitempty"`
 	RelayNode      string `json:"relayNode,omitempty"`
 	RelayMode      string `json:"relayMode,omitempty"`
+	LinkMode       string `json:"linkMode,omitempty"`
 	Version        string `json:"version,omitempty"`
 	RetryTime      string `json:"retryTime,omitempty"`
 	ConnectTime    string `json:"connectTime,omitempty"`

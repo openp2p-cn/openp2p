@@ -30,8 +30,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		gLog.Println(LvDEBUG, "push connect response to ", req.From)
 		// verify totp token or token
 		if VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
-			VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()) ||
-			(req.FromToken == pn.config.Token) {
+			VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()) {
 			gLog.Printf(LvINFO, "Access Granted\n")
 			config := AppConfig{}
 			config.peerNatType = req.NatType
@@ -39,8 +38,10 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			config.peerIP = req.FromIP
 			config.PeerNode = req.From
 			config.peerVersion = req.Version
+			config.fromToken = req.Token
+			config.IPv6 = req.IPv6
 			// share relay node will limit bandwidth
-			if req.FromToken != pn.config.Token {
+			if req.Token != pn.config.Token {
 				gLog.Printf(LvINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
 				config.shareBandwidth = pn.config.ShareBandwidth
 			}
@@ -124,6 +125,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			appActive := 0
 			relayNode := ""
 			relayMode := ""
+			linkMode := LinkModeUDPPunch
 			i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
 			if ok {
 				app := i.(*p2pApp)
@@ -132,6 +134,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 				}
 				relayNode = app.relayNode
 				relayMode = app.relayMode
+				linkMode = app.tunnel.linkMode
 			}
 			appInfo := AppInfo{
 				AppName:     config.AppName,
@@ -140,6 +143,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 				SrcPort:     config.SrcPort,
 				RelayNode:   relayNode,
 				RelayMode:   relayMode,
+				LinkMode:    linkMode,
 				PeerNode:    config.PeerNode,
 				DstHost:     config.DstHost,
 				DstPort:     config.DstPort,
