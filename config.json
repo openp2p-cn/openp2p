@@ -1,10 +1,9 @@
 {
     "network": {
         "Node": "YOUR_NODE_NAME",
-        "User": "YOUR_USER_NAME",
-        "Password": "YOUR_PASSWORD",
-        "ServerHost": "openp2p.cn",
-        "ServerPort": 27182,
+        "Token": "YOUR_TOKEN",
+        "ServerHost": "api.openp2p.cn",
+        "ServerPort": 27183,
         "UDPPort1": 27182,
         "UDPPort2": 27183
     },
