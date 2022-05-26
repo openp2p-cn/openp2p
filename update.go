@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-func update() {
+func update(host string, port int) {
 	gLog.Println(LvINFO, "update start")
 	defer gLog.Println(LvINFO, "update end")
 	c := http.Client{
@@ -27,7 +27,7 @@ func update() {
 	}
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	rsp, err := c.Get(fmt.Sprintf("https://api.openp2p.cn:27183/api/v1/update?fromver=%s&os=%s&arch=%s", OpenP2PVersion, goos, goarch))
+	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s", host, port, OpenP2PVersion, goos, goarch))
 	if err != nil {
 		gLog.Println(LvERROR, "update:query update list failed:", err)
 		return

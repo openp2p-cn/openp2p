@@ -10,9 +10,17 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "2.0.1"
+const OpenP2PVersion = "3.1.0"
 const ProducnName string = "openp2p"
-const LeastSupportTCPVersion = "1.5.0"
+const LeastSupportVersion = "3.0.0"
+
+const (
+	IfconfigPort1 = 27180
+	IfconfigPort2 = 27181
+	WsPort        = 27183
+	UDPPort1      = 27182
+	UDPPort2      = 27183
+)
 
 type openP2PHeader struct {
 	DataLen  uint32
@@ -68,6 +76,7 @@ const (
 	MsgP2P       = 4
 	MsgRelay     = 5
 	MsgReport    = 6
+	MsgQuery     = 7
 )
 
 // TODO: seperate node push and web push.
@@ -86,6 +95,7 @@ const (
 	MsgPushRestart           = 11
 	MsgPushEditNode          = 12
 	MsgPushAPPKey            = 13
+	MsgPushReportLog         = 14
 )
 
 // MsgP2P sub type message
@@ -117,6 +127,7 @@ const (
 	MsgReportQuery
 	MsgReportConnect
 	MsgReportApps
+	MsgReportLog
 )
 
 const (
@@ -158,8 +169,18 @@ const (
 // linkmode
 const (
 	LinkModeUDPPunch = "udppunch"
-	LinkModeIPv4     = "ipv4"
-	LinkModeIPv6     = "ipv6"
+	LinkModeTCPPunch = "tcppunch"
+	LinkModeIPv4     = "ipv4" // for web
+	LinkModeIPv6     = "ipv6" // for web
+	LinkModeTCP6     = "tcp6"
+	LinkModeTCP4     = "tcp4"
+	LinkModeUDP6     = "udp6"
+	LinkModeUDP4     = "udp4"
+)
+
+const (
+	MsgQueryPeerInfoReq = iota
+	MsgQueryPeerInfoRsp
 )
 
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
@@ -187,18 +208,20 @@ func nodeNameToID(name string) uint64 {
 }
 
 type PushConnectReq struct {
-	From            string `json:"from,omitempty"`
-	FromToken       uint64 `json:"fromToken,omitempty"` // deprecated
-	Version         string `json:"version,omitempty"`
-	Token           uint64 `json:"token,omitempty"`       // if public totp token
-	ConeNatPort     int    `json:"coneNatPort,omitempty"` // if isPublic, is public port
-	NatType         int    `json:"natType,omitempty"`
-	HasIPv4         int    `json:"hasIPv4,omitempty"`
-	IPv6            string `json:"IPv6,omitempty"`
-	HasUPNPorNATPMP int    `json:"hasUPNPorNATPMP,omitempty"`
-	FromIP          string `json:"fromIP,omitempty"`
-	ID              uint64 `json:"id,omitempty"`
-	AppKey          uint64 `json:"appKey,omitempty"` // for underlay tcp
+	From             string `json:"from,omitempty"`
+	FromToken        uint64 `json:"fromToken,omitempty"` // deprecated
+	Version          string `json:"version,omitempty"`
+	Token            uint64 `json:"token,omitempty"`       // if public totp token
+	ConeNatPort      int    `json:"coneNatPort,omitempty"` // if isPublic, is public port
+	NatType          int    `json:"natType,omitempty"`
+	HasIPv4          int    `json:"hasIPv4,omitempty"`
+	IPv6             string `json:"IPv6,omitempty"`
+	HasUPNPorNATPMP  int    `json:"hasUPNPorNATPMP,omitempty"`
+	FromIP           string `json:"fromIP,omitempty"`
+	ID               uint64 `json:"id,omitempty"`
+	AppKey           uint64 `json:"appKey,omitempty"` // for underlay tcp
+	LinkMode         string `json:"linkMode,omitempty"`
+	IsUnderlayServer int    `json:"isServer,omitempty"` // Requset spec peer is server
 }
 type PushConnectRsp struct {
 	Error           int    `json:"error,omitempty"`
@@ -342,6 +365,18 @@ type ReportApps struct {
 	Apps []AppInfo
 }
 
+type ReportLogReq struct {
+	FileName string `json:"fileName,omitempty"`
+	Offset   int64  `json:"offset,omitempty"`
+	Len      int64  `json:"len,omitempty"`
+}
+type ReportLogRsp struct {
+	FileName string `json:"fileName,omitempty"`
+	Content  string `json:"content,omitempty"`
+	Len      int64  `json:"len,omitempty"`
+	Total    int64  `json:"total,omitempty"`
+}
+
 type UpdateInfo struct {
 	Error       int    `json:"error,omitempty"`
 	ErrorDetail string `json:"errorDetail,omitempty"`
@@ -379,4 +414,18 @@ type ProfileInfo struct {
 type EditNode struct {
 	NewName   string `json:"newName,omitempty"`
 	Bandwidth int    `json:"bandwidth,omitempty"`
+}
+
+type QueryPeerInfoReq struct {
+	Token    uint64 `json:"token,omitempty"` // if public totp token
+	PeerNode string `json:"peerNode,omitempty"`
+}
+type QueryPeerInfoRsp struct {
+	Online          int    `json:"online,omitempty"`
+	Version         string `json:"version,omitempty"`
+	NatType         int    `json:"natType,omitempty"`
+	IPv4            string `json:"IPv4,omitempty"`
+	HasIPv4         int    `json:"hasIPv4,omitempty"` // has public ipv4
+	IPv6            string `json:"IPv6,omitempty"`    // if public relay node, ipv6 not set
+	HasUPNPorNATPMP int    `json:"hasUPNPorNATPMP,omitempty"`
 }

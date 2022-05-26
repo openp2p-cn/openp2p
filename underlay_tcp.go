@@ -7,10 +7,11 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	reuse "github.com/libp2p/go-reuseport"
 )
 
 type underlayTCP struct {
-	listener net.Listener
 	writeMtx *sync.Mutex
 	net.Conn
 }
@@ -66,13 +67,20 @@ func (conn *underlayTCP) Close() error {
 	return conn.Conn.Close()
 }
 
-func listenTCP(port int, idleTimeout time.Duration) (*underlayTCP, error) {
-	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+func listenTCP(host string, port int, localPort int, mode string) (*underlayTCP, error) {
+	if mode == LinkModeTCPPunch {
+		c, err := reuse.Dial("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port)) // TODO: timeout
+		if err != nil {
+			gLog.Println(LvDEBUG, "send tcp punch: ", err)
+			return nil, err
+		}
+		return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
+	}
+	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", localPort))
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	defer l.Close()
 	l.SetDeadline(time.Now().Add(SymmetricHandshakeAckTimeout))
 	c, err := l.Accept()
 	defer l.Close()
@@ -82,11 +90,19 @@ func listenTCP(port int, idleTimeout time.Duration) (*underlayTCP, error) {
 	return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
 }
 
-func dialTCP(host string, port int) (*underlayTCP, error) {
-	c, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
+func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, error) {
+	var c net.Conn
+	var err error
+	if mode == LinkModeTCPPunch {
+		c, err = reuse.Dial("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port))
+	} else {
+		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
+	}
+
 	if err != nil {
-		fmt.Printf("Dial %s:%d error:%s", host, port, err)
+		gLog.Printf(LvERROR, "Dial %s:%d error:%s", host, port, err)
 		return nil, err
 	}
+	gLog.Printf(LvDEBUG, "Dial %s:%d OK", host, port)
 	return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
 }

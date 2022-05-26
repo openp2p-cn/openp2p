@@ -42,7 +42,7 @@ func main() {
 	}
 	parseParams("")
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ Group: 16947733, Email: openp2p.cn@gmail.com")
+	gLog.Println(LvINFO, "Contact: QQ: 477503927, Email: openp2p.cn@gmail.com")
 
 	if gConf.daemonMode {
 		d := daemon{}

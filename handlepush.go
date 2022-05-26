@@ -19,7 +19,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 	}
 	gLog.Printf(LvDEBUG, "handle push msg type:%d, push header:%+v", subType, pushHead)
 	switch subType {
-	case MsgPushConnectReq:
+	case MsgPushConnectReq: // TODO: handle a msg move to a new function
 		req := PushConnectReq{}
 		err := json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req)
 		if err != nil {
@@ -28,6 +28,17 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		gLog.Printf(LvINFO, "%s is connecting...", req.From)
 		gLog.Println(LvDEBUG, "push connect response to ", req.From)
+		if compareVersion(req.Version, LeastSupportVersion) == LESS {
+			gLog.Println(LvERROR, ErrVersionNotCompatible.Error(), ":", req.From)
+			rsp := PushConnectRsp{
+				Error:  10,
+				Detail: ErrVersionNotCompatible.Error(),
+				To:     req.From,
+				From:   pn.config.Node,
+			}
+			pn.push(req.From, MsgPushConnectRsp, rsp)
+			return ErrVersionNotCompatible
+		}
 		// verify totp token or token
 		if VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
 			VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()) {
@@ -40,6 +51,10 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			config.peerVersion = req.Version
 			config.fromToken = req.Token
 			config.IPv6 = req.IPv6
+			config.hasIPv4 = req.HasIPv4
+			config.hasUPNPorNATPMP = req.HasUPNPorNATPMP
+			config.linkMode = req.LinkMode
+			config.isUnderlayServer = req.IsUnderlayServer
 			// share relay node will limit bandwidth
 			if req.Token != pn.config.Token {
 				gLog.Printf(LvINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
@@ -98,7 +113,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		SaveKey(req.AppID, req.AppKey)
 	case MsgPushUpdate:
 		gLog.Println(LvINFO, "MsgPushUpdate")
-		update() // download new version first, then exec ./openp2p update
+		update(pn.config.ServerHost, pn.config.ServerPort) // download new version first, then exec ./openp2p update
 		targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 		args := []string{"update"}
 		env := os.Environ()
@@ -134,7 +149,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 				}
 				relayNode = app.relayNode
 				relayMode = app.relayMode
-				linkMode = app.tunnel.linkMode
+				linkMode = app.tunnel.linkModeWeb
 			}
 			appInfo := AppInfo{
 				AppName:     config.AppName,
@@ -158,6 +173,49 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			req.Apps = append(req.Apps, appInfo)
 		}
 		pn.write(MsgReport, MsgReportApps, &req)
+	case MsgPushReportLog:
+		gLog.Println(LvINFO, "MsgPushReportLog")
+		req := ReportLogReq{}
+		err := json.Unmarshal(msg[openP2PHeaderSize:], &req)
+		if err != nil {
+			gLog.Printf(LvERROR, "wrong MsgPushReportLog:%s  %s", err, string(msg[openP2PHeaderSize:]))
+			return err
+		}
+		if req.FileName == "" {
+			req.FileName = "openp2p.log"
+		}
+		f, err := os.Open(filepath.Join("log", req.FileName))
+		if err != nil {
+			gLog.Println(LvERROR, "read log file error:", err)
+			break
+		}
+		fi, err := f.Stat()
+		if err != nil {
+			break
+		}
+		if req.Offset == 0 && fi.Size() > 4096 {
+			req.Offset = fi.Size() - 4096
+		}
+		if req.Len <= 0 {
+			req.Len = 4096
+		}
+		f.Seek(req.Offset, 0)
+		if req.Len > 1024*1024 { // too large
+			break
+		}
+		buff := make([]byte, req.Len)
+		readLength, err := f.Read(buff)
+		f.Close()
+		if err != nil {
+			gLog.Println(LvERROR, "read log content error:", err)
+			break
+		}
+		rsp := ReportLogRsp{}
+		rsp.Content = string(buff[:readLength])
+		rsp.FileName = req.FileName
+		rsp.Total = fi.Size()
+		rsp.Len = req.Len
+		pn.write(MsgReport, MsgPushReportLog, &rsp)
 	case MsgPushEditApp:
 		gLog.Println(LvINFO, "MsgPushEditApp")
 		newApp := AppInfo{}

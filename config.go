@@ -24,21 +24,23 @@ type AppConfig struct {
 	PeerUser string
 	Enabled  int // default:1
 	// runtime info
-	peerVersion     string
-	peerToken       uint64
-	peerNatType     int
-	hasIPv4         int
-	IPv6            string
-	hasUPNPorNATPMP int
-	peerIP          string
-	peerConeNatPort int
-	retryNum        int
-	retryTime       time.Time
-	nextRetryTime   time.Time
-	shareBandwidth  int
-	errMsg          string
-	connectTime     time.Time
-	fromToken       uint64
+	peerVersion      string
+	peerToken        uint64
+	peerNatType      int
+	hasIPv4          int
+	IPv6             string
+	hasUPNPorNATPMP  int
+	peerIP           string
+	peerConeNatPort  int
+	retryNum         int
+	retryTime        time.Time
+	nextRetryTime    time.Time
+	shareBandwidth   int
+	errMsg           string
+	connectTime      time.Time
+	fromToken        uint64
+	linkMode         string
+	isUnderlayServer int // TODO: bool?
 }
 
 // TODO: add loglevel, maxlogfilesize
@@ -105,10 +107,16 @@ func (c *Config) save() {
 	}
 }
 
+func init() {
+	gConf.LogLevel = 1
+	gConf.Network.ShareBandwidth = 10
+	gConf.Network.ServerHost = "api.openp2p.cn"
+	gConf.Network.ServerPort = WsPort
+
+}
+
 func (c *Config) load() error {
 	c.mtx.Lock()
-	c.LogLevel = IntValueNotSet
-	c.Network.ShareBandwidth = IntValueNotSet
 	defer c.mtx.Unlock()
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
@@ -162,11 +170,13 @@ type NetworkConfig struct {
 	ServerPort int
 	UDPPort1   int
 	UDPPort2   int
+	TCPPort    int
 }
 
 func parseParams(subCommand string) {
 	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
 	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
+	serverPort := fset.Int("serverport", WsPort, "server port ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
 	token := fset.Uint64("token", 0, "token")
 	node := fset.String("node", "", "node name. 8-31 characters. if not set, it will be hostname")
@@ -174,13 +184,14 @@ func parseParams(subCommand string) {
 	dstIP := fset.String("dstip", "127.0.0.1", "destination ip ")
 	dstPort := fset.Int("dstport", 0, "destination port ")
 	srcPort := fset.Int("srcport", 0, "source port ")
+	tcpPort := fset.Int("tcpport", 0, "tcp port for upnp or publicip")
 	protocol := fset.String("protocol", "tcp", "tcp or udp")
 	appName := fset.String("appname", "", "app name")
 	shareBandwidth := fset.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
-	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
+	logLevel := fset.Int("loglevel", 0, "0:info 1:warn 2:error 3:debug")
 	if subCommand == "" { // no subcommand
 		fset.Parse(os.Args[1:])
 	} else {
@@ -197,7 +208,6 @@ func parseParams(subCommand string) {
 	if !*newconfig {
 		gConf.load() // load old config. otherwise will clear all apps
 	}
-	gConf.LogLevel = *logLevel
 	if config.SrcPort != 0 {
 		gConf.add(config, true)
 	}
@@ -217,13 +227,16 @@ func parseParams(subCommand string) {
 		if f.Name == "loglevel" {
 			gConf.LogLevel = *logLevel
 		}
+		if f.Name == "tcpport" {
+			gConf.Network.TCPPort = *tcpPort
+		}
+		if f.Name == "token" {
+			gConf.Network.Token = *token
+		}
 	})
 
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
-	}
-	if *token != 0 {
-		gConf.Network.Token = *token
 	}
 	if *node != "" {
 		if len(*node) < 8 {
@@ -236,30 +249,21 @@ func parseParams(subCommand string) {
 			gConf.Network.Node = defaultNodeName()
 		}
 	}
-	if gConf.LogLevel == IntValueNotSet {
-		gConf.LogLevel = *logLevel
-	}
-	if gConf.Network.ShareBandwidth == IntValueNotSet {
-		gConf.Network.ShareBandwidth = *shareBandwidth
+	if gConf.Network.TCPPort == 0 {
+		if *tcpPort == 0 {
+			p := int(nodeNameToID(gConf.Network.Node)%15000 + 50000)
+			tcpPort = &p
+		}
+		gConf.Network.TCPPort = *tcpPort
 	}
 
-	gConf.Network.ServerPort = 27183
-	gConf.Network.UDPPort1 = 27182
-	gConf.Network.UDPPort2 = 27183
+	gConf.Network.ServerPort = *serverPort
+	gConf.Network.UDPPort1 = UDPPort1
+	gConf.Network.UDPPort2 = UDPPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	if *notVerbose {
 		gLog.setMode(LogFile)
 	}
 	// gConf.mtx.Unlock()
 	gConf.save()
-}
-
-func (conf *AppConfig) isSupportTCP(pnConf NetworkConfig) bool {
-	if conf.peerVersion == "" || compareVersion(conf.peerVersion, LeastSupportTCPVersion) == LESS {
-		return false
-	}
-	if pnConf.hasIPv4 == 1 || pnConf.hasUPNPorNATPMP == 1 || conf.hasIPv4 == 1 || conf.hasUPNPorNATPMP == 1 || (IsIPv6(pnConf.IPv6) && IsIPv6(conf.IPv6)) {
-		return true
-	}
-	return false
 }

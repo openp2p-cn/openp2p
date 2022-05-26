@@ -12,7 +12,7 @@ import (
 
 func handshakeC2C(t *P2PTunnel) (err error) {
 	gLog.Printf(LvDEBUG, "handshakeC2C %s:%d:%d to %s:%d", t.pn.config.Node, t.coneLocalPort, t.coneNatPort, t.config.peerIP, t.config.peerConeNatPort)
-	defer gLog.Printf(LvDEBUG, "handshakeC2C ok")
+	defer gLog.Printf(LvDEBUG, "handshakeC2C end")
 	conn, err := net.ListenUDP("udp", t.la)
 	if err != nil {
 		return err
@@ -45,6 +45,7 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 		}
 		if head.MainType == MsgP2P && head.SubType == MsgPunchHandshakeAck {
 			gLog.Printf(LvDEBUG, "read %d handshake ack ", t.id)
+			gLog.Printf(LvINFO, "handshakeC2C ok")
 			return nil
 		}
 	}
@@ -54,9 +55,10 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 		_, err = UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 		if err != nil {
 			gLog.Println(LvDEBUG, "handshakeC2C write MsgPunchHandshakeAck error", err)
+			return err
 		}
-		return err
 	}
+	gLog.Printf(LvINFO, "handshakeC2C ok")
 	return nil
 }
 
@@ -115,6 +117,7 @@ func handshakeC2S(t *P2PTunnel) error {
 		_, err = UDPWrite(conn, dst, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 		return err
 	}
+	gLog.Printf(LvINFO, "handshakeC2S ok")
 	return nil
 }
 
@@ -175,6 +178,7 @@ func handshakeS2C(t *P2PTunnel) error {
 		return fmt.Errorf("wait handshake failed")
 	case la := <-gotCh:
 		gLog.Println(LvDEBUG, "symmetric handshake ok", la)
+		gLog.Printf(LvINFO, "handshakeS2C ok")
 	}
 	return nil
 }

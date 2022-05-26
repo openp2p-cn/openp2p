@@ -188,6 +188,15 @@ func compareVersion(v1, v2 string) int {
 	return LESS
 }
 
+func parseMajorVer(ver string) int {
+	v1Arr := strings.Split(ver, ".")
+	if len(v1Arr) > 0 {
+		n, _ := strconv.ParseInt(v1Arr[0], 10, 32)
+		return int(n)
+	}
+	return 0
+}
+
 func IsIPv6(address string) bool {
 	return strings.Count(address, ":") >= 2
 }

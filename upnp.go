@@ -34,11 +34,12 @@ type NAT interface {
 }
 
 func Discover() (nat NAT, err error) {
+	localIP := localIPv4()
 	ssdp, err := net.ResolveUDPAddr("udp4", "239.255.255.250:1900")
 	if err != nil {
 		return
 	}
-	conn, err := net.ListenPacket("udp4", ":0")
+	conn, err := net.ListenPacket("udp4", fmt.Sprintf("%s:0", localIP))
 	if err != nil {
 		return
 	}
@@ -67,6 +68,7 @@ func Discover() (nat NAT, err error) {
 		var n int
 		_, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
+			gLog.Println(LvERROR, "UPNP discover error:", err)
 			return
 		}
 
@@ -98,12 +100,10 @@ func Discover() (nat NAT, err error) {
 			if err != nil {
 				return
 			}
-			var ourIP net.IP
-			ourIP, err = localIPv4()
 			if err != nil {
 				return
 			}
-			nat = &upnpNAT{serviceURL: serviceURL, ourIP: ourIP.String(), urnDomain: urnDomain}
+			nat = &upnpNAT{serviceURL: serviceURL, ourIP: localIP, urnDomain: urnDomain}
 			return
 		}
 	}
@@ -174,29 +174,14 @@ func getChildService(d *Device, serviceType string) *UPNPService {
 	return nil
 }
 
-func localIPv4() (net.IP, error) {
-	tt, err := net.Interfaces()
+func localIPv4() string { // TODO: multi nic will wrong
+	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		return nil, err
+		return ""
 	}
-	for _, t := range tt {
-		aa, err := t.Addrs()
-		if err != nil {
-			return nil, err
-		}
-		for _, a := range aa {
-			ipnet, ok := a.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			v4 := ipnet.IP.To4()
-			if v4 == nil || v4[0] == 127 { // loopback address
-				continue
-			}
-			return v4, nil
-		}
-	}
-	return nil, errors.New("cannot find local IP address")
+	defer conn.Close()
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
 }
 
 func getServiceURL(rootURL string) (url, urnDomain string, err error) {

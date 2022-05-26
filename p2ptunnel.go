@@ -28,58 +28,85 @@ type P2PTunnel struct {
 	tunnelServer  bool // different from underlayServer
 	coneLocalPort int
 	coneNatPort   int
-	linkMode      string
+	linkModeWeb   string // use config.linkmode
 }
 
-func (t *P2PTunnel) init() {
+func (t *P2PTunnel) requestPeerInfo() error {
+	// request peer info
+	t.pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{t.pn.config.Token, t.config.PeerNode})
+	head, body := t.pn.read("", MsgQuery, MsgQueryPeerInfoRsp, time.Second*10)
+	if head == nil {
+		return ErrPeerOffline
+	}
+	rsp := QueryPeerInfoRsp{}
+	err := json.Unmarshal(body, &rsp)
+	if err != nil {
+		gLog.Printf(LvERROR, "wrong QueryPeerInfoRsp:%s", err)
+		return ErrMsgFormat
+	}
+	if rsp.Online == 0 {
+		return ErrPeerOffline
+	}
+	if compareVersion(rsp.Version, LeastSupportVersion) == LESS {
+		return ErrVersionNotCompatible
+	}
+	t.config.peerVersion = rsp.Version
+	t.config.hasIPv4 = rsp.HasIPv4
+	t.config.peerIP = rsp.IPv4
+	t.config.IPv6 = rsp.IPv6
+	t.config.hasUPNPorNATPMP = rsp.HasUPNPorNATPMP
+	t.config.peerNatType = rsp.NatType
+	///
+	return nil
+}
+func (t *P2PTunnel) initPort() {
 	t.running = true
 	t.hbMtx.Lock()
 	t.hbTime = time.Now()
 	t.hbMtx.Unlock()
 	t.hbTimeRelay = time.Now().Add(time.Second * 600) // TODO: test fake time
-	localPort := int(rand.Uint32()%10000 + 50000)
-	if t.pn.config.natType == NATCone {
-		// prepare one random cone hole
-		_, _, _, port1, _ := natTest(t.pn.config.ServerHost, t.pn.config.UDPPort1, localPort, 0)
-		t.coneLocalPort = localPort
-		t.coneNatPort = port1
-		t.la = &net.UDPAddr{IP: net.ParseIP(t.pn.config.localIP), Port: t.coneLocalPort}
-	} else {
-		t.coneLocalPort = localPort
-		t.coneNatPort = localPort // symmetric doesn't need coneNatPort
-		if t.pn.config.hasUPNPorNATPMP == 1 {
-			nat, err := Discover()
-			if err != nil {
-				gLog.Println(LvDEBUG, "could not perform UPNP discover:", err)
-			} else {
-				externalPort, err := nat.AddPortMapping("tcp", localPort, localPort, "openp2p", 30) // timeout the connection still alive, make the timeout short
-				if err != nil {
-					gLog.Println(LvDEBUG, "could not add udp UPNP port mapping", externalPort)
-				}
-			}
-		}
-		t.la = &net.UDPAddr{IP: net.ParseIP(t.pn.config.localIP), Port: t.coneLocalPort}
+	localPort := int(rand.Uint32()%15000 + 50000)     // if the process has bug, will add many upnp port. use specify p2p port by param
+	if t.config.linkMode == LinkModeTCP6 {
+		t.pn.refreshIPv6()
 	}
+	if t.config.linkMode == LinkModeTCP6 || t.config.linkMode == LinkModeTCP4 {
+		t.coneLocalPort = t.pn.config.TCPPort
+		t.coneNatPort = t.pn.config.TCPPort // symmetric doesn't need coneNatPort
+	}
+	if t.config.linkMode == LinkModeUDPPunch {
+		// prepare one random cone hole
+		_, _, _, natPort, _ := natTest(t.pn.config.ServerHost, t.pn.config.UDPPort1, localPort, 0)
+		t.coneLocalPort = localPort
+		t.coneNatPort = natPort
+	}
+	if t.config.linkMode == LinkModeTCPPunch {
+		// prepare one random cone hole
+		_, natPort := natTCP(t.pn.config.ServerHost, IfconfigPort1, localPort)
+		t.coneLocalPort = localPort
+		t.coneNatPort = natPort
+	}
+	t.la = &net.UDPAddr{IP: net.ParseIP(t.pn.config.localIP), Port: t.coneLocalPort}
 	gLog.Printf(LvDEBUG, "prepare punching port %d:%d", t.coneLocalPort, t.coneNatPort)
 }
 
 func (t *P2PTunnel) connect() error {
 	gLog.Printf(LvDEBUG, "start p2pTunnel to %s ", t.config.PeerNode)
 	t.tunnelServer = false
-	t.pn.refreshIPv6()
 	appKey := uint64(0)
 	req := PushConnectReq{
-		Token:           t.config.peerToken,
-		From:            t.pn.config.Node,
-		FromIP:          t.pn.config.publicIP,
-		ConeNatPort:     t.coneNatPort,
-		NatType:         t.pn.config.natType,
-		HasIPv4:         t.pn.config.hasIPv4,
-		IPv6:            t.pn.config.IPv6,
-		HasUPNPorNATPMP: t.pn.config.hasUPNPorNATPMP,
-		ID:              t.id,
-		AppKey:          appKey,
-		Version:         OpenP2PVersion,
+		Token:            t.config.peerToken,
+		From:             t.pn.config.Node,
+		FromIP:           t.pn.config.publicIP,
+		ConeNatPort:      t.coneNatPort,
+		NatType:          t.pn.config.natType,
+		HasIPv4:          t.pn.config.hasIPv4,
+		IPv6:             t.pn.config.IPv6,
+		HasUPNPorNATPMP:  t.pn.config.hasUPNPorNATPMP,
+		ID:               t.id,
+		AppKey:           appKey,
+		Version:          OpenP2PVersion,
+		LinkMode:         t.config.linkMode,
+		IsUnderlayServer: t.config.isUnderlayServer ^ 1,
 	}
 	if req.Token == 0 { // no relay token
 		req.Token = t.pn.config.Token
@@ -162,7 +189,7 @@ func (t *P2PTunnel) close() {
 }
 
 func (t *P2PTunnel) start() error {
-	if !t.config.isSupportTCP(t.pn.config) {
+	if t.config.linkMode == LinkModeUDPPunch {
 		if err := t.handshake(); err != nil {
 			return err
 		}
@@ -176,7 +203,7 @@ func (t *P2PTunnel) start() error {
 }
 
 func (t *P2PTunnel) handshake() error {
-	if t.config.peerConeNatPort > 0 {
+	if t.config.peerConeNatPort > 0 { // only peer is cone should prepare t.ra
 		var err error
 		t.ra, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", t.config.peerIP, t.config.peerConeNatPort))
 		if err != nil {
@@ -207,23 +234,22 @@ func (t *P2PTunnel) handshake() error {
 }
 
 func (t *P2PTunnel) connectUnderlay() (err error) {
-	if !t.config.isSupportTCP(t.pn.config) {
+	switch t.config.linkMode {
+	case LinkModeTCP6:
+		t.conn, err = t.connectUnderlayTCP6()
+	case LinkModeTCP4:
+		t.conn, err = t.connectUnderlayTCP()
+	case LinkModeTCPPunch:
+		t.conn, err = t.connectUnderlayTCP()
+	case LinkModeUDPPunch:
 		t.conn, err = t.connectUnderlayQuic()
-		if err != nil {
-			return err
-		}
-	} else {
-		if IsIPv6(t.pn.config.IPv6) && IsIPv6(t.config.IPv6) { // both have ipv6
-			t.conn, err = t.connectUnderlayTCP6()
-			if err != nil {
-				return err
-			}
-		} else { // hasipv4 or upnp
-			t.conn, err = t.connectUnderlayTCP()
-			if err != nil {
-				return err
-			}
-		}
+
+	}
+	if err != nil {
+		return err
+	}
+	if t.conn == nil {
+		return errors.New("connect underlay error")
 	}
 	t.setRun(true)
 	go t.readLoop()
@@ -235,7 +261,7 @@ func (t *P2PTunnel) connectUnderlayQuic() (c underlay, err error) {
 	gLog.Println(LvINFO, "connectUnderlayQuic start")
 	defer gLog.Println(LvINFO, "connectUnderlayQuic end")
 	var qConn *underlayQUIC
-	if t.isUnderlayServer() {
+	if t.config.isUnderlayServer == 1 {
 		time.Sleep(time.Millisecond * 10) // punching udp port will need some times in some env
 		qConn, err = listenQuic(t.la.String(), TunnelIdleTimeout)
 		if err != nil {
@@ -288,7 +314,7 @@ func (t *P2PTunnel) connectUnderlayQuic() (c underlay, err error) {
 
 	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
 	gLog.Println(LvDEBUG, "quic connection ok")
-	t.linkMode = LinkModeUDPPunch
+	t.linkModeWeb = LinkModeUDPPunch
 	return qConn, nil
 }
 
@@ -297,37 +323,36 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 	gLog.Println(LvINFO, "connectUnderlayTCP start")
 	defer gLog.Println(LvINFO, "connectUnderlayTCP end")
 	var qConn *underlayTCP
-	if t.isUnderlayServer() {
+	if t.config.isUnderlayServer == 1 {
 		t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
-		qConn, err = listenTCP(t.coneNatPort, TunnelIdleTimeout)
+		qConn, err = listenTCP(t.config.peerIP, t.config.peerConeNatPort, t.coneLocalPort, t.config.linkMode)
 		if err != nil {
 			return nil, fmt.Errorf("listen TCP error:%s", err)
 		}
+
 		_, buff, err := qConn.ReadBuffer()
 		if err != nil {
-			qConn.listener.Close()
 			return nil, fmt.Errorf("read start msg error:%s", err)
 		}
 		if buff != nil {
 			gLog.Println(LvDEBUG, string(buff))
 		}
 		qConn.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, []byte("OpenP2P,hello2"))
-		gLog.Println(LvDEBUG, "TCP connection ok")
+		gLog.Println(LvINFO, "TCP connection ok")
 		return qConn, nil
 	}
 
 	//else
 	t.pn.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, time.Second*5)
-	gLog.Println(LvDEBUG, "TCP dial to ", t.ra.String())
-	qConn, err = dialTCP(t.config.peerIP, t.config.peerConeNatPort)
+	gLog.Println(LvDEBUG, "TCP dial to ", t.config.peerIP, ":", t.config.peerConeNatPort)
+	qConn, err = dialTCP(t.config.peerIP, t.config.peerConeNatPort, t.coneLocalPort, t.config.linkMode)
 	if err != nil {
-		return nil, fmt.Errorf("TCP dial to %s error:%s", t.ra.String(), err)
+		return nil, fmt.Errorf("TCP dial to %s:%d error:%s", t.config.peerIP, t.config.peerConeNatPort, err)
 	}
 	handshakeBegin := time.Now()
 	qConn.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
 	_, buff, err := qConn.ReadBuffer()
 	if err != nil {
-		qConn.listener.Close()
 		return nil, fmt.Errorf("read MsgTunnelHandshake error:%s", err)
 	}
 	if buff != nil {
@@ -335,8 +360,8 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 	}
 
 	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
-	gLog.Println(LvDEBUG, "TCP connection ok")
-	t.linkMode = LinkModeIPv4
+	gLog.Println(LvINFO, "TCP connection ok")
+	t.linkModeWeb = LinkModeIPv4
 	return qConn, nil
 }
 
@@ -344,7 +369,7 @@ func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
 	gLog.Println(LvINFO, "connectUnderlayTCP6 start")
 	defer gLog.Println(LvINFO, "connectUnderlayTCP6 end")
 	var qConn *underlayTCP6
-	if t.isUnderlayServer() {
+	if t.config.isUnderlayServer == 1 {
 		t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
 		qConn, err = listenTCP6(t.coneNatPort, TunnelIdleTimeout)
 		if err != nil {
@@ -383,7 +408,7 @@ func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
 
 	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
 	gLog.Println(LvDEBUG, "TCP6 connection ok")
-	t.linkMode = LinkModeIPv6
+	t.linkModeWeb = LinkModeIPv6
 	return qConn, nil
 }
 
@@ -593,15 +618,4 @@ func (t *P2PTunnel) closeOverlayConns(appID uint64) {
 		}
 		return true
 	})
-}
-
-func (t *P2PTunnel) isUnderlayServer() bool {
-	if (t.pn.config.hasIPv4 == 1 || t.pn.config.hasUPNPorNATPMP == 1) && (t.config.hasIPv4 != 1 || t.config.hasUPNPorNATPMP != 1) {
-		return true
-	}
-	if (t.pn.config.hasIPv4 != 1 || t.pn.config.hasUPNPorNATPMP != 1) && (t.config.hasIPv4 == 1 || t.config.hasUPNPorNATPMP == 1) {
-		return false
-	}
-	// NAT or both has public IP
-	return t.tunnelServer
 }

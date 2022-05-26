@@ -160,6 +160,7 @@ func (pn *P2PNetwork) autorunApp() {
 func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, string, error) {
 	gLog.Printf(LvINFO, "addRelayTunnel to %s start", config.PeerNode)
 	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.PeerNode)
+	// request a relay node or specify manually(TODO)
 	pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
 	head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, time.Second*10)
 	if head == nil {
@@ -179,6 +180,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 	relayConfig := config
 	relayConfig.PeerNode = rsp.RelayName
 	relayConfig.peerToken = rsp.RelayToken
+	///
 	t, err := pn.addDirectTunnel(relayConfig, 0)
 	if err != nil {
 		gLog.Println(LvERROR, "direct connect error:", err)
@@ -238,13 +240,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		peerIP = t.config.peerIP
 	}
 	// TODO: if tcp failed, should try udp punching, nattype should refactor also, when NATNONE and failed we don't know the peerNatType
-	// if err != nil && err == ErrorHandshake && t.isSupportTCP() {
-	// 	t, err = pn.addDirectTunnel(config, 0)
-	// 	if t != nil {
-	// 		peerNatType = t.config.peerNatType
-	// 		peerIP = t.config.peerIP
-	// 	}
-	// }
+
 	if err != nil && err == ErrorHandshake {
 		gLog.Println(LvERROR, "direct connect failed, try to relay")
 		t, rtid, relayMode, err = pn.addRelayTunnel(config)
@@ -349,34 +345,96 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 		}
 		return true
 	})
+	if exist {
+		return t, nil
+	}
 	// create tunnel if not exist
-	if !exist {
-		t = &P2PTunnel{pn: pn,
-			config: config,
-			id:     tid,
+	t = &P2PTunnel{pn: pn,
+		config: config,
+		id:     tid,
+	}
+	pn.msgMapMtx.Lock()
+	pn.msgMap[nodeNameToID(config.PeerNode)] = make(chan []byte, 50)
+	pn.msgMapMtx.Unlock()
+	// server side
+	if !isClient {
+		err := pn.newTunnel(t, tid, isClient)
+		return t, err // always return
+	}
+	// client side
+	// peer info
+	initErr := t.requestPeerInfo()
+	if initErr != nil {
+		gLog.Println(LvERROR, "init error:", initErr)
+		return nil, initErr
+	}
+	err := ErrorHandshake
+	// try TCP6
+	if IsIPv6(t.config.IPv6) && IsIPv6(t.pn.config.IPv6) {
+		gLog.Println(LvINFO, "try TCP6")
+		t.config.linkMode = LinkModeTCP6
+		t.config.isUnderlayServer = 0
+		if err = pn.newTunnel(t, tid, isClient); err == nil {
+			return t, nil
 		}
-		pn.msgMapMtx.Lock()
-		pn.msgMap[nodeNameToID(config.PeerNode)] = make(chan []byte, 50)
-		pn.msgMapMtx.Unlock()
-		t.init()
-		if isClient {
-			if err := t.connect(); err != nil {
-				gLog.Println(LvERROR, "p2pTunnel connect error:", err)
-				return t, err
-			}
+	}
+
+	// TODO: try UDP6
+
+	// try TCP4
+	if t.config.hasIPv4 == 1 || t.pn.config.hasIPv4 == 1 || t.config.hasUPNPorNATPMP == 1 || t.pn.config.hasUPNPorNATPMP == 1 {
+		gLog.Println(LvINFO, "try TCP4")
+		t.config.linkMode = LinkModeTCP4
+		if t.config.hasIPv4 == 1 || t.config.hasUPNPorNATPMP == 1 {
+			t.config.isUnderlayServer = 0
 		} else {
-			if err := t.listen(); err != nil {
-				gLog.Println(LvERROR, "p2pTunnel listen error:", err)
-				return t, err
-			}
+			t.config.isUnderlayServer = 1
+		}
+		if err = pn.newTunnel(t, tid, isClient); err == nil {
+			return t, nil
+		}
+	}
+	// TODO: try UDP4
+
+	// try TCPPunch
+	if t.config.peerNatType == NATCone && t.pn.config.natType == NATCone { // TODO: support c2s
+		gLog.Println(LvINFO, "try TCP4 Punch")
+		t.config.linkMode = LinkModeTCPPunch
+		t.config.isUnderlayServer = 0
+		if err = pn.newTunnel(t, tid, isClient); err == nil {
+			return t, nil
+		}
+	}
+	// try UDPPunch
+	if t.config.peerNatType == NATCone || t.pn.config.natType == NATCone {
+		gLog.Println(LvINFO, "try UDP4 Punch")
+		t.config.linkMode = LinkModeUDPPunch
+		t.config.isUnderlayServer = 0
+		if err = pn.newTunnel(t, tid, isClient); err == nil {
+			return t, nil
+		}
+	}
+	return nil, err
+}
+
+func (pn *P2PNetwork) newTunnel(t *P2PTunnel, tid uint64, isClient bool) error {
+	t.initPort()
+	if isClient {
+		if err := t.connect(); err != nil {
+			gLog.Println(LvERROR, "p2pTunnel connect error:", err)
+			return err
+		}
+	} else {
+		if err := t.listen(); err != nil {
+			gLog.Println(LvERROR, "p2pTunnel listen error:", err)
+			return err
 		}
 	}
 	// store it when success
 	gLog.Printf(LvDEBUG, "store tunnel %d", tid)
 	pn.allTunnels.Store(tid, t)
-	return t, nil
+	return nil
 }
-
 func (pn *P2PNetwork) init() error {
 	gLog.Println(LvINFO, "init start")
 	var err error
