@@ -25,7 +25,7 @@ The code is open source, the P2P tunnel uses TLS1.3+AES double encryption, and t
 Benefit from lightweight, it easily supports most of major OS, like Windows, Linux, MacOS, also most of CPU architecture, like 386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64.
 
 ### 6. Efficient
-P2P direct connection lets your devices make good use of bandwidth.  Your device can be connected in any network environments, even supports NAT1-4 (Cone or Symmetric),UPNP,IPv6.  Relying on the excellent congestion algorithm of the Quic protocol, high bandwidth and low latency can be obtained in a bad network environment.
+P2P direct connection lets your devices make good use of bandwidth.  Your device can be connected in any network environments, even supports NAT1-4 (Cone or Symmetric),UDP or TCP punching,UPNP,IPv6.  Relying on the excellent congestion algorithm of the Quic protocol, high bandwidth and low latency can be obtained in a bad network environment.
 
 ### 7. Integration
 Your applicaiton can call OpenP2P with a few code to make any internal networks communicate with each other.
