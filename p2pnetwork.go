@@ -370,7 +370,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 	}
 	err := ErrorHandshake
 	// try TCP6
-	if IsIPv6(t.config.IPv6) && IsIPv6(t.pn.config.IPv6) {
+	if IsIPv6(t.config.peerIPv6) && IsIPv6(t.pn.config.publicIPv6) {
 		gLog.Println(LvINFO, "try TCP6")
 		t.config.linkMode = LinkModeTCP6
 		t.config.isUnderlayServer = 0
@@ -501,7 +501,7 @@ func (pn *P2PNetwork) init() error {
 		gLog.Println(LvDEBUG, "netinfo:", rsp)
 		if rsp != nil && rsp.Country != "" {
 			if IsIPv6(rsp.IP.String()) {
-				pn.config.IPv6 = rsp.IP.String()
+				pn.config.publicIPv6 = rsp.IP.String()
 				req.IPv6 = rsp.IP.String()
 			}
 			req.NetInfo = *rsp
@@ -685,7 +685,7 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
 }
 
 func (pn *P2PNetwork) refreshIPv6() {
-	if !IsIPv6(pn.config.IPv6) { // not support ipv6, not refresh
+	if !IsIPv6(pn.config.publicIPv6) { // not support ipv6, not refresh
 		return
 	}
 	client := &http.Client{Timeout: time.Second * 10}
@@ -701,5 +701,5 @@ func (pn *P2PNetwork) refreshIPv6() {
 		gLog.Println(LvINFO, "netInfo error:", err, n)
 		return
 	}
-	pn.config.IPv6 = string(buf[:n])
+	pn.config.publicIPv6 = string(buf[:n])
 }

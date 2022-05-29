@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	reuse "github.com/libp2p/go-reuseport"
+	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
 var echoConn *net.UDPConn
@@ -22,7 +22,7 @@ func natTCP(serverHost string, serverPort int, localPort int) (publicIP string, 
 	// 		Port: localPort,
 	// 	},
 	// }
-	conn, err := reuse.Dial("tcp4", fmt.Sprintf("%s:%d", "0.0.0.0", localPort), fmt.Sprintf("%s:%d", serverHost, serverPort))
+	conn, err := reuse.DialTimeout("tcp4", fmt.Sprintf("%s:%d", "0.0.0.0", localPort), fmt.Sprintf("%s:%d", serverHost, serverPort), time.Second*5)
 	// conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", serverHost, serverPort))
 	if err != nil {
 		fmt.Printf("Dial tcp4 %s:%d error:%s", serverHost, serverPort, err)

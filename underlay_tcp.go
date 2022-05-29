@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	reuse "github.com/libp2p/go-reuseport"
+	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
 type underlayTCP struct {
@@ -69,7 +69,7 @@ func (conn *underlayTCP) Close() error {
 
 func listenTCP(host string, port int, localPort int, mode string) (*underlayTCP, error) {
 	if mode == LinkModeTCPPunch {
-		c, err := reuse.Dial("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port)) // TODO: timeout
+		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout) // TODO: timeout
 		if err != nil {
 			gLog.Println(LvDEBUG, "send tcp punch: ", err)
 			return nil, err
@@ -94,7 +94,7 @@ func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, e
 	var c net.Conn
 	var err error
 	if mode == LinkModeTCPPunch {
-		c, err = reuse.Dial("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port))
+		c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
 	} else {
 		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
 	}

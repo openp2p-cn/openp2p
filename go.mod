@@ -5,8 +5,8 @@ go 1.18
 require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/kardianos/service v1.2.0
-	github.com/libp2p/go-reuseport v0.2.0
 	github.com/lucas-clemente/quic-go v0.27.0
+	github.com/openp2p-cn/go-reuseport v0.3.2
 	golang.org/x/sys v0.0.0-20220422013727-9388b58f7150
 )
 

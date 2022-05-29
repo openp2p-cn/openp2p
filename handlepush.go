@@ -50,7 +50,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			config.PeerNode = req.From
 			config.peerVersion = req.Version
 			config.fromToken = req.Token
-			config.IPv6 = req.IPv6
+			config.peerIPv6 = req.IPv6
 			config.hasIPv4 = req.HasIPv4
 			config.hasUPNPorNATPMP = req.HasUPNPorNATPMP
 			config.linkMode = req.LinkMode

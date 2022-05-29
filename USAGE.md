@@ -93,4 +93,9 @@ firewall-cmd --state
 ## Uninstall
 ```
 ./openp2p uninstall
+# when already installed
+# windows
+C:\Program Files\OpenP2P\openp2p.exe uninstall
+# linux,macos
+sudo /usr/local/openp2p/openp2p uninstall
 ```

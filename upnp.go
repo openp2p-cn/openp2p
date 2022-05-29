@@ -1,11 +1,7 @@
 /*
-Taken from taipei-torrent
-
-Just enough UPnP to be able to forward ports
+Taken from taipei-torrent And fix some bugs
 */
 package main
-
-// BUG(jae): TODO: use syscalls to get actual ourIP. http://pastebin.com/9exZG4rh
 
 import (
 	"bytes"

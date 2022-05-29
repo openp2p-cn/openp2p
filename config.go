@@ -11,8 +11,6 @@ import (
 
 var gConf Config
 
-const IntValueNotSet int = -99999999
-
 type AppConfig struct {
 	// required
 	AppName  string
@@ -28,7 +26,7 @@ type AppConfig struct {
 	peerToken        uint64
 	peerNatType      int
 	hasIPv4          int
-	IPv6             string
+	peerIPv6         string
 	hasUPNPorNATPMP  int
 	peerIP           string
 	peerConeNatPort  int
@@ -162,7 +160,7 @@ type NetworkConfig struct {
 	publicIP        string
 	natType         int
 	hasIPv4         int
-	IPv6            string
+	publicIPv6      string // must lowwer-case not save json
 	hasUPNPorNATPMP int
 	ShareBandwidth  int
 	// server info

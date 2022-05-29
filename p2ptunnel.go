@@ -53,7 +53,7 @@ func (t *P2PTunnel) requestPeerInfo() error {
 	t.config.peerVersion = rsp.Version
 	t.config.hasIPv4 = rsp.HasIPv4
 	t.config.peerIP = rsp.IPv4
-	t.config.IPv6 = rsp.IPv6
+	t.config.peerIPv6 = rsp.IPv6
 	t.config.hasUPNPorNATPMP = rsp.HasUPNPorNATPMP
 	t.config.peerNatType = rsp.NatType
 	///
@@ -100,7 +100,7 @@ func (t *P2PTunnel) connect() error {
 		ConeNatPort:      t.coneNatPort,
 		NatType:          t.pn.config.natType,
 		HasIPv4:          t.pn.config.hasIPv4,
-		IPv6:             t.pn.config.IPv6,
+		IPv6:             t.pn.config.publicIPv6,
 		HasUPNPorNATPMP:  t.pn.config.hasUPNPorNATPMP,
 		ID:               t.id,
 		AppKey:           appKey,
@@ -128,7 +128,7 @@ func (t *P2PTunnel) connect() error {
 	}
 	t.config.peerNatType = rsp.NatType
 	t.config.hasIPv4 = rsp.HasIPv4
-	t.config.IPv6 = rsp.IPv6
+	t.config.peerIPv6 = rsp.IPv6
 	t.config.hasUPNPorNATPMP = rsp.HasUPNPorNATPMP
 	t.config.peerVersion = rsp.Version
 	t.config.peerConeNatPort = rsp.ConeNatPort
@@ -390,10 +390,10 @@ func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
 
 	//else
 	t.pn.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, time.Second*5)
-	gLog.Println(LvDEBUG, "TCP6 dial to ", t.config.IPv6)
-	qConn, err = dialTCP6(t.config.IPv6, t.config.peerConeNatPort)
+	gLog.Println(LvDEBUG, "TCP6 dial to ", t.config.peerIPv6)
+	qConn, err = dialTCP6(t.config.peerIPv6, t.config.peerConeNatPort)
 	if err != nil {
-		return nil, fmt.Errorf("TCP6 dial to %s:%d error:%s", t.config.IPv6, t.config.peerConeNatPort, err)
+		return nil, fmt.Errorf("TCP6 dial to %s:%d error:%s", t.config.peerIPv6, t.config.peerConeNatPort, err)
 	}
 	handshakeBegin := time.Now()
 	qConn.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
@@ -594,7 +594,7 @@ func (t *P2PTunnel) listen() error {
 	// only private node set ipv6
 	if t.config.fromToken == t.pn.config.Token {
 		t.pn.refreshIPv6()
-		rsp.IPv6 = t.pn.config.IPv6
+		rsp.IPv6 = t.pn.config.publicIPv6
 	}
 
 	t.pn.push(t.config.PeerNode, MsgPushConnectRsp, rsp)
