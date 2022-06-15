@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.1.0"
+const OpenP2PVersion = "3.2.0"
 const ProducnName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 
@@ -148,7 +148,7 @@ const (
 	PublicIPEchoTimeout          = time.Second * 1
 	NatTestTimeout               = time.Second * 10
 	ClientAPITimeout             = time.Second * 10
-	MaxDirectTry                 = 5
+	MaxDirectTry                 = 3
 )
 
 // NATNone has public ip

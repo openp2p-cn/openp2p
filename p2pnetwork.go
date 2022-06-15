@@ -136,6 +136,7 @@ func (pn *P2PNetwork) runAll() {
 		}
 		config.nextRetryTime = time.Now().Add(time.Second * time.Duration(increase)) // exponential increase retry time. 1.3^x
 		config.connectTime = time.Now()
+		config.peerToken = pn.config.Token
 		gConf.mtx.Unlock() // AddApp will take a period of time
 		err := pn.AddApp(*config)
 		gConf.mtx.Lock()

@@ -33,7 +33,7 @@ type P2PTunnel struct {
 
 func (t *P2PTunnel) requestPeerInfo() error {
 	// request peer info
-	t.pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{t.pn.config.Token, t.config.PeerNode})
+	t.pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{t.config.peerToken, t.config.PeerNode})
 	head, body := t.pn.read("", MsgQuery, MsgQueryPeerInfoRsp, time.Second*10)
 	if head == nil {
 		return ErrPeerOffline

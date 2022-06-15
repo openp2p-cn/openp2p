@@ -64,7 +64,7 @@ func Discover() (nat NAT, err error) {
 		var n int
 		_, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
-			gLog.Println(LvERROR, "UPNP discover error:", err)
+			gLog.Println(LvDEBUG, "UPNP discover error:", err)
 			return
 		}
 
