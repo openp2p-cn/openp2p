@@ -102,6 +102,7 @@ func installByFilename() {
 		return
 	}
 	gLog.Println(LvINFO, "install end")
+	gLog.Println(LvINFO, "Visit WebUI on https://console.openp2p.cn")
 	fmt.Println("Press the Any Key to exit")
 	fmt.Scanln()
 	os.Exit(0)
