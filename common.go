@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+const MinNodeNameLen = 8
+
 func getmac(ip string) string {
 	//get mac relative to the ip address which connected to the mq.
 	ifaces, err := net.Interfaces()
@@ -156,7 +158,7 @@ func execOutput(name string, args ...string) string {
 
 func defaultNodeName() string {
 	name, _ := os.Hostname()
-	for len(name) < 8 {
+	for len(name) < MinNodeNameLen {
 		name = fmt.Sprintf("%s%d", name, rand.Int()%10)
 	}
 	return name
@@ -199,4 +201,14 @@ func parseMajorVer(ver string) int {
 
 func IsIPv6(address string) bool {
 	return strings.Count(address, ":") >= 2
+}
+
+var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-")
+
+func randStr(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }

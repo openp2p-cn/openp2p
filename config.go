@@ -237,7 +237,7 @@ func parseParams(subCommand string) {
 		gConf.Network.ServerHost = *serverHost
 	}
 	if *node != "" {
-		if len(*node) < 8 {
+		if len(*node) < MinNodeNameLen {
 			gLog.Println(LvERROR, ErrNodeTooShort)
 			os.Exit(9)
 		}

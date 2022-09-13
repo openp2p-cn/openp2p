@@ -460,10 +460,10 @@ func (pn *P2PNetwork) init() error {
 		}
 		gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
-		forwardPath := "/openp2p/v1/login"
+		uri := "/openp2p/v1/login"
 		config := tls.Config{InsecureSkipVerify: true} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
 		websocket.DefaultDialer.TLSClientConfig = &config
-		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: forwardPath}
+		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
 		q := u.Query()
 		q.Add("node", pn.config.Node)
 		q.Add("token", fmt.Sprintf("%d", pn.config.Token))
@@ -544,9 +544,12 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 			pn.config.User = rsp.User
 			gConf.setToken(rsp.Token)
 			gConf.setUser(rsp.User)
+			if len(rsp.Node) >= MinNodeNameLen {
+				gConf.setNode(rsp.Node)
+			}
 			gConf.save()
 			pn.localTs = time.Now().Unix()
-			gLog.Printf(LvINFO, "login ok. user=%s,Server ts=%d, local ts=%d", rsp.User, rsp.Ts, pn.localTs)
+			gLog.Printf(LvINFO, "login ok. user=%s,node=%s,Server ts=%d, local ts=%d", rsp.User, rsp.Node, rsp.Ts, pn.localTs)
 		}
 	case MsgHeartbeat:
 		gLog.Printf(LvDEBUG, "P2PNetwork heartbeat ok")

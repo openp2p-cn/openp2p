@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.2.0"
+const OpenP2PVersion = "3.4.0"
 const ProducnName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 
@@ -246,6 +246,7 @@ type LoginRsp struct {
 	Error  int    `json:"error,omitempty"`
 	Detail string `json:"detail,omitempty"`
 	User   string `json:"user,omitempty"`
+	Node   string `json:"node,omitempty"`
 	Token  uint64 `json:"token,omitempty"`
 	Ts     int64  `json:"ts,omitempty"`
 }
