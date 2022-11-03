@@ -33,7 +33,7 @@ Your applicaiton can call OpenP2P with a few code to make any internal networks 
 ## Get Started
 Just 4 simple steps to use.
 Here's an example of remote work: connecting to an office Windows computer at home.
-  
+(Another quick started vedio https://www.bilibili.com/video/BV1Et4y1P7bF/)
 ### 1.Register
 Go to <https://console.openp2p.cn> register a new user
 
@@ -106,9 +106,7 @@ The server side has a scheduling model, which calculate  bandwith, ping value,st
 go version go1.18.1+  
 cd root directory of the socure code and execute
 ```
-export GOPROXY=https://goproxy.io,direct
-go mod tidy
-go build
+make
 ```
 
 ## RoadMap

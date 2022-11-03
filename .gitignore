@@ -1,10 +1,18 @@
 __debug_bin
 __debug_bin.exe
 # .vscode
-openp2p
+test/
 openp2p.exe*
-*.log
+*.log*
 go.sum
 *.tar.gz
 *.zip
 *.exe
+config.json
+libs/
+*/app/.idea/
+*/app/release/
+openp2p.app.jks
+openp2p.aar
+openp2p-sources.jar
+build.gradle

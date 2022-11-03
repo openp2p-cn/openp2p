@@ -31,6 +31,7 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 ## 快速入门
 仅需简单4步就能用起来。  
 下面是一个远程办公例子：在家里连入办公室Windows电脑。  
+（另外一个快速入门视频 https://www.bilibili.com/video/BV1Et4y1P7bF/）
 ### 1.注册
 前往<https://console.openp2p.cn> 注册新用户，暂无需任何认证
 
@@ -98,9 +99,7 @@ Windows默认会阻止没有花钱买它家证书签名过的程序，选择“�
 go version go1.18.1+  
 cd到代码根目录，执行
 ```
-export GOPROXY=https://goproxy.io,direct
-go mod tidy
-go build
+make
 ```
 
 ## RoadMap

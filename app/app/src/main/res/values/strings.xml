@@ -1,0 +1,36 @@
+<resources>
+    <string name="app_name">OpenP2P</string>
+    <!-- Strings related to login -->
+    <string name="prompt_email">Email</string>
+    <string name="prompt_password">Password</string>
+    <string name="action_sign_in">登录</string>
+    <string name="action_sign_in_short">Sign in</string>
+    <string name="welcome">"Welcome !"</string>
+    <string name="invalid_username">Not a valid username</string>
+    <string name="invalid_password">Token可以在 https://console.openp2p.cn/profile 获得</string>
+    <string name="login_failed">"Login failed"</string>
+    <string name="phone_setting">"安卓系统默认设置的”杀后台进程“会导致 OpenP2P 在后台运行一会后，被系统杀死进程，导致您的体验受到影响。您可以通过以下方式修改几个设置，解决此问题：
+
+华为手机：
+    进入”设置“，搜索并进入“电池优化“界面，选中 OpenP2P 程序，不允许系统对其进行电池优化；
+    进入”设置“，进入”应用管理“界面，选中 OpenP2P 程序，点击”耗电情况“，开启”允许后台活动“即可；
+
+小米手机：
+    进入”设置“，进入”更多应用“界面，选中 OpenP2P 程序，点击”省电策略“，设置为”无限制“；
+    进入”设置“，进入”特色功能“界面，选中”游戏加速“，将其关闭即可；
+
+OPPO手机：
+进入”设置“，进入”应用管理“界面，选中 OpenP2P 程序，点击”耗电保护“，关闭所有设置项即可；
+
+VIVO手机：
+进入”设置“，进入”电池“界面，点击”后台高耗电“，将 OpenP2P 设为允许高耗电时继续运行即可；
+
+魅族手机：
+进入”设置“，进入”应用管理“界面，选中 OpenP2P 程序，点击”权限管理“，点击”后台管理“，选择”允许后台运行“即可；
+
+一加手机：
+进入”设置“，进入”电池“界面，点击”电池优化“，将 OpenP2P 设为”不优化“即可；
+
+三星手机：
+进入”智能管理器“，进入”应用程序管理“界面，点击”管理自动运行“，将 OpenP2P 设为”允许后台运行“即可；"</string>
+</resources>
