@@ -17,7 +17,7 @@ import (
 // ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth 0 -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
 func install() {
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ: 477503927, Email: openp2p.cn@gmail.com")
+	gLog.Println(LvINFO, "Contact: QQ: 16947733, Email: openp2p.cn@gmail.com")
 	gLog.Println(LvINFO, "install start")
 	defer gLog.Println(LvINFO, "install end")
 	// auto uninstall

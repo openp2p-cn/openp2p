@@ -51,6 +51,8 @@ func natTCP(serverHost string, serverPort int, localPort int) (publicIP string, 
 
 }
 func natTest(serverHost string, serverPort int, localPort int) (publicIP string, publicPort int, err error) {
+	gLog.Println(LvDEBUG, "natTest start")
+	defer gLog.Println(LvDEBUG, "natTest end")
 	conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		gLog.Println(LvERROR, "natTest listen udp error:", err)
@@ -113,6 +115,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		gLog.Println(LvDEBUG, "echo server start")
 		var err error
 		echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
 		if err != nil {
@@ -129,6 +132,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 			return
 		}
 		echoConn.WriteToUDP(buf[0:n], addr)
+		gLog.Println(LvDEBUG, "echo server end")
 	}()
 	wg.Wait() // wait echo udp
 	defer echoConn.Close()
@@ -136,6 +140,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 	for i := 0; i < 2; i++ {
 		if i == 1 {
 			// test upnp or nat-pmp
+			gLog.Println(LvDEBUG, "upnp test start")
 			nat, err := Discover()
 			if err != nil || nat == nil {
 				gLog.Println(LvDEBUG, "could not perform UPNP discover:", err)

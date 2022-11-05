@@ -1,19 +1,26 @@
 package cn.openp2p.ui.login
 
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
+import android.app.Notification
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.Uri
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.view.View
 import android.widget.EditText
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Observer
@@ -23,17 +30,18 @@ import cn.openp2p.R
 import cn.openp2p.databinding.ActivityLoginBinding
 import openp2p.Openp2p
 import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 
 
 class LoginActivity : AppCompatActivity() {
     companion object {
         private val LOG_TAG = LoginActivity::class.simpleName
     }
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
             val binder = service as OpenP2PService.LocalBinder
             mService = binder.getService()
-            mService.onStart(mToken)
         }
 
         override fun onServiceDisconnected(className: ComponentName) {
@@ -43,7 +51,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var loginViewModel: LoginViewModel
     private lateinit var binding: ActivityLoginBinding
     private lateinit var mService: OpenP2PService
-    private var mToken: String=""
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -52,7 +60,7 @@ class LoginActivity : AppCompatActivity() {
 
         val token = binding.token
         val login = binding.login
-        val onlineState=binding.onlineState
+        val onlineState = binding.onlineState
         val openp2pLog = binding.openp2pLog
         val profile = binding.profile
         val loading = binding.loading
@@ -70,7 +78,6 @@ class LoginActivity : AppCompatActivity() {
                 token.error = getString(loginState.passwordError)
             }
         })
-        mToken=token.text.toString()
         val intent1 = VpnService.prepare(this) ?: return
         loginViewModel.loginResult.observe(this@LoginActivity, Observer {
             val loginResult = it ?: return@Observer
@@ -102,59 +109,57 @@ class LoginActivity : AppCompatActivity() {
                 )
             }
 
-//            setOnEditorActionListener { _, actionId, _ ->
-//                when (actionId) {
-//                    EditorInfo.IME_ACTION_DONE ->
-//                        loginViewModel.login(
-//                            "username.text.toString()",
-//                            token.text.toString()
-//                        )
-//                }
-//                false
-//            }
-
-//            openp2pLog.setText(getExternalFilesDir(null).toString())
             openp2pLog.setText(R.string.phone_setting)
             token.setText(Openp2p.getToken(getExternalFilesDir(null).toString()))
             login.setOnClickListener {
-//                loading.visibility = View.VISIBLE
-//                loginViewModel.login(username.text.toString(), password.text.toString())
+                if (login.text.toString()=="退出"){
+//                    val intent = Intent(this@LoginActivity, OpenP2PService::class.java)
+//                    stopService(intent)
+                    Log.i(LOG_TAG, "quit")
+                    mService.stop()
+                    unbindService(connection)
+                    val intent = Intent(this@LoginActivity, OpenP2PService::class.java)
+                    stopService(intent)
+                    exitAPP()
 
-//                startService(Intent(this, OpenP2PService::class.java))
-                val intent = Intent(this@LoginActivity,OpenP2PService::class.java)
-
+                }
+                login.setText("退出")
+                Log.i(LOG_TAG, "start")
+                val intent = Intent(this@LoginActivity, OpenP2PService::class.java)
+                intent.putExtra("token", token.text.toString())
                 bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                startService(intent)
                 thread {
                     do {
-                        Thread.sleep(3000)
+                        Thread.sleep(1000)
                         if (!::mService.isInitialized) continue
                         val isConnect = mService.isConnected()
+//                        Log.i(LOG_TAG, "mService.isConnected() = " + isConnect.toString())
                         runOnUiThread {
-                        if (isConnect) {
-                            onlineState.setText("在线")
-                        } else {
-                            onlineState.setText("离线")
+                            if (isConnect) {
+                                onlineState.setText("在线")
+                            } else {
+                                onlineState.setText("离线")
+                            }
                         }
-                        }
-                    } while(true)
+                    } while (true)
                 }
 
             }
         }
     }
-//    fun listenProgress() {
-//        Thread {
-//            while (progress < MsgService.MAX_PROGRESS) {
-//                progress = msgService.getProgress()
-//                mProgressBar.setProgress(progress)
-//                try {
-//                    Thread.sleep(1000)
-//                } catch (e: InterruptedException) {
-//                    e.printStackTrace()
-//                }
-//            }
-//        }.start()
-//    }
+    @RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    @SuppressLint("ServiceCast")
+    fun exitAPP() {
+        val activityManager =
+            applicationContext?.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val appTaskList = activityManager.appTasks
+
+        for (i in appTaskList.indices) {
+            appTaskList[i].finishAndRemoveTask()
+        }
+        exitProcess(0)
+    }
 
     private fun updateUiWithUser(model: LoggedInUserView) {
         val welcome = getString(R.string.welcome)

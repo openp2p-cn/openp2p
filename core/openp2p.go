@@ -43,7 +43,7 @@ func Run() {
 	}
 	parseParams("")
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ: 477503927, Email: openp2p.cn@gmail.com")
+	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
 
 	if gConf.daemonMode {
 		d := daemon{}
@@ -67,18 +67,21 @@ var network *P2PNetwork
 
 // for Android app
 // gomobile not support uint64 exported to java
-func RunAsModule(baseDir string, token string, bw int) *P2PNetwork {
+func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork {
 	rand.Seed(time.Now().UnixNano())
 	os.Chdir(baseDir) // for system service
 	gLog = NewLogger(baseDir, ProducnName, LvDEBUG, 1024*1024, LogFileAndConsole)
-	// TODO: install sub command, deamon process
+
 	parseParams("")
 
-	n, _ := strconv.ParseUint(token, 10, 64)
-	gConf.setToken(n)
-	gConf.setShareBandwidth(0)
+	n, err := strconv.ParseUint(token, 10, 64)
+	if err == nil {
+		gConf.setToken(n)
+	}
+	gLog.setLevel(LogLevel(logLevel))
+	gConf.setShareBandwidth(bw)
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ: 477503927, Email: openp2p.cn@gmail.com")
+	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
 	gLog.Println(LvINFO, &gConf)
 
 	network = P2PNetworkInstance(&gConf.Network)

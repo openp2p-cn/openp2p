@@ -64,6 +64,7 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 }
 
 func (pn *P2PNetwork) run() {
+	go pn.readLoop()
 	go pn.autorunApp()
 	heartbeatTimer := time.NewTicker(NetworkHeartbeatTime)
 	for pn.running {
@@ -487,7 +488,6 @@ func (pn *P2PNetwork) init() error {
 			err = errors.New("get local ip failed")
 			break
 		}
-		go pn.readLoop()
 
 		pn.config.mac = getmac(pn.config.localIP)
 		pn.config.os = getOsName()
