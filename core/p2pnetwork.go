@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -74,7 +73,6 @@ func (pn *P2PNetwork) run() {
 		case <-pn.restartCh:
 			pn.online = false
 			pn.wg.Wait() // wait read/write goroutine exited
-			time.Sleep(NetworkHeartbeatTime)
 			err := pn.init()
 			if err != nil {
 				gLog.Println(LvERROR, "P2PNetwork init error:", err)
@@ -129,14 +127,12 @@ func (pn *P2PNetwork) runAll() {
 		}
 		config.retryNum++
 		config.retryTime = time.Now()
-		increase := math.Pow(1.5, float64(config.retryNum)) // exponential increase retry time. 1.5^x
-		if increase > 900 {
-			increase = 900
+		if config.retryNum > 20 {
 			config.Enabled = 0
 			gLog.Printf(LvWARN, "app %s has stopped retry, manually enable it on Web console", config.AppName)
 			continue
 		}
-		config.nextRetryTime = time.Now().Add(time.Second * time.Duration(increase))
+		config.nextRetryTime = time.Now().Add(time.Second * 10)
 		config.connectTime = time.Now()
 		config.peerToken = pn.config.Token
 		gConf.mtx.Unlock() // AddApp will take a period of time
@@ -371,7 +367,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 		gLog.Println(LvERROR, "init error:", initErr)
 		return nil, initErr
 	}
-	err := ErrorHandshake
+	var err error
 	// try TCP6
 	if IsIPv6(t.config.peerIPv6) && IsIPv6(t.pn.config.publicIPv6) {
 		gLog.Println(LvINFO, "try TCP6")
@@ -417,7 +413,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 			return t, nil
 		}
 	}
-	return nil, err
+	return nil, ErrorHandshake // only ErrorHandshake will try relay
 }
 
 func (pn *P2PNetwork) newTunnel(t *P2PTunnel, tid uint64, isClient bool) error {
@@ -490,27 +486,28 @@ func (pn *P2PNetwork) init() error {
 		go pn.readLoop()
 		pn.config.mac = getmac(pn.config.localIP)
 		pn.config.os = getOsName()
-
-		req := ReportBasic{
-			Mac:             pn.config.mac,
-			LanIP:           pn.config.localIP,
-			OS:              pn.config.os,
-			HasIPv4:         pn.config.hasIPv4,
-			HasUPNPorNATPMP: pn.config.hasUPNPorNATPMP,
-			Version:         OpenP2PVersion,
-		}
-		rsp := netInfo()
-		gLog.Println(LvDEBUG, "netinfo:", rsp)
-		if rsp != nil && rsp.Country != "" {
-			if IsIPv6(rsp.IP.String()) {
-				pn.config.publicIPv6 = rsp.IP.String()
+		go func() {
+			req := ReportBasic{
+				Mac:             pn.config.mac,
+				LanIP:           pn.config.localIP,
+				OS:              pn.config.os,
+				HasIPv4:         pn.config.hasIPv4,
+				HasUPNPorNATPMP: pn.config.hasUPNPorNATPMP,
+				Version:         OpenP2PVersion,
 			}
-			req.NetInfo = *rsp
-		} else {
-			pn.refreshIPv6(true)
-		}
-		req.IPv6 = pn.config.publicIPv6
-		pn.write(MsgReport, MsgReportBasic, &req)
+			rsp := netInfo()
+			gLog.Println(LvDEBUG, "netinfo:", rsp)
+			if rsp != nil && rsp.Country != "" {
+				if IsIPv6(rsp.IP.String()) {
+					pn.config.publicIPv6 = rsp.IP.String()
+				}
+				req.NetInfo = *rsp
+			} else {
+				pn.refreshIPv6(true)
+			}
+			req.IPv6 = pn.config.publicIPv6
+			pn.write(MsgReport, MsgReportBasic, &req)
+		}()
 		gLog.Println(LvDEBUG, "P2PNetwork init ok")
 		break
 	}

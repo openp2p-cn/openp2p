@@ -4,9 +4,9 @@ go 1.18
 
 require (
 	github.com/gorilla/websocket v1.4.2
-	github.com/kardianos/service v1.2.0
 	github.com/lucas-clemente/quic-go v0.27.0
 	github.com/openp2p-cn/go-reuseport v0.3.2
+	github.com/openp2p-cn/service v1.0.0
 	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 )
 
@@ -14,6 +14,7 @@ require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
+	github.com/kardianos/service v1.2.2 // indirect
 	github.com/marten-seemann/qtls-go1-16 v0.1.5 // indirect
 	github.com/marten-seemann/qtls-go1-17 v0.1.1 // indirect
 	github.com/marten-seemann/qtls-go1-18 v0.1.1 // indirect

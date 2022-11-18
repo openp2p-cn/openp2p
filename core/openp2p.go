@@ -13,7 +13,7 @@ func Run() {
 	rand.Seed(time.Now().UnixNano())
 	baseDir := filepath.Dir(os.Args[0])
 	os.Chdir(baseDir) // for system service
-	gLog = NewLogger(baseDir, ProducnName, LvDEBUG, 1024*1024, LogFileAndConsole)
+	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFileAndConsole)
 	// TODO: install sub command, deamon process
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -21,7 +21,7 @@ func Run() {
 			fmt.Println(OpenP2PVersion)
 			return
 		case "update":
-			gLog = NewLogger(baseDir, ProducnName, LvDEBUG, 1024*1024, LogFileAndConsole)
+			gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFileAndConsole)
 			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 			d := daemon{}
 			err := d.Control("restart", targetPath, nil)
@@ -70,7 +70,7 @@ var network *P2PNetwork
 func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork {
 	rand.Seed(time.Now().UnixNano())
 	os.Chdir(baseDir) // for system service
-	gLog = NewLogger(baseDir, ProducnName, LvDEBUG, 1024*1024, LogFileAndConsole)
+	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFileAndConsole)
 
 	parseParams("")
 

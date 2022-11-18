@@ -106,7 +106,7 @@ func (t *P2PTunnel) connect() error {
 		AppKey:           appKey,
 		Version:          OpenP2PVersion,
 		LinkMode:         t.config.linkMode,
-		IsUnderlayServer: t.config.isUnderlayServer ^ 1,
+		IsUnderlayServer: t.config.isUnderlayServer ^ 1, // peer
 	}
 	if req.Token == 0 { // no relay token
 		req.Token = t.pn.config.Token
@@ -154,6 +154,9 @@ func (t *P2PTunnel) setRun(running bool) {
 }
 
 func (t *P2PTunnel) isActive() bool {
+	if !t.isRuning() {
+		return false
+	}
 	t.hbMtx.Lock()
 	defer t.hbMtx.Unlock()
 	return time.Now().Before(t.hbTime.Add(TunnelIdleTimeout))

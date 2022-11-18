@@ -101,7 +101,6 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 				msg := TunnelMsg{ID: t.id}
 				pn.push(r.From, MsgPushAddRelayTunnelRsp, msg)
 			}
-
 		}(req)
 	case MsgPushAPPKey:
 		req := APPKeySync{}

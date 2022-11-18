@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kardianos/service"
+	"github.com/openp2p-cn/service"
 )
 
 type daemon struct {
@@ -44,9 +44,9 @@ func (d *daemon) run() {
 	}
 	gLog.Println(LvINFO, mydir)
 	conf := &service.Config{
-		Name:        ProducnName,
-		DisplayName: ProducnName,
-		Description: ProducnName,
+		Name:        ProductName,
+		DisplayName: ProductName,
+		Description: ProductName,
 		Executable:  binPath,
 	}
 
@@ -95,9 +95,9 @@ func (d *daemon) run() {
 
 func (d *daemon) Control(ctrlComm string, exeAbsPath string, args []string) error {
 	svcConfig := &service.Config{
-		Name:        ProducnName,
-		DisplayName: ProducnName,
-		Description: ProducnName,
+		Name:        ProductName,
+		DisplayName: ProductName,
+		Description: ProductName,
 		Executable:  exeAbsPath,
 		Arguments:   args,
 	}

@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.5.2"
-const ProducnName string = "openp2p"
+const OpenP2PVersion = "3.5.5"
+const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 
 const (
@@ -146,7 +146,7 @@ const (
 	MaxRetry                     = 10
 	RetryInterval                = time.Second * 30
 	PublicIPEchoTimeout          = time.Second * 1
-	NatTestTimeout               = time.Second * 10
+	NatTestTimeout               = time.Second * 5
 	ClientAPITimeout             = time.Second * 10
 	MaxDirectTry                 = 3
 )
