@@ -20,7 +20,6 @@ import (
 const MinNodeNameLen = 8
 
 func getmac(ip string) string {
-	//get mac relative to the ip address which connected to the mq.
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return ""

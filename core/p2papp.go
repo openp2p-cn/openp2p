@@ -204,11 +204,14 @@ func (app *p2pApp) listen() error {
 	if app.rtid != 0 {
 		go app.relayHeartbeatLoop()
 	}
-	for app.tunnel.isRuning() && app.running {
+	for app.tunnel.isRuning() {
 		if app.config.Protocol == "udp" {
 			app.listenUDP()
 		} else {
 			app.listenTCP()
+		}
+		if !app.running {
+			break
 		}
 		time.Sleep(time.Second * 10)
 	}

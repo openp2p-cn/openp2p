@@ -23,15 +23,15 @@ var (
 )
 
 type P2PNetwork struct {
-	conn      *websocket.Conn
-	online    bool
-	running   bool
-	restartCh chan bool
-	wg        sync.WaitGroup
-	writeMtx  sync.Mutex
-	serverTs  int64
-	localTs   int64
-	hbTime    time.Time
+	conn        *websocket.Conn
+	online      bool
+	running     bool
+	restartCh   chan bool
+	wgReconnect sync.WaitGroup
+	writeMtx    sync.Mutex
+	serverTs    int64
+	localTs     int64
+	hbTime      time.Time
 	// msgMap    sync.Map
 	msgMap     map[uint64]chan []byte //key: nodeID
 	msgMapMtx  sync.Mutex
@@ -72,7 +72,7 @@ func (pn *P2PNetwork) run() {
 
 		case <-pn.restartCh:
 			pn.online = false
-			pn.wg.Wait() // wait read/write goroutine exited
+			pn.wgReconnect.Wait() // wait read/write goroutine end
 			err := pn.init()
 			if err != nil {
 				gLog.Println(LvERROR, "P2PNetwork init error:", err)
@@ -151,7 +151,6 @@ func (pn *P2PNetwork) autorunApp() {
 			continue
 		}
 		pn.runAll()
-		time.Sleep(time.Second * 10)
 	}
 	gLog.Println(LvINFO, "autorunApp end")
 }
@@ -436,6 +435,11 @@ func (pn *P2PNetwork) newTunnel(t *P2PTunnel, tid uint64, isClient bool) error {
 }
 func (pn *P2PNetwork) init() error {
 	gLog.Println(LvINFO, "init start")
+	go func() { //reconnect at least 5s
+		pn.wgReconnect.Add(1)
+		defer pn.wgReconnect.Done()
+		time.Sleep(NatTestTimeout)
+	}()
 	var err error
 	for {
 		// detect nat type
@@ -568,8 +572,8 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 
 func (pn *P2PNetwork) readLoop() {
 	gLog.Printf(LvDEBUG, "P2PNetwork readLoop start")
-	pn.wg.Add(1)
-	defer pn.wg.Done()
+	pn.wgReconnect.Add(1)
+	defer pn.wgReconnect.Done()
 	for pn.running {
 		pn.conn.SetReadDeadline(time.Now().Add(NetworkHeartbeatTime + 10*time.Second))
 		t, msg, err := pn.conn.ReadMessage()
