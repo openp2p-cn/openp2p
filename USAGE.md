@@ -25,6 +25,7 @@ We don't provide official docker image yet, you can run it in any container
 nohup ./openp2p -d -node OFFICEPC1 -token TOKEN  &
 # Since many docker images have been simplified, the install system service will fail, so the daemon mode is used to run in the background
 ```
+There is a docker image that can be used, please refer to this [document](/docker/Instructions_for_use.md)
 
 ## Connect
 ```

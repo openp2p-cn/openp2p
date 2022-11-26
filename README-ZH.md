@@ -66,7 +66,7 @@ Windows默认会阻止没有花钱买它家证书签名过的程序，选择“�
    ![image](/doc/images/afterconnect.png)
 
 ## 详细使用说明
-[这里](/USAGE-ZH.md)介绍如何手动运行
+[这里](/USAGE-ZH.md)介绍如何手动运行和在其他平台上运行。
 
 ## 典型应用场景
 特别适合大流量的内网访问
