@@ -67,11 +67,11 @@ func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64,
 	os.MkdirAll(logdir, 0777)
 	for lv := range logFileNames {
 		logFilePath := logdir + filePrefix + logFileNames[lv]
-		f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
-		os.Chmod(logFilePath, 0666)
+		os.Chmod(logFilePath, 0644)
 		logfiles[lv] = f
 		loggers[lv] = log.New(f, "", log.LstdFlags)
 	}
@@ -119,7 +119,7 @@ func (l *logger) checkFile() {
 				backupPath := l.logDir + fname + ".0"
 				os.Remove(backupPath)
 				os.Rename(l.logDir+fname, backupPath)
-				newFile, e := os.OpenFile(l.logDir+fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+				newFile, e := os.OpenFile(l.logDir+fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 				if e == nil {
 					l.loggers[lv].SetOutput(newFile)
 					l.files[lv] = newFile

@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/openp2p-cn/totp"
 )
 
 func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
@@ -40,8 +42,9 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			return ErrVersionNotCompatible
 		}
 		// verify totp token or token
-		if VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
-			VerifyTOTP(req.Token, pn.config.Token, time.Now().Unix()) {
+		t := totp.TOTP{Step: totp.RelayTOTPStep}
+		if t.Verify(req.Token, pn.config.Token, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
+			t.Verify(req.Token, pn.config.Token, time.Now().Unix()) {
 			gLog.Printf(LvINFO, "Access Granted\n")
 			config := AppConfig{}
 			config.peerNatType = req.NatType

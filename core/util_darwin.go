@@ -21,7 +21,7 @@ func setRLimit() error {
 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
 		return err
 	}
-	limit.Cur = 10240
+	limit.Cur = 65536
 	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
 		return err
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.5.6"
+const OpenP2PVersion = "3.6.5"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 

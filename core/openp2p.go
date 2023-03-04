@@ -53,6 +53,10 @@ func Run() {
 
 	gLog.Println(LvINFO, &gConf)
 	setFirewall()
+	err := setRLimit()
+	if err != nil {
+		gLog.Println(LvINFO, "setRLimit error:", err)
+	}
 	network := P2PNetworkInstance(&gConf.Network)
 	if ok := network.Connect(30000); !ok {
 		gLog.Println(LvERROR, "P2PNetwork login error")

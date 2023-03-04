@@ -435,10 +435,10 @@ func (pn *P2PNetwork) newTunnel(t *P2PTunnel, tid uint64, isClient bool) error {
 }
 func (pn *P2PNetwork) init() error {
 	gLog.Println(LvINFO, "init start")
+	pn.wgReconnect.Add(1)
 	go func() { //reconnect at least 5s
-		pn.wgReconnect.Add(1)
-		defer pn.wgReconnect.Done()
 		time.Sleep(NatTestTimeout)
+		pn.wgReconnect.Done()
 	}()
 	var err error
 	for {
@@ -551,6 +551,7 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 			gConf.setUser(rsp.User)
 			if len(rsp.Node) >= MinNodeNameLen {
 				gConf.setNode(rsp.Node)
+				pn.config.Node = rsp.Node
 			}
 			gConf.save()
 			pn.localTs = time.Now().Unix()

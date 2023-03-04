@@ -51,7 +51,7 @@ func (app *p2pApp) listenTCP() error {
 	gLog.Printf(LvDEBUG, "tcp accept on port %d start", app.config.SrcPort)
 	defer gLog.Printf(LvDEBUG, "tcp accept on port %d end", app.config.SrcPort)
 	var err error
-	app.listener, err = net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort))
+	app.listener, err = net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort)) // support tcp4 and tcp6
 	if err != nil {
 		gLog.Printf(LvERROR, "listen error:%s", err)
 		return err

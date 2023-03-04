@@ -128,10 +128,13 @@ func (c *Config) load() error {
 	return err
 }
 
+// TODO: deal with multi-thread r/w
 func (c *Config) setToken(token uint64) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	c.Network.Token = token
+	if token != 0 {
+		c.Network.Token = token
+	}
 }
 func (c *Config) setUser(user string) {
 	c.mtx.Lock()
@@ -229,7 +232,7 @@ func parseParams(subCommand string) {
 			gConf.Network.TCPPort = *tcpPort
 		}
 		if f.Name == "token" {
-			gConf.Network.Token = *token
+			gConf.setToken(*token)
 		}
 	})
 
