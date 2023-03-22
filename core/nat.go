@@ -91,7 +91,7 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, hasIPvr int, hasUPNPorNATPMP int, err error) {
 	// the random local port may be used by other.
 	localPort := int(rand.Uint32()%15000 + 50000)
-	echoPort := P2PNetworkInstance(nil).config.TCPPort
+	echoPort := gConf.Network.TCPPort
 	ip1, port1, err := natTest(host, udp1, localPort)
 	if err != nil {
 		return "", 0, 0, 0, err

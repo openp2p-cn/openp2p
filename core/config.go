@@ -62,6 +62,16 @@ func (c *Config) switchApp(app AppConfig, enabled int) {
 		}
 	}
 }
+func (c *Config) retryApp(peerNode string) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	for i := 0; i < len(c.Apps); i++ {
+		if c.Apps[i].PeerNode == peerNode {
+			c.Apps[i].retryNum = 0
+			c.Apps[i].nextRetryTime = time.Now()
+		}
+	}
+}
 
 func (c *Config) add(app AppConfig, override bool) {
 	c.mtx.Lock()

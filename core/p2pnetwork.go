@@ -22,6 +22,11 @@ var (
 	once     sync.Once
 )
 
+const (
+	retryLimit    = 20
+	retryInterval = 10 * time.Second
+)
+
 type P2PNetwork struct {
 	conn        *websocket.Conn
 	online      bool
@@ -63,7 +68,6 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 }
 
 func (pn *P2PNetwork) run() {
-	go pn.autorunApp()
 	heartbeatTimer := time.NewTicker(NetworkHeartbeatTime)
 	for pn.running {
 		select {
@@ -72,7 +76,8 @@ func (pn *P2PNetwork) run() {
 
 		case <-pn.restartCh:
 			pn.online = false
-			pn.wgReconnect.Wait() // wait read/write goroutine end
+			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
+			time.Sleep(NatTestTimeout)
 			err := pn.init()
 			if err != nil {
 				gLog.Println(LvERROR, "P2PNetwork init error:", err)
@@ -119,37 +124,38 @@ func (pn *P2PNetwork) runAll() {
 		if appExist {
 			pn.DeleteApp(*config)
 		}
-		if config.retryNum > 0 {
-			gLog.Printf(LvINFO, "detect app %s disconnect, reconnecting the %d times...", config.AppName, config.retryNum)
-			if time.Now().Add(-time.Minute * 15).After(config.retryTime) { // normal lasts 15min
-				config.retryNum = 0
-			}
-		}
-		config.retryNum++
-		config.retryTime = time.Now()
-		if config.retryNum > 20 {
-			config.Enabled = 0
-			gLog.Printf(LvWARN, "app %s has stopped retry, manually enable it on Web console", config.AppName)
+		if config.retryNum >= retryLimit {
 			continue
 		}
-		config.nextRetryTime = time.Now().Add(time.Second * 10)
+
+		if time.Now().Add(-time.Minute * 15).After(config.retryTime) { // run normally 15min, reset retrynum
+			config.retryNum = 0
+		}
+
+		config.retryNum++
+		gLog.Printf(LvINFO, "detect app %s disconnect, reconnecting the %d times...", config.AppName, config.retryNum)
+		config.retryTime = time.Now()
+		config.nextRetryTime = time.Now().Add(retryInterval)
 		config.connectTime = time.Now()
 		config.peerToken = pn.config.Token
-		gConf.mtx.Unlock() // AddApp will take a period of time
+		gConf.mtx.Unlock() // AddApp will take a period of time, let outside modify gConf
 		err := pn.AddApp(*config)
 		gConf.mtx.Lock()
 		if err != nil {
 			config.errMsg = err.Error()
+			if err == ErrPeerOffline { // stop retry, waiting for online
+				config.retryNum = retryLimit
+				gLog.Printf(LvINFO, " %s offline, it will auto reconnect when peer node online", config.PeerNode)
+			}
 		}
 	}
 }
 func (pn *P2PNetwork) autorunApp() {
 	gLog.Println(LvINFO, "autorunApp start")
-	for pn.running {
+	pn.wgReconnect.Add(1)
+	defer pn.wgReconnect.Done()
+	for pn.running && pn.online {
 		time.Sleep(time.Second)
-		if !pn.online {
-			continue
-		}
 		pn.runAll()
 	}
 	gLog.Println(LvINFO, "autorunApp end")
@@ -364,6 +370,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 	initErr := t.requestPeerInfo()
 	if initErr != nil {
 		gLog.Println(LvERROR, "init error:", initErr)
+
 		return nil, initErr
 	}
 	var err error
@@ -436,10 +443,7 @@ func (pn *P2PNetwork) newTunnel(t *P2PTunnel, tid uint64, isClient bool) error {
 func (pn *P2PNetwork) init() error {
 	gLog.Println(LvINFO, "init start")
 	pn.wgReconnect.Add(1)
-	go func() { //reconnect at least 5s
-		time.Sleep(NatTestTimeout)
-		pn.wgReconnect.Done()
-	}()
+	defer pn.wgReconnect.Done()
 	var err error
 	for {
 		// detect nat type
@@ -449,12 +453,14 @@ func (pn *P2PNetwork) init() error {
 			pn.config.natType = NATSymmetric
 			pn.config.hasIPv4 = 0
 			pn.config.hasUPNPorNATPMP = 0
+			gLog.Println(LvINFO, "openp2pS2STest debug")
 
 		}
 		if strings.Contains(pn.config.Node, "openp2pC2CTest") {
 			pn.config.natType = NATCone
 			pn.config.hasIPv4 = 0
 			pn.config.hasUPNPorNATPMP = 0
+			gLog.Println(LvINFO, "openp2pC2CTest debug")
 		}
 		if err != nil {
 			gLog.Println(LvDEBUG, "detect NAT type error:", err)
@@ -512,6 +518,7 @@ func (pn *P2PNetwork) init() error {
 			req.IPv6 = pn.config.publicIPv6
 			pn.write(MsgReport, MsgReportBasic, &req)
 		}()
+		go pn.autorunApp()
 		gLog.Println(LvDEBUG, "P2PNetwork init ok")
 		break
 	}
@@ -601,7 +608,6 @@ func (pn *P2PNetwork) write(mainType uint16, subType uint16, packet interface{})
 	defer pn.writeMtx.Unlock()
 	if err = pn.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 		gLog.Printf(LvERROR, "write msgType %d,%d error:%s", mainType, subType, err)
-		pn.conn.Close()
 	}
 	return err
 }
@@ -644,7 +650,6 @@ func (pn *P2PNetwork) push(to string, subType uint16, packet interface{}) error 
 	defer pn.writeMtx.Unlock()
 	if err = pn.conn.WriteMessage(websocket.BinaryMessage, pushMsg); err != nil {
 		gLog.Printf(LvERROR, "push to %s error:%s", to, err)
-		pn.conn.Close()
 	}
 	return err
 }

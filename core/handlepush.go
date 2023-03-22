@@ -28,7 +28,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			gLog.Printf(LvERROR, "wrong MsgPushConnectReq:%s", err)
 			return err
 		}
-		gLog.Printf(LvINFO, "%s is connecting...", req.From)
+		gLog.Printf(LvDEBUG, "%s is connecting...", req.From)
 		gLog.Println(LvDEBUG, "push connect response to ", req.From)
 		if compareVersion(req.Version, LeastSupportVersion) == LESS {
 			gLog.Println(LvERROR, ErrVersionNotCompatible.Error(), ":", req.From)
@@ -274,6 +274,16 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 			// disable APP
 			pn.DeleteApp(config)
 		}
+	case MsgPushDstNodeOnline:
+		gLog.Println(LvINFO, "MsgPushDstNodeOnline")
+		app := PushDstNodeOnline{}
+		err := json.Unmarshal(msg[openP2PHeaderSize:], &app)
+		if err != nil {
+			gLog.Printf(LvERROR, "wrong MsgPushDstNodeOnline:%s  %s", err, string(msg[openP2PHeaderSize:]))
+			return err
+		}
+		gLog.Println(LvINFO, "retry peerNode ", app.Node)
+		gConf.retryApp(app.Node)
 	default:
 		pn.msgMapMtx.Lock()
 		ch := pn.msgMap[pushHead.From]

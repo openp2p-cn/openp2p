@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.6.5"
+const OpenP2PVersion = "3.6.8"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 
@@ -96,6 +96,7 @@ const (
 	MsgPushEditNode          = 12
 	MsgPushAPPKey            = 13
 	MsgPushReportLog         = 14
+	MsgPushDstNodeOnline     = 15
 )
 
 // MsgP2P sub type message
@@ -222,6 +223,9 @@ type PushConnectReq struct {
 	AppKey           uint64 `json:"appKey,omitempty"` // for underlay tcp
 	LinkMode         string `json:"linkMode,omitempty"`
 	IsUnderlayServer int    `json:"isServer,omitempty"` // Requset spec peer is server
+}
+type PushDstNodeOnline struct {
+	Node string `json:"node,omitempty"`
 }
 type PushConnectRsp struct {
 	Error           int    `json:"error,omitempty"`

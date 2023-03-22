@@ -35,7 +35,7 @@ type overlayConn struct {
 	// for udp
 	connUDP       *net.UDPConn
 	remoteAddr    net.Addr
-	udpRelayData  chan []byte
+	udpData       chan []byte
 	lastReadUDPTs time.Time
 }
 
@@ -44,15 +44,15 @@ func (oConn *overlayConn) run() {
 	defer gLog.Printf(LvDEBUG, "%d overlayConn run end", oConn.id)
 	oConn.running = true
 	oConn.lastReadUDPTs = time.Now()
-	buffer := make([]byte, ReadBuffLen+PaddingSize)
-	readBuf := buffer[:ReadBuffLen]
+	buffer := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
+	reuseBuff := buffer[:ReadBuffLen]
 	encryptData := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
 	tunnelHead := new(bytes.Buffer)
 	relayHead := new(bytes.Buffer)
 	binary.Write(relayHead, binary.LittleEndian, oConn.rtid)
 	binary.Write(tunnelHead, binary.LittleEndian, oConn.id)
 	for oConn.running && oConn.tunnel.isRuning() {
-		buff, dataLen, err := oConn.Read(readBuf)
+		readBuff, dataLen, err := oConn.Read(reuseBuff)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
@@ -61,9 +61,9 @@ func (oConn *overlayConn) run() {
 			gLog.Printf(LvDEBUG, "overlayConn %d read error:%s,close it", oConn.id, err)
 			break
 		}
-		payload := buff[:dataLen]
+		payload := readBuff[:dataLen]
 		if oConn.appKey != 0 {
-			payload, _ = encryptBytes(oConn.appKeyBytes, encryptData, buffer[:dataLen], dataLen)
+			payload, _ = encryptBytes(oConn.appKeyBytes, encryptData, readBuff[:dataLen], dataLen)
 		}
 		writeBytes := append(tunnelHead.Bytes(), payload...)
 		if oConn.rtid == 0 {
@@ -98,7 +98,11 @@ func (oConn *overlayConn) run() {
 	}
 }
 
-func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, n int, err error) {
+func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, dataLen int, err error) {
+	if !oConn.running {
+		err = ErrOverlayConnDisconnect
+		return
+	}
 	if oConn.connUDP != nil {
 		if time.Now().After(oConn.lastReadUDPTs.Add(time.Minute * 5)) {
 			err = errors.New("udp close")
@@ -106,15 +110,15 @@ func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, n int, err error)
 		}
 		if oConn.remoteAddr != nil { // as server
 			select {
-			case buff = <-oConn.udpRelayData:
-				n = len(buff)
+			case buff = <-oConn.udpData:
+				dataLen = len(buff) - PaddingSize
 				oConn.lastReadUDPTs = time.Now()
 			case <-time.After(time.Second * 10):
 				err = ErrDeadlineExceeded
 			}
 		} else { // as client
 			oConn.connUDP.SetReadDeadline(time.Now().Add(5 * time.Second))
-			n, _, err = oConn.connUDP.ReadFrom(reuseBuff)
+			dataLen, _, err = oConn.connUDP.ReadFrom(reuseBuff)
 			if err == nil {
 				oConn.lastReadUDPTs = time.Now()
 			}
@@ -122,15 +126,21 @@ func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, n int, err error)
 		}
 		return
 	}
-	oConn.connTCP.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err = oConn.connTCP.Read(reuseBuff)
-	buff = reuseBuff
+	if oConn.connTCP != nil {
+		oConn.connTCP.SetReadDeadline(time.Now().Add(time.Second * 5))
+		dataLen, err = oConn.connTCP.Read(reuseBuff)
+		buff = reuseBuff
+	}
+
 	return
 }
 
 // calling by p2pTunnel
 func (oConn *overlayConn) Write(buff []byte) (n int, err error) {
 	// add mutex when multi-thread calling
+	if !oConn.running {
+		return 0, ErrOverlayConnDisconnect
+	}
 	if oConn.connUDP != nil {
 		if oConn.remoteAddr == nil {
 			n, err = oConn.connUDP.Write(buff)
@@ -142,9 +152,25 @@ func (oConn *overlayConn) Write(buff []byte) (n int, err error) {
 		}
 		return
 	}
-	n, err = oConn.connTCP.Write(buff)
+	if oConn.connTCP != nil {
+		n, err = oConn.connTCP.Write(buff)
+	}
+
 	if err != nil {
 		oConn.running = false
 	}
 	return
+}
+
+func (oConn *overlayConn) Close() (err error) {
+	oConn.running = false
+	if oConn.connTCP != nil {
+		oConn.connTCP.Close()
+		oConn.connTCP = nil
+	}
+	if oConn.connUDP != nil {
+		oConn.connUDP.Close()
+		oConn.connUDP = nil
+	}
+	return nil
 }

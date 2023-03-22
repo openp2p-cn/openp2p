@@ -114,7 +114,7 @@ func (app *p2pApp) listenUDP() error {
 		gLog.Printf(LvERROR, "listen error:%s", err)
 		return err
 	}
-	buffer := make([]byte, 64*1024)
+	buffer := make([]byte, 64*1024+PaddingSize)
 	udpID := make([]byte, 8)
 	for {
 		app.listenerUDP.SetReadDeadline(time.Now().Add(time.Second * 10))
@@ -127,8 +127,8 @@ func (app *p2pApp) listenUDP() error {
 				break
 			}
 		} else {
-			b := bytes.Buffer{}
-			b.Write(buffer[:len])
+			dupData := bytes.Buffer{} // should uses memory pool
+			dupData.Write(buffer[:len+PaddingSize])
 			// load from app.tunnel.overlayConns by remoteAddr error, new udp connection
 			remoteIP := strings.Split(remoteAddr.String(), ":")[0]
 			port, _ := strconv.Atoi(strings.Split(remoteAddr.String(), ":")[1])
@@ -139,19 +139,19 @@ func (app *p2pApp) listenUDP() error {
 			udpID[3] = a[3]
 			udpID[4] = byte(port)
 			udpID[5] = byte(port >> 8)
-			id := binary.LittleEndian.Uint64(udpID)
+			id := binary.LittleEndian.Uint64(udpID) // convert remoteIP:port to uint64
 			s, ok := app.tunnel.overlayConns.Load(id)
 			if !ok {
 				oConn := overlayConn{
-					tunnel:       app.tunnel,
-					connUDP:      app.listenerUDP,
-					remoteAddr:   remoteAddr,
-					udpRelayData: make(chan []byte, 1000),
-					id:           id,
-					isClient:     true,
-					rtid:         app.rtid,
-					appID:        app.id,
-					appKey:       app.key,
+					tunnel:     app.tunnel,
+					connUDP:    app.listenerUDP,
+					remoteAddr: remoteAddr,
+					udpData:    make(chan []byte, 1000),
+					id:         id,
+					isClient:   true,
+					rtid:       app.rtid,
+					appID:      app.id,
+					appKey:     app.key,
 				}
 				// calc key bytes for encrypt
 				if oConn.appKey != 0 {
@@ -181,7 +181,7 @@ func (app *p2pApp) listenUDP() error {
 					app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
 				}
 				go oConn.run()
-				oConn.udpRelayData <- b.Bytes()
+				oConn.udpData <- dupData.Bytes()
 			}
 
 			// load from app.tunnel.overlayConns by remoteAddr ok, write relay data
@@ -189,7 +189,7 @@ func (app *p2pApp) listenUDP() error {
 			if !ok {
 				continue
 			}
-			overlayConn.udpRelayData <- b.Bytes()
+			overlayConn.udpData <- dupData.Bytes()
 		}
 	}
 	return nil

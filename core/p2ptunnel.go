@@ -528,7 +528,7 @@ func (t *P2PTunnel) readLoop() {
 
 			// calc key bytes for encrypt
 			if oConn.appKey != 0 {
-				encryptKey := make([]byte, 16)
+				encryptKey := make([]byte, AESKeySize)
 				binary.LittleEndian.PutUint64(encryptKey, oConn.appKey)
 				binary.LittleEndian.PutUint64(encryptKey[8:], oConn.appKey)
 				oConn.appKeyBytes = encryptKey
@@ -548,7 +548,7 @@ func (t *P2PTunnel) readLoop() {
 			i, ok := t.overlayConns.Load(overlayID)
 			if ok {
 				oConn := i.(*overlayConn)
-				oConn.running = false
+				oConn.Close()
 			}
 		default:
 		}
@@ -610,14 +610,7 @@ func (t *P2PTunnel) closeOverlayConns(appID uint64) {
 	t.overlayConns.Range(func(_, i interface{}) bool {
 		oConn := i.(*overlayConn)
 		if oConn.appID == appID {
-			if oConn.connTCP != nil {
-				oConn.connTCP.Close()
-				oConn.connTCP = nil
-			}
-			if oConn.connUDP != nil {
-				oConn.connUDP.Close()
-				oConn.connUDP = nil
-			}
+			oConn.Close()
 		}
 		return true
 	})
