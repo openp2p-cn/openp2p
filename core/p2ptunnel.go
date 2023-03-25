@@ -444,7 +444,7 @@ func (t *P2PTunnel) readLoop() {
 				continue
 			}
 			overlayID := binary.LittleEndian.Uint64(body[:8])
-			gLog.Printf(LvDEBUG, "%d tunnel read overlay data %d", t.id, overlayID)
+			gLog.Printf(LvDEBUG, "%d tunnel read overlay data %d bodylen=%d", t.id, overlayID, head.DataLen)
 			s, ok := t.overlayConns.Load(overlayID)
 			if !ok {
 				// debug level, when overlay connection closed, always has some packet not found tunnel
@@ -515,6 +515,7 @@ func (t *P2PTunnel) readLoop() {
 				rtid:     req.RelayTunnelID,
 				appID:    req.AppID,
 				appKey:   GetKey(req.AppID),
+				running:  true,
 			}
 			if req.Protocol == "udp" {
 				oConn.connUDP, err = net.DialUDP("udp", nil, &net.UDPAddr{IP: net.ParseIP(req.DstIP), Port: req.DstPort})

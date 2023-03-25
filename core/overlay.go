@@ -42,7 +42,6 @@ type overlayConn struct {
 func (oConn *overlayConn) run() {
 	gLog.Printf(LvDEBUG, "%d overlayConn run start", oConn.id)
 	defer gLog.Printf(LvDEBUG, "%d overlayConn run end", oConn.id)
-	oConn.running = true
 	oConn.lastReadUDPTs = time.Now()
 	buffer := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
 	reuseBuff := buffer[:ReadBuffLen]

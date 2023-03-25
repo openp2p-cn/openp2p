@@ -176,7 +176,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		pn.write(MsgReport, MsgReportApps, &req)
 	case MsgPushReportLog:
-		gLog.Println(LvINFO, "MsgPushReportLog")
+		gLog.Println(LvDEBUG, "MsgPushReportLog")
 		req := ReportLogReq{}
 		err := json.Unmarshal(msg[openP2PHeaderSize:], &req)
 		if err != nil {

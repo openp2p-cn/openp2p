@@ -77,7 +77,7 @@ func (pn *P2PNetwork) run() {
 		case <-pn.restartCh:
 			pn.online = false
 			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
-			time.Sleep(NatTestTimeout)
+			time.Sleep(ClientAPITimeout)
 			err := pn.init()
 			if err != nil {
 				gLog.Println(LvERROR, "P2PNetwork init error:", err)
@@ -128,12 +128,13 @@ func (pn *P2PNetwork) runAll() {
 			continue
 		}
 
-		if time.Now().Add(-time.Minute * 15).After(config.retryTime) { // run normally 15min, reset retrynum
-			config.retryNum = 0
+		if config.retryNum > 0 { // first time not show reconnect log
+			gLog.Printf(LvINFO, "detect app %s disconnect, reconnecting the %d times...", config.AppName, config.retryNum)
+			if time.Now().Add(-time.Minute * 15).After(config.retryTime) { // run normally 15min, reset retrynum
+				config.retryNum = 0
+			}
 		}
-
 		config.retryNum++
-		gLog.Printf(LvINFO, "detect app %s disconnect, reconnecting the %d times...", config.AppName, config.retryNum)
 		config.retryTime = time.Now()
 		config.nextRetryTime = time.Now().Add(retryInterval)
 		config.connectTime = time.Now()
@@ -608,6 +609,7 @@ func (pn *P2PNetwork) write(mainType uint16, subType uint16, packet interface{})
 	defer pn.writeMtx.Unlock()
 	if err = pn.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 		gLog.Printf(LvERROR, "write msgType %d,%d error:%s", mainType, subType, err)
+		pn.conn.Close()
 	}
 	return err
 }
@@ -650,6 +652,7 @@ func (pn *P2PNetwork) push(to string, subType uint16, packet interface{}) error 
 	defer pn.writeMtx.Unlock()
 	if err = pn.conn.WriteMessage(websocket.BinaryMessage, pushMsg); err != nil {
 		gLog.Printf(LvERROR, "push to %s error:%s", to, err)
+		pn.conn.Close()
 	}
 	return err
 }

@@ -72,6 +72,7 @@ func (app *p2pApp) listenTCP() error {
 			rtid:     app.rtid,
 			appID:    app.id,
 			appKey:   app.key,
+			running:  true,
 		}
 		// pre-calc key bytes for encrypt
 		if oConn.appKey != 0 {
@@ -100,6 +101,8 @@ func (app *p2pApp) listenTCP() error {
 			msgWithHead := append(relayHead.Bytes(), msg...)
 			app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
 		}
+		// TODO: wait OverlayConnectRsp instead of sleep
+		time.Sleep(time.Second) // waiting remote node connection ok
 		go oConn.run()
 	}
 	return nil
@@ -152,6 +155,7 @@ func (app *p2pApp) listenUDP() error {
 					rtid:       app.rtid,
 					appID:      app.id,
 					appKey:     app.key,
+					running:    true,
 				}
 				// calc key bytes for encrypt
 				if oConn.appKey != 0 {
@@ -180,6 +184,8 @@ func (app *p2pApp) listenUDP() error {
 					msgWithHead := append(relayHead.Bytes(), msg...)
 					app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
 				}
+				// TODO: wait OverlayConnectRsp instead of sleep
+				time.Sleep(time.Second) // waiting remote node connection ok
 				go oConn.run()
 				oConn.udpData <- dupData.Bytes()
 			}
