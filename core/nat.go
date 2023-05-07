@@ -34,7 +34,7 @@ func natTCP(serverHost string, serverPort int, localPort int) (publicIP string, 
 		return
 	}
 	b := make([]byte, 1000)
-	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	conn.SetReadDeadline(time.Now().Add(NatTestTimeout))
 	n, rderr := conn.Read(b)
 	if rderr != nil {
 		fmt.Printf("Read error: %s\n", rderr)
@@ -153,12 +153,12 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 			}
 			log.Println("PublicIP:", ext)
 
-			externalPort, err := nat.AddPortMapping("udp", echoPort, echoPort, "openp2p", 30)
+			externalPort, err := nat.AddPortMapping("udp", echoPort, echoPort, "openp2p", 604800) // 7 days, upnp will perform failed when os start
 			if err != nil {
 				gLog.Println(LvDEBUG, "could not add udp UPNP port mapping", externalPort)
 				break
 			} else {
-				nat.AddPortMapping("tcp", echoPort, echoPort, "openp2p", 604800)
+				nat.AddPortMapping("tcp", echoPort, echoPort, "openp2p", 604800) // 7 days
 			}
 		}
 		gLog.Printf(LvDEBUG, "public ip test start %s:%d", publicIP, echoPort)

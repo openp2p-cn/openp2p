@@ -18,9 +18,9 @@ func UDPWrite(conn *net.UDPConn, dst net.Addr, mainType uint16, subType uint16, 
 	return conn.WriteTo(msg, dst)
 }
 
-func UDPRead(conn *net.UDPConn, timeout int) (ra net.Addr, head *openP2PHeader, result []byte, len int, err error) {
+func UDPRead(conn *net.UDPConn, timeout time.Duration) (ra net.Addr, head *openP2PHeader, result []byte, len int, err error) {
 	if timeout > 0 {
-		deadline := time.Now().Add(time.Millisecond * time.Duration(timeout))
+		deadline := time.Now().Add(timeout)
 		err = conn.SetReadDeadline(deadline)
 		if err != nil {
 			gLog.Println(LvERROR, "SetReadDeadline error")

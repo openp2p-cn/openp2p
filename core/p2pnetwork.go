@@ -167,7 +167,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.PeerNode)
 	// request a relay node or specify manually(TODO)
 	pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
-	head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, time.Second*10)
+	head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, ClientAPITimeout)
 	if head == nil {
 		return nil, 0, "", errors.New("read MsgRelayNodeRsp error")
 	}
@@ -408,6 +408,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 		t.config.linkMode = LinkModeTCPPunch
 		t.config.isUnderlayServer = 0
 		if err = pn.newTunnel(t, tid, isClient); err == nil {
+			gLog.Println(LvINFO, "TCP4 Punch ok")
 			return t, nil
 		}
 	}
@@ -469,7 +470,7 @@ func (pn *P2PNetwork) init() error {
 		}
 		gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
-		uri := "/openp2p/v1/login"
+		uri := "/api/v1/login"
 		config := tls.Config{InsecureSkipVerify: true} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
 		websocket.DefaultDialer.TLSClientConfig = &config
 		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
@@ -561,7 +562,6 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 				gConf.setNode(rsp.Node)
 				pn.config.Node = rsp.Node
 			}
-			gConf.save()
 			pn.localTs = time.Now().Unix()
 			gLog.Printf(LvINFO, "login ok. user=%s,node=%s,Server ts=%d, local ts=%d", rsp.User, rsp.Node, rsp.Ts, pn.localTs)
 		}
@@ -703,6 +703,7 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
 	})
 }
 
+// ipv6 will expired need to refresh.
 func (pn *P2PNetwork) refreshIPv6(force bool) {
 	if !force && !IsIPv6(pn.config.publicIPv6) { // not support ipv6, not refresh
 		return

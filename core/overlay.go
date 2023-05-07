@@ -116,7 +116,7 @@ func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, dataLen int, err 
 				err = ErrDeadlineExceeded
 			}
 		} else { // as client
-			oConn.connUDP.SetReadDeadline(time.Now().Add(5 * time.Second))
+			oConn.connUDP.SetReadDeadline(time.Now().Add(UDPReadTimeout))
 			dataLen, _, err = oConn.connUDP.ReadFrom(reuseBuff)
 			if err == nil {
 				oConn.lastReadUDPTs = time.Now()
@@ -126,7 +126,7 @@ func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, dataLen int, err 
 		return
 	}
 	if oConn.connTCP != nil {
-		oConn.connTCP.SetReadDeadline(time.Now().Add(time.Second * 5))
+		oConn.connTCP.SetReadDeadline(time.Now().Add(UDPReadTimeout))
 		dataLen, err = oConn.connTCP.Read(reuseBuff)
 		buff = reuseBuff
 	}

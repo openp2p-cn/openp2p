@@ -69,7 +69,7 @@ func (conn *underlayTCP) Close() error {
 
 func listenTCP(host string, port int, localPort int, mode string) (*underlayTCP, error) {
 	if mode == LinkModeTCPPunch {
-		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout) // TODO: timeout
+		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
 		if err != nil {
 			gLog.Println(LvDEBUG, "send tcp punch: ", err)
 			return nil, err

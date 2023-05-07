@@ -36,7 +36,7 @@ func (t *P2PTunnel) requestPeerInfo() error {
 	t.pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{t.config.peerToken, t.config.PeerNode})
 	head, body := t.pn.read("", MsgQuery, MsgQueryPeerInfoRsp, time.Second*10)
 	if head == nil {
-		return ErrPeerOffline
+		return ErrNetwork // network error, should not be ErrPeerOffline
 	}
 	rsp := QueryPeerInfoRsp{}
 	err := json.Unmarshal(body, &rsp)

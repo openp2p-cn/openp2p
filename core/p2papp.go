@@ -120,7 +120,7 @@ func (app *p2pApp) listenUDP() error {
 	buffer := make([]byte, 64*1024+PaddingSize)
 	udpID := make([]byte, 8)
 	for {
-		app.listenerUDP.SetReadDeadline(time.Now().Add(time.Second * 10))
+		app.listenerUDP.SetReadDeadline(time.Now().Add(UDPReadTimeout))
 		len, remoteAddr, err := app.listenerUDP.ReadFrom(buffer)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {

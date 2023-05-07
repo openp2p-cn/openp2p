@@ -14,6 +14,7 @@ var (
 	ErrorLogin               = errors.New("user or password not correct")
 	ErrNodeTooShort          = errors.New("node name too short, it must >=8 charaters")
 	ErrPeerOffline           = errors.New("peer offline")
+	ErrNetwork               = errors.New("network error")
 	ErrMsgFormat             = errors.New("message format wrong")
 	ErrVersionNotCompatible  = errors.New("version not compatible")
 	ErrOverlayConnDisconnect = errors.New("overlay connection is disconnected")

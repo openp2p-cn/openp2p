@@ -58,9 +58,10 @@ func (c *Config) switchApp(app AppConfig, enabled int) {
 			c.Apps[i].Enabled = enabled
 			c.Apps[i].retryNum = 0
 			c.Apps[i].nextRetryTime = time.Now()
-			return
+			break
 		}
 	}
+	c.save()
 }
 func (c *Config) retryApp(peerNode string) {
 	c.mtx.Lock()
@@ -76,6 +77,7 @@ func (c *Config) retryApp(peerNode string) {
 func (c *Config) add(app AppConfig, override bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	defer c.save()
 	if app.SrcPort == 0 || app.DstPort == 0 {
 		gLog.Println(LvERROR, "invalid app ", app)
 		return
@@ -97,17 +99,19 @@ func (c *Config) delete(app AppConfig) {
 	}
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	defer c.save()
 	for i := 0; i < len(c.Apps); i++ {
 		if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
 			c.Apps = append(c.Apps[:i], c.Apps[i+1:]...)
 			return
 		}
 	}
+
 }
 
 func (c *Config) save() {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+	// c.mtx.Lock()
+	// defer c.mtx.Unlock()  // internal call
 	data, _ := json.MarshalIndent(c, "", "  ")
 	err := ioutil.WriteFile("config.json", data, 0644)
 	if err != nil {
@@ -142,6 +146,7 @@ func (c *Config) load() error {
 func (c *Config) setToken(token uint64) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	defer c.save()
 	if token != 0 {
 		c.Network.Token = token
 	}
@@ -149,16 +154,19 @@ func (c *Config) setToken(token uint64) {
 func (c *Config) setUser(user string) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	defer c.save()
 	c.Network.User = user
 }
 func (c *Config) setNode(node string) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	defer c.save()
 	c.Network.Node = node
 }
 func (c *Config) setShareBandwidth(bw int) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
+	defer c.save()
 	c.Network.ShareBandwidth = bw
 }
 

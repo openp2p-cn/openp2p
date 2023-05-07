@@ -241,7 +241,6 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		newConf.Protocol = newApp.Protocol
 		newConf.SrcPort = newApp.SrcPort
 		gConf.add(newConf, false)
-		gConf.save()          // save quickly for the next request reportApplist
 		pn.DeleteApp(oldConf) // DeleteApp may cost some times, execute at the end
 		// autoReconnect will auto AddApp
 		// pn.AddApp(config)
@@ -256,7 +255,6 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		gConf.setNode(req.NewName)
 		gConf.setShareBandwidth(req.Bandwidth)
-		gConf.save()
 		// TODO: hot reload
 		os.Exit(0)
 	case MsgPushSwitchApp:

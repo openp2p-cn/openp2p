@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.6.11"
+const OpenP2PVersion = "3.8.0"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 
@@ -139,7 +139,7 @@ const (
 	SymmetricHandshakeNum = 800 // 0.992379
 	// SymmetricHandshakeNum        = 1000 // 0.999510
 	SymmetricHandshakeInterval   = time.Millisecond
-	SymmetricHandshakeAckTimeout = time.Second * 11
+	SymmetricHandshakeAckTimeout = time.Second * 5
 	PeerAddRelayTimeount         = time.Second * 20
 	CheckActiveTimeout           = time.Second * 5
 	PaddingSize                  = 16
@@ -148,6 +148,7 @@ const (
 	RetryInterval                = time.Second * 30
 	PublicIPEchoTimeout          = time.Second * 1
 	NatTestTimeout               = time.Second * 5
+	UDPReadTimeout               = time.Second * 5
 	ClientAPITimeout             = time.Second * 10
 	MaxDirectTry                 = 3
 )
