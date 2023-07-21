@@ -10,9 +10,10 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.8.0"
+const OpenP2PVersion = "3.9.1"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
+const SyncServerTimeVersion = "3.9.0"
 
 const (
 	IfconfigPort1 = 27180
@@ -138,19 +139,21 @@ const (
 	TunnelIdleTimeout     = time.Minute
 	SymmetricHandshakeNum = 800 // 0.992379
 	// SymmetricHandshakeNum        = 1000 // 0.999510
-	SymmetricHandshakeInterval   = time.Millisecond
-	SymmetricHandshakeAckTimeout = time.Second * 5
-	PeerAddRelayTimeount         = time.Second * 20
-	CheckActiveTimeout           = time.Second * 5
-	PaddingSize                  = 16
-	AESKeySize                   = 16
-	MaxRetry                     = 10
-	RetryInterval                = time.Second * 30
-	PublicIPEchoTimeout          = time.Second * 1
-	NatTestTimeout               = time.Second * 5
-	UDPReadTimeout               = time.Second * 5
-	ClientAPITimeout             = time.Second * 10
-	MaxDirectTry                 = 3
+	SymmetricHandshakeInterval = time.Millisecond
+	HandshakeTimeout           = time.Second * 5
+	PeerAddRelayTimeount       = HandshakeTimeout * 2
+	CheckActiveTimeout         = time.Second * 5
+	PaddingSize                = 16
+	AESKeySize                 = 16
+	MaxRetry                   = 10
+	RetryInterval              = time.Second * 30
+	PublicIPEchoTimeout        = time.Second * 1
+	NatTestTimeout             = time.Second * 5
+	UDPReadTimeout             = time.Second * 5
+	ClientAPITimeout           = time.Second * 10
+	UnderlayConnectTimeout     = time.Second * 10
+	MaxDirectTry               = 3
+	PunchTsDelay               = time.Second * 2
 )
 
 // NATNone has public ip
@@ -240,6 +243,7 @@ type PushConnectRsp struct {
 	ConeNatPort     int    `json:"coneNatPort,omitempty"` //it's not only cone, but also upnp or nat-pmp hole
 	FromIP          string `json:"fromIP,omitempty"`
 	ID              uint64 `json:"id,omitempty"`
+	PunchTs         uint64 `json:"punchts,omitempty"` // server timestamp
 	Version         string `json:"version,omitempty"`
 }
 type PushRsp struct {

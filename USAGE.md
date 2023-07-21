@@ -99,3 +99,8 @@ C:\Program Files\OpenP2P\openp2p.exe uninstall
 # linux,macos
 sudo /usr/local/openp2p/openp2p uninstall
 ```
+
+## Run with Docker
+```
+docker run -d --net host --name openp2p-client  openp2pcn/openp2p-client:latest -token YOUR-TOKEN -node YOUR-NODE-NAME
+```

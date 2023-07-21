@@ -15,10 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
+	"github.com/quic-go/quic-go"
 )
 
-//quic.DialContext do not support version 44,disable it
+// quic.DialContext do not support version 44,disable it
 var quicVersion []quic.VersionNumber
 
 type underlayQUIC struct {
@@ -87,7 +87,7 @@ func (conn *underlayQUIC) CloseListener() {
 }
 
 func (conn *underlayQUIC) Accept() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), UnderlayConnectTimeout)
 	defer cancel()
 	sess, err := conn.listener.Accept(ctx)
 	if err != nil {

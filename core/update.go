@@ -27,7 +27,7 @@ func update(host string, port int) {
 	}
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s", host, port, OpenP2PVersion, goos, goarch))
+	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s&user=%s&node=%s", host, port, OpenP2PVersion, goos, goarch, gConf.Network.User, gConf.Network.Node))
 	if err != nil {
 		gLog.Println(LvERROR, "update:query update list failed:", err)
 		return

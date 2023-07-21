@@ -51,6 +51,7 @@ type logger struct {
 	pid        int
 	maxLogSize int64
 	mode       int
+	stdLogger  *log.Logger
 }
 
 func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64, mode int) *logger {
@@ -73,7 +74,7 @@ func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64,
 		}
 		os.Chmod(logFilePath, 0644)
 		logfiles[lv] = f
-		loggers[lv] = log.New(f, "", log.LstdFlags)
+		loggers[lv] = log.New(f, "", log.LstdFlags|log.Lmicroseconds)
 	}
 	var le string
 	if runtime.GOOS == "windows" {
@@ -81,7 +82,8 @@ func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64,
 	} else {
 		le = "\n"
 	}
-	pLog := &logger{loggers, logfiles, level, logdir, &sync.Mutex{}, le, os.Getpid(), maxLogSize, mode}
+	pLog := &logger{loggers, logfiles, level, logdir, &sync.Mutex{}, le, os.Getpid(), maxLogSize, mode, log.New(os.Stdout, "", 0)}
+	pLog.stdLogger.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	go pLog.checkFile()
 	return pLog
 }
@@ -142,7 +144,7 @@ func (l *logger) Printf(level LogLevel, format string, params ...interface{}) {
 		l.loggers[0].Printf("%d %s "+format+l.lineEnding, params...)
 	}
 	if l.mode == LogConsole || l.mode == LogFileAndConsole {
-		log.Printf("%d %s "+format+l.lineEnding, params...)
+		l.stdLogger.Printf("%d %s "+format+l.lineEnding, params...)
 	}
 }
 
@@ -159,6 +161,6 @@ func (l *logger) Println(level LogLevel, params ...interface{}) {
 		l.loggers[0].Print(params...)
 	}
 	if l.mode == LogConsole || l.mode == LogFileAndConsole {
-		log.Print(params...)
+		l.stdLogger.Print(params...)
 	}
 }

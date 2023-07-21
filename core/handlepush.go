@@ -43,8 +43,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		// verify totp token or token
 		t := totp.TOTP{Step: totp.RelayTOTPStep}
-		if t.Verify(req.Token, pn.config.Token, time.Now().Unix()+(pn.serverTs-pn.localTs)) || // localTs may behind, auto adjust ts
-			t.Verify(req.Token, pn.config.Token, time.Now().Unix()) {
+		if t.Verify(req.Token, pn.config.Token, time.Now().Unix()-pn.dt) { // localTs may behind, auto adjust ts
 			gLog.Printf(LvINFO, "Access Granted\n")
 			config := AppConfig{}
 			config.peerNatType = req.NatType

@@ -3,7 +3,6 @@ package openp2p
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"net"
 	"strconv"
@@ -14,20 +13,22 @@ import (
 	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
-func natTCP(serverHost string, serverPort int, localPort int) (publicIP string, publicPort int) {
+func natTCP(serverHost string, serverPort int) (publicIP string, publicPort int, localPort int) {
 	// dialer := &net.Dialer{
 	// 	LocalAddr: &net.TCPAddr{
 	// 		IP:   net.ParseIP("0.0.0.0"),
 	// 		Port: localPort,
 	// 	},
 	// }
-	conn, err := reuse.DialTimeout("tcp4", fmt.Sprintf("%s:%d", "0.0.0.0", localPort), fmt.Sprintf("%s:%d", serverHost, serverPort), time.Second*5)
+	conn, err := reuse.DialTimeout("tcp4", fmt.Sprintf("%s:%d", "0.0.0.0", 0), fmt.Sprintf("%s:%d", serverHost, serverPort), NatTestTimeout)
 	// conn, err := net.Dial("tcp4", fmt.Sprintf("%s:%d", serverHost, serverPort))
+	// log.Println(LvINFO, conn.LocalAddr())
 	if err != nil {
 		fmt.Printf("Dial tcp4 %s:%d error:%s", serverHost, serverPort, err)
 		return
 	}
 	defer conn.Close()
+	localPort, _ = strconv.Atoi(strings.Split(conn.LocalAddr().String(), ":")[1])
 	_, wrerr := conn.Write([]byte("1"))
 	if wrerr != nil {
 		fmt.Printf("Write error: %s\n", wrerr)
@@ -151,14 +152,14 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 				gLog.Println(LvDEBUG, "could not perform UPNP external address:", err)
 				break
 			}
-			log.Println("PublicIP:", ext)
+			gLog.Println(LvINFO, "PublicIP:", ext)
 
-			externalPort, err := nat.AddPortMapping("udp", echoPort, echoPort, "openp2p", 604800) // 7 days, upnp will perform failed when os start
+			externalPort, err := nat.AddPortMapping("udp", echoPort, echoPort, "openp2p", 30) // 30 seconds fot upnp testing
 			if err != nil {
 				gLog.Println(LvDEBUG, "could not add udp UPNP port mapping", externalPort)
 				break
 			} else {
-				nat.AddPortMapping("tcp", echoPort, echoPort, "openp2p", 604800) // 7 days
+				nat.AddPortMapping("tcp", echoPort, echoPort, "openp2p", 604800) // 7 days for tcp connection
 			}
 		}
 		gLog.Printf(LvDEBUG, "public ip test start %s:%d", publicIP, echoPort)

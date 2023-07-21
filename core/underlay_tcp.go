@@ -67,21 +67,30 @@ func (conn *underlayTCP) Close() error {
 	return conn.Conn.Close()
 }
 
-func listenTCP(host string, port int, localPort int, mode string) (*underlayTCP, error) {
+func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) (*underlayTCP, error) {
 	if mode == LinkModeTCPPunch {
-		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
+		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) == LESS {
+			gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
+		} else {
+			ts := time.Duration(int64(t.punchTs) + t.pn.dt - time.Now().UnixNano())
+			gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
+			time.Sleep(ts)
+		}
+		gLog.Println(LvDEBUG, (time.Now().UnixNano()-t.pn.dt)/(int64)(time.Millisecond), " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
+		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), HandshakeTimeout)
 		if err != nil {
 			gLog.Println(LvDEBUG, "send tcp punch: ", err)
 			return nil, err
 		}
 		return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
 	}
+	t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
 	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", localPort))
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	l.SetDeadline(time.Now().Add(SymmetricHandshakeAckTimeout))
+	l.SetDeadline(time.Now().Add(HandshakeTimeout))
 	c, err := l.Accept()
 	defer l.Close()
 	if err != nil {
@@ -94,9 +103,9 @@ func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, e
 	var c net.Conn
 	var err error
 	if mode == LinkModeTCPPunch {
-		c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
+		c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), HandshakeTimeout)
 	} else {
-		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), SymmetricHandshakeAckTimeout)
+		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), HandshakeTimeout)
 	}
 
 	if err != nil {

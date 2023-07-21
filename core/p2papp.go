@@ -82,7 +82,7 @@ func (app *p2pApp) listenTCP() error {
 			oConn.appKeyBytes = encryptKey
 		}
 		app.tunnel.overlayConns.Store(oConn.id, &oConn)
-		gLog.Printf(LvDEBUG, "Accept TCP overlayID:%d", oConn.id)
+		gLog.Printf(LvDEBUG, "Accept TCP overlayID:%d, %s", oConn.id, oConn.connTCP.RemoteAddr())
 		// tell peer connect
 		req := OverlayConnectReq{ID: oConn.id,
 			Token:    app.tunnel.pn.config.Token,

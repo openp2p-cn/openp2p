@@ -5,6 +5,7 @@ package openp2p
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -181,7 +182,12 @@ func localIPv4() string { // TODO: multi nic will wrong
 }
 
 func getServiceURL(rootURL string) (url, urnDomain string, err error) {
-	r, err := http.Get(rootURL)
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: time.Second * 3}
+	r, err := client.Get(rootURL)
 	if err != nil {
 		return
 	}

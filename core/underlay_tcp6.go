@@ -73,7 +73,7 @@ func listenTCP6(port int, idleTimeout time.Duration) (*underlayTCP6, error) {
 		return nil, err
 	}
 	defer l.Close()
-	l.SetDeadline(time.Now().Add(SymmetricHandshakeAckTimeout))
+	l.SetDeadline(time.Now().Add(HandshakeTimeout))
 	c, err := l.Accept()
 	defer l.Close()
 	if err != nil {
@@ -83,7 +83,7 @@ func listenTCP6(port int, idleTimeout time.Duration) (*underlayTCP6, error) {
 }
 
 func dialTCP6(host string, port int) (*underlayTCP6, error) {
-	c, err := net.DialTimeout("tcp6", fmt.Sprintf("[%s]:%d", host, port), SymmetricHandshakeAckTimeout)
+	c, err := net.DialTimeout("tcp6", fmt.Sprintf("[%s]:%d", host, port), HandshakeTimeout)
 	if err != nil {
 		gLog.Printf(LvERROR, "Dial %s:%d error:%s", host, port, err)
 		return nil, err

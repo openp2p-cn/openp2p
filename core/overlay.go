@@ -84,16 +84,14 @@ func (oConn *overlayConn) run() {
 	}
 	oConn.tunnel.overlayConns.Delete(oConn.id)
 	// notify peer disconnect
-	if oConn.isClient {
-		req := OverlayDisconnectReq{ID: oConn.id}
-		if oConn.rtid == 0 {
-			oConn.tunnel.conn.WriteMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
-		} else {
-			// write relay data
-			msg, _ := newMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
-			msgWithHead := append(relayHead.Bytes(), msg...)
-			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
-		}
+	req := OverlayDisconnectReq{ID: oConn.id}
+	if oConn.rtid == 0 {
+		oConn.tunnel.conn.WriteMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
+	} else {
+		// write relay data
+		msg, _ := newMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
+		msgWithHead := append(relayHead.Bytes(), msg...)
+		oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
 	}
 }
 

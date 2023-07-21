@@ -25,6 +25,8 @@ var (
 const (
 	retryLimit    = 20
 	retryInterval = 10 * time.Second
+	dtma          = 20
+	ddtma         = 5
 )
 
 type P2PNetwork struct {
@@ -34,9 +36,12 @@ type P2PNetwork struct {
 	restartCh   chan bool
 	wgReconnect sync.WaitGroup
 	writeMtx    sync.Mutex
-	serverTs    int64
-	localTs     int64
 	hbTime      time.Time
+	// for sync server time
+	t1   int64 // nanoSeconds
+	dt   int64 // client faster then server dt nanoSeconds
+	dtma int64
+	ddt  int64 // differential of dt
 	// msgMap    sync.Map
 	msgMap     map[uint64]chan []byte //key: nodeID
 	msgMapMtx  sync.Mutex
@@ -55,6 +60,8 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 				running:   true,
 				msgMap:    make(map[uint64]chan []byte),
 				limiter:   newBandwidthLimiter(config.ShareBandwidth),
+				dt:        0,
+				ddt:       0,
 			}
 			instance.msgMap[0] = make(chan []byte) // for gateway
 			if config != nil {
@@ -69,11 +76,13 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 
 func (pn *P2PNetwork) run() {
 	heartbeatTimer := time.NewTicker(NetworkHeartbeatTime)
+	pn.t1 = time.Now().UnixNano()
+	pn.write(MsgHeartbeat, 0, "")
 	for pn.running {
 		select {
 		case <-heartbeatTimer.C:
+			pn.t1 = time.Now().UnixNano()
 			pn.write(MsgHeartbeat, 0, "")
-
 		case <-pn.restartCh:
 			pn.online = false
 			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
@@ -87,7 +96,7 @@ func (pn *P2PNetwork) run() {
 }
 
 func (pn *P2PNetwork) Connect(timeout int) bool {
-	// waiting for login response
+	// waiting for heartbeat
 	for i := 0; i < (timeout / 1000); i++ {
 		if pn.hbTime.After(time.Now().Add(-NetworkHeartbeatTime)) {
 			return true
@@ -552,8 +561,6 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 			gLog.Printf(LvERROR, "login error:%d, detail:%s", rsp.Error, rsp.Detail)
 			pn.running = false
 		} else {
-			pn.serverTs = rsp.Ts
-			pn.hbTime = time.Now()
 			pn.config.Token = rsp.Token
 			pn.config.User = rsp.User
 			gConf.setToken(rsp.Token)
@@ -562,12 +569,28 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 				gConf.setNode(rsp.Node)
 				pn.config.Node = rsp.Node
 			}
-			pn.localTs = time.Now().Unix()
-			gLog.Printf(LvINFO, "login ok. user=%s,node=%s,Server ts=%d, local ts=%d", rsp.User, rsp.Node, rsp.Ts, pn.localTs)
+			gLog.Printf(LvINFO, "login ok. user=%s,node=%s", rsp.User, rsp.Node)
 		}
 	case MsgHeartbeat:
 		gLog.Printf(LvDEBUG, "P2PNetwork heartbeat ok")
 		pn.hbTime = time.Now()
+		rtt := pn.hbTime.UnixNano() - pn.t1
+		t2 := int64(binary.LittleEndian.Uint64(msg[openP2PHeaderSize : openP2PHeaderSize+8]))
+		dt := pn.t1 + rtt/2 - t2
+		if pn.dtma == 0 {
+			pn.dtma = dt
+		} else {
+			ddt := dt - pn.dt
+			// if pn.ddt == 0 {
+			pn.ddt = ddt
+			// } else {
+			// 	pn.ddt = pn.ddt/ddtma*(ddtma-1) + ddt/ddtma // avoid int64 overflow
+			// }
+
+			pn.dtma = pn.dtma/dtma*(dtma-1) + dt/dtma // avoid int64 overflow
+		}
+		pn.dt = dt
+		gLog.Printf(LvDEBUG, "server time dt=%dms ddt=%dns rtt=%dms", pn.dt/int64(time.Millisecond), pn.ddt, rtt/int64(time.Millisecond))
 	case MsgPush:
 		handlePush(pn, head.SubType, msg)
 	default:
