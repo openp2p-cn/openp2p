@@ -84,7 +84,7 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 		return "", 0, err
 	}
 	natRsp := NatDetectRsp{}
-	err = json.Unmarshal(buffer[openP2PHeaderSize:nRead], &natRsp)
+	json.Unmarshal(buffer[openP2PHeaderSize:nRead], &natRsp)
 
 	return natRsp.IP, natRsp.Port, nil
 }
@@ -121,6 +121,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 		echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
 		if err != nil {
 			gLog.Println(LvERROR, "echo server listen error:", err)
+			wg.Done()
 			return
 		}
 		buf := make([]byte, 1600)
@@ -135,7 +136,10 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 		echoConn.WriteToUDP(buf[0:n], addr)
 		gLog.Println(LvDEBUG, "echo server end")
 	}()
-	wg.Wait() // wait echo udp
+	wg.Wait()            // wait echo udp
+	if echoConn == nil { // listen error
+		return
+	}
 	defer echoConn.Close()
 	// testing for public ip
 	for i := 0; i < 2; i++ {

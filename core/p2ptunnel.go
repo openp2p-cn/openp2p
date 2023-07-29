@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -32,34 +33,6 @@ type P2PTunnel struct {
 	punchTs       uint64
 }
 
-func (t *P2PTunnel) requestPeerInfo() error {
-	// request peer info
-	t.pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{t.config.peerToken, t.config.PeerNode})
-	head, body := t.pn.read("", MsgQuery, MsgQueryPeerInfoRsp, UnderlayConnectTimeout)
-	if head == nil {
-		return ErrNetwork // network error, should not be ErrPeerOffline
-	}
-	rsp := QueryPeerInfoRsp{}
-	err := json.Unmarshal(body, &rsp)
-	if err != nil {
-		gLog.Printf(LvERROR, "wrong QueryPeerInfoRsp:%s", err)
-		return ErrMsgFormat
-	}
-	if rsp.Online == 0 {
-		return ErrPeerOffline
-	}
-	if compareVersion(rsp.Version, LeastSupportVersion) == LESS {
-		return ErrVersionNotCompatible
-	}
-	t.config.peerVersion = rsp.Version
-	t.config.hasIPv4 = rsp.HasIPv4
-	t.config.peerIP = rsp.IPv4
-	t.config.peerIPv6 = rsp.IPv6
-	t.config.hasUPNPorNATPMP = rsp.HasUPNPorNATPMP
-	t.config.peerNatType = rsp.NatType
-	///
-	return nil
-}
 func (t *P2PTunnel) initPort() {
 	t.running = true
 	t.hbMtx.Lock()
@@ -118,9 +91,8 @@ func (t *P2PTunnel) connect() error {
 		return errors.New("connect error")
 	}
 	rsp := PushConnectRsp{}
-	err := json.Unmarshal(body, &rsp)
-	if err != nil {
-		gLog.Printf(LvERROR, "wrong MsgPushConnectRsp:%s", err)
+	if err := json.Unmarshal(body, &rsp); err != nil {
+		gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(rsp), err)
 		return err
 	}
 	// gLog.Println(LevelINFO, rsp)
@@ -135,7 +107,7 @@ func (t *P2PTunnel) connect() error {
 	t.config.peerConeNatPort = rsp.ConeNatPort
 	t.config.peerIP = rsp.FromIP
 	t.punchTs = rsp.PunchTs
-	err = t.start()
+	err := t.start()
 	if err != nil {
 		gLog.Println(LvERROR, "handshake error:", err)
 		err = ErrorHandshake
@@ -165,14 +137,10 @@ func (t *P2PTunnel) isActive() bool {
 }
 
 func (t *P2PTunnel) checkActive() bool {
-	hbt := time.Now()
-	t.hbMtx.Lock()
-	if t.hbTime.Before(time.Now().Add(-TunnelHeartbeatTime)) {
-		t.hbMtx.Unlock()
+	if t.conn == nil {
 		return false
 	}
-	t.hbMtx.Unlock()
-	// hbtime within TunnelHeartbeatTime, check it now
+	hbt := time.Now()
 	t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeat, nil)
 	isActive := false
 	// wait at most 5s
@@ -184,6 +152,7 @@ func (t *P2PTunnel) checkActive() bool {
 		t.hbMtx.Unlock()
 		time.Sleep(time.Millisecond * 100)
 	}
+	gLog.Printf(LvINFO, "checkActive %t. hbtime=%d", isActive, t.hbTime)
 	return isActive
 }
 
@@ -451,6 +420,7 @@ func (t *P2PTunnel) readLoop() {
 		}
 		switch head.SubType {
 		case MsgTunnelHeartbeat:
+			t.hbTime = time.Now()
 			t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeatAck, nil)
 			gLog.Printf(LvDEBUG, "%d read tunnel heartbeat", t.id)
 		case MsgTunnelHeartbeatAck:
@@ -492,9 +462,8 @@ func (t *P2PTunnel) readLoop() {
 			t.pn.relay(tunnelID, body[8:])
 		case MsgRelayHeartbeat:
 			req := RelayHeartbeat{}
-			err := json.Unmarshal(body, &req)
-			if err != nil {
-				gLog.Printf(LvERROR, "wrong RelayHeartbeat:%s", err)
+			if err := json.Unmarshal(body, &req); err != nil {
+				gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
 				continue
 			}
 			gLog.Printf(LvDEBUG, "got MsgRelayHeartbeat from %d:%d", req.RelayTunnelID, req.AppID)
@@ -514,9 +483,8 @@ func (t *P2PTunnel) readLoop() {
 			t.pn.updateAppHeartbeat(req.AppID)
 		case MsgOverlayConnectReq:
 			req := OverlayConnectReq{}
-			err := json.Unmarshal(body, &req)
-			if err != nil {
-				gLog.Printf(LvERROR, "wrong MsgOverlayConnectReq:%s", err)
+			if err := json.Unmarshal(body, &req); err != nil {
+				gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
 				continue
 			}
 			// app connect only accept token(not relay totp token), avoid someone using the share relay node's token
@@ -559,9 +527,8 @@ func (t *P2PTunnel) readLoop() {
 			go oConn.run()
 		case MsgOverlayDisconnectReq:
 			req := OverlayDisconnectReq{}
-			err := json.Unmarshal(body, &req)
-			if err != nil {
-				gLog.Printf(LvERROR, "wrong OverlayDisconnectRequest:%s", err)
+			if err := json.Unmarshal(body, &req); err != nil {
+				gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
 				continue
 			}
 			overlayID := req.ID
