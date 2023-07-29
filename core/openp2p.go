@@ -63,7 +63,7 @@ func Run() {
 		return
 	}
 	gLog.Println(LvINFO, "waiting for connection...")
-	forever := make(chan bool)
+	forever := make(chan struct{})
 	<-forever
 }
 
