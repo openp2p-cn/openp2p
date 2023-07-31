@@ -3,6 +3,7 @@ package openp2p
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sync"
@@ -39,6 +40,10 @@ type AppConfig struct {
 	fromToken        uint64
 	linkMode         string
 	isUnderlayServer int // TODO: bool?
+}
+
+func (c *AppConfig) ID() string {
+	return fmt.Sprintf("%s%d", c.Protocol, c.SrcPort)
 }
 
 // TODO: add loglevel, maxlogfilesize

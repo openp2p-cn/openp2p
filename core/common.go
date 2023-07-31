@@ -137,8 +137,7 @@ func netInfo() *NetInfo {
 			continue
 		}
 		rsp := NetInfo{}
-		err = json.Unmarshal(buf[:n], &rsp)
-		if err != nil {
+		if err = json.Unmarshal(buf[:n], &rsp); err != nil {
 			gLog.Printf(LvERROR, "wrong NetInfo:%s", err)
 			continue
 		}

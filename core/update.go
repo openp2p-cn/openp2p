@@ -43,8 +43,7 @@ func update(host string, port int) {
 		return
 	}
 	updateInfo := UpdateInfo{}
-	err = json.Unmarshal(rspBuf, &updateInfo)
-	if err != nil {
+	if err = json.Unmarshal(rspBuf, &updateInfo); err != nil {
 		gLog.Println(LvERROR, rspBuf, " update info decode error:", err)
 		return
 	}

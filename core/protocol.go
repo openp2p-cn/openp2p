@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.9.1"
+const OpenP2PVersion = "3.9.11"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -135,17 +135,18 @@ const (
 const (
 	ReadBuffLen           = 4096             // for UDP maybe not enough
 	NetworkHeartbeatTime  = time.Second * 30 // TODO: server no response hb, save flow
-	TunnelHeartbeatTime   = time.Second * 15
+	TunnelHeartbeatTime   = time.Second * 10 // some nat udp session expired time less than 15s. change to 10s
 	TunnelIdleTimeout     = time.Minute
 	SymmetricHandshakeNum = 800 // 0.992379
 	// SymmetricHandshakeNum        = 1000 // 0.999510
 	SymmetricHandshakeInterval = time.Millisecond
 	HandshakeTimeout           = time.Second * 5
-	PeerAddRelayTimeount       = HandshakeTimeout * 2
+	PeerAddRelayTimeount       = time.Second * 30 // peer need times
 	CheckActiveTimeout         = time.Second * 5
 	PaddingSize                = 16
 	AESKeySize                 = 16
 	MaxRetry                   = 10
+	Cone2ConePunchMaxRetry     = 3
 	RetryInterval              = time.Second * 30
 	PublicIPEchoTimeout        = time.Second * 1
 	NatTestTimeout             = time.Second * 5

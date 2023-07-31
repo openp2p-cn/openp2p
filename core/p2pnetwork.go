@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -112,29 +113,17 @@ func (pn *P2PNetwork) runAll() {
 	allApps := gConf.Apps // read a copy, other thread will modify the gConf.Apps
 
 	for _, config := range allApps {
-		if config.nextRetryTime.After(time.Now()) {
-			continue
-		}
-		if config.Enabled == 0 {
+		if config.nextRetryTime.After(time.Now()) || config.Enabled == 0 || config.retryNum >= retryLimit {
 			continue
 		}
 		if config.AppName == "" {
-			config.AppName = fmt.Sprintf("%s%d", config.Protocol, config.SrcPort)
+			config.AppName = config.ID()
 		}
-		appExist := false
-		i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
-		if ok {
-			app := i.(*p2pApp)
-			appExist = true
-			if app.isActive() {
+		if i, ok := pn.apps.Load(config.ID()); ok {
+			if app := i.(*p2pApp); app.isActive() {
 				continue
 			}
-		}
-		if appExist {
 			pn.DeleteApp(*config)
-		}
-		if config.retryNum >= retryLimit {
-			continue
 		}
 
 		if config.retryNum > 0 { // first time not show reconnect log
@@ -160,6 +149,7 @@ func (pn *P2PNetwork) runAll() {
 		}
 	}
 }
+
 func (pn *P2PNetwork) autorunApp() {
 	gLog.Println(LvINFO, "autorunApp start")
 	pn.wgReconnect.Add(1)
@@ -181,9 +171,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 		return nil, 0, "", errors.New("read MsgRelayNodeRsp error")
 	}
 	rsp := RelayNodeRsp{}
-	err := json.Unmarshal(body, &rsp)
-	if err != nil {
-		gLog.Printf(LvERROR, "wrong RelayNodeRsp:%s", err)
+	if err := json.Unmarshal(body, &rsp); err != nil {
 		return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
 	}
 	if rsp.RelayName == "" || rsp.RelayToken == 0 {
@@ -216,9 +204,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 		return nil, 0, "", errors.New("read MsgPushAddRelayTunnelRsp error")
 	}
 	rspID := TunnelMsg{}
-	err = json.Unmarshal(body, &rspID)
-	if err != nil {
-		gLog.Printf(LvERROR, "wrong RelayNodeRsp:%s", err)
+	if err = json.Unmarshal(body, &rspID); err != nil {
 		return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
 	}
 	return t, rspID.ID, rsp.Mode, err
@@ -233,7 +219,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 	}
 	// check if app already exist?
 	appExist := false
-	_, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+	_, ok := pn.apps.Load(config.ID())
 	if ok {
 		appExist = true
 	}
@@ -303,7 +289,8 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		relayNode: relayNode,
 		relayMode: relayMode,
 		hbTime:    time.Now()}
-	pn.apps.Store(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort), &app)
+	pn.apps.Store(config.ID(), &app)
+	gLog.Printf(LvINFO, "%s use tunnel %d", app.config.AppName, app.tunnel.id)
 	if err == nil {
 		go app.listen()
 	}
@@ -314,16 +301,37 @@ func (pn *P2PNetwork) DeleteApp(config AppConfig) {
 	gLog.Printf(LvINFO, "DeleteApp %s%d start", config.Protocol, config.SrcPort)
 	defer gLog.Printf(LvINFO, "DeleteApp %s%d end", config.Protocol, config.SrcPort)
 	// close the apps of this config
-	i, ok := pn.apps.Load(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+	i, ok := pn.apps.Load(config.ID())
 	if ok {
 		app := i.(*p2pApp)
-		gLog.Printf(LvINFO, "app %s exist, delete it", fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+		gLog.Printf(LvINFO, "app %s exist, delete it", app.config.AppName)
 		app.close()
-		pn.apps.Delete(fmt.Sprintf("%s%d", config.Protocol, config.SrcPort))
+		pn.apps.Delete(config.ID())
 	}
 }
 
-func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel, error) {
+func (pn *P2PNetwork) findTunnel(config *AppConfig) (t *P2PTunnel) {
+	// find existing tunnel to peer
+	pn.allTunnels.Range(func(id, i interface{}) bool {
+		tmpt := i.(*P2PTunnel)
+		if tmpt.config.PeerNode == config.PeerNode {
+			gLog.Println(LvINFO, "tunnel already exist ", config.PeerNode)
+			isActive := tmpt.checkActive()
+			// inactive, close it
+			if !isActive {
+				gLog.Println(LvINFO, "but it's not active, close it ", config.PeerNode)
+				tmpt.close()
+			} else {
+				t = tmpt
+			}
+			return false
+		}
+		return true
+	})
+	return t
+}
+
+func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunnel, err error) {
 	gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
 	defer gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
 	isClient := false
@@ -332,64 +340,34 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 		tid = rand.Uint64()
 		isClient = true
 	}
-	exist := false
-	// find existing tunnel to peer
-	var t *P2PTunnel
-	pn.allTunnels.Range(func(id, i interface{}) bool {
-		t = i.(*P2PTunnel)
-		if t.config.PeerNode == config.PeerNode {
-			// server side force close existing tunnel
-			if !isClient {
-				t.close()
-				return false
-			}
 
-			// client side checking
-			gLog.Println(LvINFO, "tunnel already exist ", config.PeerNode)
-			isActive := t.checkActive()
-			// inactive, close it
-			if !isActive {
-				gLog.Println(LvINFO, "but it's not active, close it ", config.PeerNode)
-				t.close()
-			} else {
-				// active
-				exist = true
-			}
-			return false
-		}
-		return true
-	})
-	if exist {
+	if t = pn.findTunnel(&config); t != nil {
 		return t, nil
 	}
 	// create tunnel if not exist
-	t = &P2PTunnel{pn: pn,
-		config: config,
-		id:     tid,
-	}
+
 	pn.msgMapMtx.Lock()
 	pn.msgMap[nodeNameToID(config.PeerNode)] = make(chan []byte, 50)
 	pn.msgMapMtx.Unlock()
 	// server side
 	if !isClient {
-		err := pn.newTunnel(t, tid, isClient)
+		t, err = pn.newTunnel(config, tid, isClient)
 		return t, err // always return
 	}
 	// client side
 	// peer info
-	initErr := t.requestPeerInfo()
+	initErr := pn.requestPeerInfo(&config)
 	if initErr != nil {
 		gLog.Println(LvERROR, "init error:", initErr)
 
 		return nil, initErr
 	}
-	var err error
 	// try TCP6
-	if IsIPv6(t.config.peerIPv6) && IsIPv6(t.pn.config.publicIPv6) {
+	if IsIPv6(config.peerIPv6) && IsIPv6(pn.config.publicIPv6) {
 		gLog.Println(LvINFO, "try TCP6")
-		t.config.linkMode = LinkModeTCP6
-		t.config.isUnderlayServer = 0
-		if err = pn.newTunnel(t, tid, isClient); err == nil {
+		config.linkMode = LinkModeTCP6
+		config.isUnderlayServer = 0
+		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
 			return t, nil
 		}
 	}
@@ -397,59 +375,74 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (*P2PTunnel,
 	// TODO: try UDP6
 
 	// try TCP4
-	if t.config.hasIPv4 == 1 || t.pn.config.hasIPv4 == 1 || t.config.hasUPNPorNATPMP == 1 || t.pn.config.hasUPNPorNATPMP == 1 {
+	if config.hasIPv4 == 1 || pn.config.hasIPv4 == 1 || config.hasUPNPorNATPMP == 1 || pn.config.hasUPNPorNATPMP == 1 {
 		gLog.Println(LvINFO, "try TCP4")
-		t.config.linkMode = LinkModeTCP4
-		if t.config.hasIPv4 == 1 || t.config.hasUPNPorNATPMP == 1 {
-			t.config.isUnderlayServer = 0
+		config.linkMode = LinkModeTCP4
+		if config.hasIPv4 == 1 || config.hasUPNPorNATPMP == 1 {
+			config.isUnderlayServer = 0
 		} else {
-			t.config.isUnderlayServer = 1
+			config.isUnderlayServer = 1
 		}
-		if err = pn.newTunnel(t, tid, isClient); err == nil {
+		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
 			return t, nil
 		}
 	}
 	// TODO: try UDP4
 
 	// try TCPPunch
-	if t.config.peerNatType == NATCone && t.pn.config.natType == NATCone { // TODO: support c2s
-		gLog.Println(LvINFO, "try TCP4 Punch")
-		t.config.linkMode = LinkModeTCPPunch
-		t.config.isUnderlayServer = 0
-		if err = pn.newTunnel(t, tid, isClient); err == nil {
-			gLog.Println(LvINFO, "TCP4 Punch ok")
-			return t, nil
+	for i := 0; i < Cone2ConePunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
+		if config.peerNatType == NATCone && pn.config.natType == NATCone { // TODO: support c2s
+			gLog.Println(LvINFO, "try TCP4 Punch")
+			config.linkMode = LinkModeTCPPunch
+			config.isUnderlayServer = 0
+			if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+				gLog.Println(LvINFO, "TCP4 Punch ok")
+				return t, nil
+			}
 		}
 	}
+
 	// try UDPPunch
-	if t.config.peerNatType == NATCone || t.pn.config.natType == NATCone {
-		gLog.Println(LvINFO, "try UDP4 Punch")
-		t.config.linkMode = LinkModeUDPPunch
-		t.config.isUnderlayServer = 0
-		if err = pn.newTunnel(t, tid, isClient); err == nil {
-			return t, nil
+	for i := 0; i < Cone2ConePunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
+		if config.peerNatType == NATCone || pn.config.natType == NATCone {
+			gLog.Println(LvINFO, "try UDP4 Punch")
+			config.linkMode = LinkModeUDPPunch
+			config.isUnderlayServer = 0
+			if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+				return t, nil
+			}
+		}
+		if !(config.peerNatType == NATCone && pn.config.natType == NATCone) { // not cone2cone, no more try
+			break
 		}
 	}
 	return nil, ErrorHandshake // only ErrorHandshake will try relay
 }
 
-func (pn *P2PNetwork) newTunnel(t *P2PTunnel, tid uint64, isClient bool) error {
+func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t *P2PTunnel, err error) {
+	if existTunnel := pn.findTunnel(&config); existTunnel != nil {
+		return existTunnel, nil
+	}
+	t = &P2PTunnel{pn: pn,
+		config: config,
+		id:     tid,
+	}
 	t.initPort()
 	if isClient {
-		if err := t.connect(); err != nil {
+		if err = t.connect(); err != nil {
 			gLog.Println(LvERROR, "p2pTunnel connect error:", err)
-			return err
+			return
 		}
 	} else {
-		if err := t.listen(); err != nil {
+		if err = t.listen(); err != nil {
 			gLog.Println(LvERROR, "p2pTunnel listen error:", err)
-			return err
+			return
 		}
 	}
 	// store it when success
 	gLog.Printf(LvDEBUG, "store tunnel %d", tid)
 	pn.allTunnels.Store(tid, t)
-	return nil
+	return
 }
 func (pn *P2PNetwork) init() error {
 	gLog.Println(LvINFO, "init start")
@@ -552,9 +545,8 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 	case MsgLogin:
 		// gLog.Println(LevelINFO,string(msg))
 		rsp := LoginRsp{}
-		err = json.Unmarshal(msg[openP2PHeaderSize:], &rsp)
-		if err != nil {
-			gLog.Printf(LvERROR, "wrong login response:%s", err)
+		if err = json.Unmarshal(msg[openP2PHeaderSize:], &rsp); err != nil {
+			gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(rsp), err)
 			return
 		}
 		if rsp.Error != 0 {
@@ -745,4 +737,31 @@ func (pn *P2PNetwork) refreshIPv6(force bool) {
 		return
 	}
 	pn.config.publicIPv6 = string(buf[:n])
+}
+
+func (pn *P2PNetwork) requestPeerInfo(config *AppConfig) error {
+	// request peer info
+	pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{config.peerToken, config.PeerNode})
+	head, body := pn.read("", MsgQuery, MsgQueryPeerInfoRsp, UnderlayConnectTimeout)
+	if head == nil {
+		return ErrNetwork // network error, should not be ErrPeerOffline
+	}
+	rsp := QueryPeerInfoRsp{}
+	if err := json.Unmarshal(body, &rsp); err != nil {
+		return ErrMsgFormat
+	}
+	if rsp.Online == 0 {
+		return ErrPeerOffline
+	}
+	if compareVersion(rsp.Version, LeastSupportVersion) == LESS {
+		return ErrVersionNotCompatible
+	}
+	config.peerVersion = rsp.Version
+	config.hasIPv4 = rsp.HasIPv4
+	config.peerIP = rsp.IPv4
+	config.peerIPv6 = rsp.IPv6
+	config.hasUPNPorNATPMP = rsp.HasUPNPorNATPMP
+	config.peerNatType = rsp.NatType
+	///
+	return nil
 }
