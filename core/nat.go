@@ -67,7 +67,7 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 	}
 
 	// 连接可以将数据写入所需的地址。
-	msg, errerr := newMessage(MsgNATDetect, 0, nil)
+	msg, errerr := newMessage(MsgNATDetect, 0, nil)	//BUG
 	_, err = conn.WriteTo(msg, dst)
 	if err != nil {
 		return "", 0, err
