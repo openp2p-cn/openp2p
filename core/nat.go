@@ -54,20 +54,20 @@ func natTCP(serverHost string, serverPort int) (publicIP string, publicPort int,
 func natTest(serverHost string, serverPort int, localPort int) (publicIP string, publicPort int, err error) {
 	gLog.Println(LvDEBUG, "natTest start")
 	defer gLog.Println(LvDEBUG, "natTest end")
-	康恩，错误：=网络。ListenPacket( "udp" , fmt . Sprintf( ":%d" , localPort))
-	如果错误！= nil {
-		日志。Println(LvERROR, "natTest 监听 udp 错误:" , err)
-		返回 "" , 0 , 错误
+	conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", localPort))
+	if err != nil {
+		gLog.Println(LvERROR, "natTest listen udp error:", err)
+		return "", 0, err
 	}
-	推迟康涅狄格州。关闭（）
+	defer conn.Close()
 
-	dst，错误：=净。ResolveUDPAddr( "udp" , fmt . Sprintf( "%s:%d" , serverHost, serverPort))
-	如果错误！= nil {
-		返回 "" , 0 , 错误
+	dst, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", serverHost, serverPort))
+	if err != nil {
+		return "", 0, err
 	}
 
-	// 连接可以将数据写入所需的地址。
-	msg, errerr := newMessage(MsgNATDetect, 0, nil)	//BUG
+	// The connection can write data to the desired address.
+	msg, _ := newMessage(MsgNATDetect, 0, nil)
 	_, err = conn.WriteTo(msg, dst)
 	if err != nil {
 		return "", 0, err
@@ -84,15 +84,15 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 		return "", 0, err
 	}
 	natRsp := NatDetectRsp{}
-	json . Unmarshal(缓冲区[openP2PHeaderSize:nRead], &natRsp)
+	json.Unmarshal(buffer[openP2PHeaderSize:nRead], &natRsp)
 
-	返回natRsp 。IP、natRsp 。端口，无
+	return natRsp.IP, natRsp.Port, nil
 }
 
-func getNATType(主机字符串, udp1 int , udp2 int ) (publicIP string , NATType int , hasIPvr int , hasUPNPorNATPMP int , err error ) {
-	// 随机本地端口可能被其他端口使用。
-	localPort := int (rand .Uint32 ()% 15000 + 50000 )
-	echoPort := gConf 。网络。TCP端口
+func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, hasIPvr int, hasUPNPorNATPMP int, err error) {
+	// the random local port may be used by other.
+	localPort := int(rand.Uint32()%15000 + 50000)
+	echoPort := gConf.Network.TCPPort
 	ip1, port1, err := natTest(host, udp1, localPort)
 	if err != nil {
 		return "", 0, 0, 0, err
