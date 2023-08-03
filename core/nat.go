@@ -113,20 +113,19 @@ func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, 
 
 func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATPMP int) {
 	var echoConn *net.UDPConn
-	var wg sync.WaitGroup
-	wg.Add(1)
+	//this is in another goroutine in the old code!!
+	gLog.Println(LvDEBUG, "echo server start")
+	var err error
+	echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
+	if err != nil { // listen error
+		gLog.Println(LvERROR, "echo server listen error:", err)
+		return
+	}
+	defer echoConn.Close()
 	go func() {
-		gLog.Println(LvDEBUG, "echo server start")
-		var err error
-		echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
-		if err != nil {
-			gLog.Println(LvERROR, "echo server listen error:", err)
-			wg.Done()
-			return
-		}
-		wg.Done()
 		// close outside for breaking the ReadFromUDP
 		// wait 5s(30s?) for echo testing
+		gLog.Println(LvDEBUG, "the goroutine of echo server start")
 		buf := make([]byte, 1600)
 		echoConn.SetReadDeadline(time.Now().Add(time.Second * 30))
 		n, addr, err := echoConn.ReadFromUDP(buf)
@@ -136,11 +135,6 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 		echoConn.WriteToUDP(buf[0:n], addr)
 		gLog.Println(LvDEBUG, "echo server end")
 	}()
-	wg.Wait()            // wait echo udp
-	if echoConn == nil { // listen error
-		return
-	}
-	defer echoConn.Close()
 	// testing for public ip
 	for i := 0; i < 2; i++ {
 		if i == 1 {
