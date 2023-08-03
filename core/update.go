@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,9 +20,13 @@ import (
 func update(host string, port int) {
 	gLog.Println(LvINFO, "update start")
 	defer gLog.Println(LvINFO, "update end")
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM([]byte(rootCA))
+
 	c := http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{RootCAs: caCertPool,
+				InsecureSkipVerify: false},
 		},
 		Timeout: time.Second * 30,
 	}
@@ -68,7 +73,7 @@ func updateFile(url string, checksum string, dst string) error {
 		return err
 	}
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
 	}
 	client := &http.Client{Transport: tr}
 	response, err := client.Get(url)

@@ -3,6 +3,7 @@ package openp2p
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -473,7 +474,12 @@ func (pn *P2PNetwork) init() error {
 		gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
 		uri := "/api/v1/login"
-		config := tls.Config{InsecureSkipVerify: true} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM([]byte(rootCA))
+
+		config := tls.Config{
+			RootCAs:            caCertPool,
+			InsecureSkipVerify: false} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
 		websocket.DefaultDialer.TLSClientConfig = &config
 		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
 		q := u.Query()
