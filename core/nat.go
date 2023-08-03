@@ -175,11 +175,10 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 			break
 		}
 		conn.WriteTo([]byte("echo"), dst)
-		buf := make([]byte, 1600)
 
 		// wait for echo testing
 		conn.SetReadDeadline(time.Now().Add(PublicIPEchoTimeout))
-		_, _, err = conn.ReadFromUDP(buf)
+		_, _, err = conn.ReadFromUDP(make([]byte, 1600))
 		if err == nil {
 			if i == 1 {
 				gLog.Println(LvDEBUG, "UPNP or NAT-PMP:YES")
