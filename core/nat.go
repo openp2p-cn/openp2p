@@ -121,6 +121,8 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 		echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
 		if err != nil {
 			gLog.Println(LvERROR, "echo server listen error:", err)
+			wg.Done()
+			return
 		}
 		wg.Done()
 		// close outside for breaking the ReadFromUDP
