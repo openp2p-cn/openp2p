@@ -125,7 +125,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 	go func() {
 		// close outside for breaking the ReadFromUDP
 		// wait 5s(30s?) for echo testing
-		gLog.Println(LvDEBUG, "the goroutine of echo server start")
+		gLog.Println(LvDEBUG, "the own goroutine of echo server run")
 		buf := make([]byte, 1600)
 		echoConn.SetReadDeadline(time.Now().Add(time.Second * 30))
 		n, addr, err := echoConn.ReadFromUDP(buf)
