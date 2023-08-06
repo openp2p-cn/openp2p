@@ -113,7 +113,7 @@ func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, 
 
 func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATPMP int) {
 	var echoConn *net.UDPConn
-	//this is in another goroutine in the old code!!
+	//This piece is in another goroutine in the old code! Please check the update diary.
 	gLog.Println(LvDEBUG, "echo server start")
 	var err error
 	echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
