@@ -74,7 +74,7 @@ var network *P2PNetwork
 func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork {
 	rand.Seed(time.Now().UnixNano())
 	os.Chdir(baseDir) // for system service
-	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFileAndConsole)
+	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFile|LogConsole)
 
 	parseParams("")
 
