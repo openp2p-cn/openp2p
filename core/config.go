@@ -201,8 +201,8 @@ type NetworkConfig struct {
 func parseParams(subCommand string) {
 	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
 	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
-	serverPort := fset.Int("serverport", WsPort, "server port ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
+	serverPort := fset.Int("serverport", WsPort, "server port ")
 	token := fset.Uint64("token", 0, "token")
 	node := fset.String("node", "", "node name. 8-31 characters. if not set, it will be hostname")
 	peerNode := fset.String("peernode", "", "peer node name that you want to connect")
