@@ -102,5 +102,8 @@ sudo /usr/local/openp2p/openp2p uninstall
 
 ## Run with Docker
 ```
+# Replace YOUR-TOKEN and YOUR-NODE-NAME with yours
+docker run -d --net host --name openp2p-client -e OPENP2P_TOKEN=YOUR-TOKEN -e OPENP2P_NODE=YOUR-NODE-NAME  openp2pcn/openp2p-client:latest 
+OR
 docker run -d --net host --name openp2p-client  openp2pcn/openp2p-client:latest -token YOUR-TOKEN -node YOUR-NODE-NAME
 ```

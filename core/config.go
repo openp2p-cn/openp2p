@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -258,7 +259,7 @@ func parseParams(subCommand string) {
 			gConf.setToken(*token)
 		}
 	})
-
+	// set default value
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
 	}
@@ -269,6 +270,10 @@ func parseParams(subCommand string) {
 		}
 		gConf.Network.Node = *node
 	} else {
+		envNode := os.Getenv("OPENP2P_NODE")
+		if envNode != "" {
+			gConf.setNode(envNode)
+		}
 		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
 			gConf.Network.Node = defaultNodeName()
 		}
@@ -280,7 +285,14 @@ func parseParams(subCommand string) {
 		}
 		gConf.Network.TCPPort = *tcpPort
 	}
-
+	if *token == 0 {
+		envToken := os.Getenv("OPENP2P_TOKEN")
+		if envToken != "" {
+			if n, err := strconv.ParseUint(envToken, 10, 64); n != 0 && err == nil {
+				gConf.setToken(n)
+			}
+		}
+	}
 	gConf.Network.ServerPort = *serverPort
 	gConf.Network.UDPPort1 = UDPPort1
 	gConf.Network.UDPPort2 = UDPPort2
