@@ -140,10 +140,10 @@ func (l *logger) Printf(level LogLevel, format string, params ...interface{}) {
 	}
 	pidAndLevel := []interface{}{l.pid, loglevel[level]}
 	params = append(pidAndLevel, params...)
-	if l.mode != LogConsole {
+	if l.mode == LogFile || l.mode == LogFileAndConsole {
 		l.loggers[0].Printf("%d %s "+format+l.lineEnding, params...)
 	}
-	if l.mode != LogFile {
+	if l.mode == LogConsole || l.mode == LogFileAndConsole {
 		l.stdLogger.Printf("%d %s "+format+l.lineEnding, params...)
 	}
 }
@@ -157,10 +157,10 @@ func (l *logger) Println(level LogLevel, params ...interface{}) {
 	pidAndLevel := []interface{}{l.pid, " ", loglevel[level], " "}
 	params = append(pidAndLevel, params...)
 	params = append(params, l.lineEnding)
-	if l.mode != LogConsole {
+	if l.mode == LogFile || l.mode == LogFileAndConsole {
 		l.loggers[0].Print(params...)
 	}
-	if l.mode != LogFile {
+	if l.mode == LogConsole || l.mode == LogFileAndConsole {
 		l.stdLogger.Print(params...)
 	}
 }
