@@ -21,7 +21,6 @@ func Run() {
 			fmt.Println(OpenP2PVersion)
 			return
 		case "update":
-			gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFile|LogConsole)
 			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 			d := daemon{}
 			err := d.Control("restart", targetPath, nil)
@@ -63,8 +62,7 @@ func Run() {
 		return
 	}
 	gLog.Println(LvINFO, "waiting for connection...")
-	forever := make(chan bool)
-	<-forever
+	<-chan int(nil)	//forever
 }
 
 var network *P2PNetwork
