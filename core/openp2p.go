@@ -63,8 +63,7 @@ func Run() {
 		return
 	}
 	gLog.Println(LvINFO, "waiting for connection...")
-	forever := make(chan bool)
-	<-forever
+	<-chan int(nil)	//forever
 }
 
 var network *P2PNetwork
