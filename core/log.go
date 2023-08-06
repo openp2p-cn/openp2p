@@ -36,7 +36,7 @@ func init() {
 }
 
 const (
-	LogFile uint16 = 1 << iota
+	LogFile uint8 = 1 << iota
 	LogConsole
 )
 
@@ -49,11 +49,11 @@ type logger struct {
 	lineEnding string
 	pid        int
 	maxLogSize int64
-	mode       uint16
+	mode       uint8
 	stdLogger  *log.Logger
 }
 
-func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64, mode uint16) *logger {
+func NewLogger(path string, filePrefix string, level LogLevel, maxLogSize int64, mode uint8) *logger {
 	loggers := make(map[LogLevel]*log.Logger)
 	logfiles := make(map[LogLevel]*os.File)
 	var (
@@ -92,7 +92,7 @@ func (l *logger) setLevel(level LogLevel) {
 	defer l.mtx.Unlock()
 	l.level = level
 }
-func (l *logger) setMode(mode uint16) {
+func (l *logger) setMode(mode uint8) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.mode = mode
