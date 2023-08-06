@@ -67,7 +67,7 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 	}
 
 	// The connection can write data to the desired address.
-	msg, err := newMessage(MsgNATDetect, 0, nil)
+	msg, _ := newMessage(MsgNATDetect, 0, nil)
 	_, err = conn.WriteTo(msg, dst)
 	if err != nil {
 		return "", 0, err
