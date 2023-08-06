@@ -92,7 +92,7 @@ func (l *logger) setLevel(level LogLevel) {
 	defer l.mtx.Unlock()
 	l.level = level
 }
-func (l *logger) setMode(mode int) {
+func (l *logger) setMode(mode int16) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.mode = mode
