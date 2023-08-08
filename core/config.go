@@ -216,7 +216,7 @@ func parseParams(subCommand string) {
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
-	logLevel := fset.Int("loglevel", 0, "0:info 1:warn 2:error 3:debug")
+	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	if subCommand == "" { // no subcommand
 		fset.Parse(os.Args[1:])
 	} else {
