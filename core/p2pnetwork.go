@@ -286,6 +286,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		key:       appKey,
 		tunnel:    t,
 		config:    config,
+		iptree:    NewIPTree(config.Whitelist),
 		rtid:      rtid,
 		relayNode: relayNode,
 		relayMode: relayMode,

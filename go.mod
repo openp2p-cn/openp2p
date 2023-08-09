@@ -3,6 +3,7 @@ module openp2p
 go 1.18
 
 require (
+	github.com/emirpasic/gods v1.18.1
 	github.com/gorilla/websocket v1.4.2
 	github.com/openp2p-cn/go-reuseport v0.3.2
 	github.com/openp2p-cn/service v1.0.0

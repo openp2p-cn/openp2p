@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.10.2"
+const OpenP2PVersion = "3.10.3"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -351,9 +351,10 @@ type AppInfo struct {
 	AppName        string `json:"appName,omitempty"`
 	Error          string `json:"error,omitempty"`
 	Protocol       string `json:"protocol,omitempty"`
+	Whitelist      string `json:"whitelist,omitempty"`
 	SrcPort        int    `json:"srcPort,omitempty"`
 	Protocol0      string `json:"protocol0,omitempty"`
-	SrcPort0       int    `json:"srcPort0,omitempty"`
+	SrcPort0       int    `json:"srcPort0,omitempty"` // srcport+protocol is uneque, use as old app id
 	NatType        int    `json:"natType,omitempty"`
 	PeerNode       string `json:"peerNode,omitempty"`
 	DstPort        int    `json:"dstPort,omitempty"`
