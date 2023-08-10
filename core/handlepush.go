@@ -139,6 +139,7 @@ func handleEditApp(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	// protocol0+srcPort0 exist, delApp
 	oldConf.AppName = newApp.AppName
 	oldConf.Protocol = newApp.Protocol0
+	oldConf.Whitelist = newApp.Whitelist
 	oldConf.SrcPort = newApp.SrcPort0
 	oldConf.PeerNode = newApp.PeerNode
 	oldConf.DstHost = newApp.DstHost
@@ -235,6 +236,7 @@ func handleReportApps(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 			AppName:     config.AppName,
 			Error:       config.errMsg,
 			Protocol:    config.Protocol,
+			Whitelist:   config.Whitelist,
 			SrcPort:     config.SrcPort,
 			RelayNode:   relayNode,
 			RelayMode:   relayMode,

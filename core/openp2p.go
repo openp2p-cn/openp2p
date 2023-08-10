@@ -21,7 +21,6 @@ func Run() {
 			fmt.Println(OpenP2PVersion)
 			return
 		case "update":
-			gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFile|LogConsole)
 			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 			d := daemon{}
 			err := d.Control("restart", targetPath, nil)

@@ -15,14 +15,15 @@ var gConf Config
 
 type AppConfig struct {
 	// required
-	AppName  string
-	Protocol string
-	SrcPort  int
-	PeerNode string
-	DstPort  int
-	DstHost  string
-	PeerUser string
-	Enabled  int // default:1
+	AppName   string
+	Protocol  string
+	Whitelist string
+	SrcPort   int
+	PeerNode  string
+	DstPort   int
+	DstHost   string
+	PeerUser  string
+	Enabled   int // default:1
 	// runtime info
 	peerVersion      string
 	peerToken        uint64
@@ -207,6 +208,7 @@ func parseParams(subCommand string) {
 	node := fset.String("node", "", "node name. 8-31 characters. if not set, it will be hostname")
 	peerNode := fset.String("peernode", "", "peer node name that you want to connect")
 	dstIP := fset.String("dstip", "127.0.0.1", "destination ip ")
+	whiteList := fset.String("whitelist", "", "whitelist for p2pApp ")
 	dstPort := fset.Int("dstport", 0, "destination port ")
 	srcPort := fset.Int("srcport", 0, "source port ")
 	tcpPort := fset.Int("tcpport", 0, "tcp port for upnp or publicip")
@@ -216,7 +218,7 @@ func parseParams(subCommand string) {
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
-	logLevel := fset.Int("loglevel", 0, "0:info 1:warn 2:error 3:debug")
+	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	if subCommand == "" { // no subcommand
 		fset.Parse(os.Args[1:])
 	} else {
@@ -226,6 +228,7 @@ func parseParams(subCommand string) {
 	config := AppConfig{Enabled: 1}
 	config.PeerNode = *peerNode
 	config.DstHost = *dstIP
+	config.Whitelist = *whiteList
 	config.DstPort = *dstPort
 	config.SrcPort = *srcPort
 	config.Protocol = *protocol
@@ -264,15 +267,11 @@ func parseParams(subCommand string) {
 		gConf.Network.ServerHost = *serverHost
 	}
 	if *node != "" {
-		if len(*node) < MinNodeNameLen {
-			gLog.Println(LvERROR, ErrNodeTooShort)
-			os.Exit(9)
-		}
 		gConf.Network.Node = *node
 	} else {
 		envNode := os.Getenv("OPENP2P_NODE")
 		if envNode != "" {
-			gConf.setNode(envNode)
+			gConf.Network.Node = envNode
 		}
 		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
 			gConf.Network.Node = defaultNodeName()

@@ -17,6 +17,7 @@ type p2pApp struct {
 	listener    net.Listener
 	listenerUDP *net.UDPConn
 	tunnel      *P2PTunnel
+	iptree      *IPTree
 	rtid        uint64 // relay tunnelID
 	relayNode   string
 	relayMode   string
@@ -63,6 +64,15 @@ func (app *p2pApp) listenTCP() error {
 				gLog.Printf(LvERROR, "%d accept error:%s", app.id, err)
 			}
 			break
+		}
+		// check white list
+		if app.config.Whitelist != "" {
+			remoteIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
+			if !app.iptree.Contains(remoteIP) {
+				conn.Close()
+				gLog.Printf(LvERROR, "%s not in whitelist, access denied", remoteIP)
+				continue
+			}
 		}
 		oConn := overlayConn{
 			tunnel:   app.tunnel,
