@@ -123,7 +123,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 	defer echoConn.Close()
 	go func() {
 		// close outside for breaking the ReadFromUDP
-		// wait 5s(30s?) for echo testing
+		// wait 30s for echo testing
 		buf := make([]byte, 1600)
 		echoConn.SetReadDeadline(time.Now().Add(time.Second * 30))
 		n, addr, err := echoConn.ReadFromUDP(buf)
