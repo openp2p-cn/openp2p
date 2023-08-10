@@ -36,9 +36,8 @@ func init() {
 }
 
 const (
-	LogFile = iota
+	LogFile = 1 << iota
 	LogConsole
-	LogFileAndConsole
 )
 
 type logger struct {
@@ -140,10 +139,10 @@ func (l *logger) Printf(level LogLevel, format string, params ...interface{}) {
 	}
 	pidAndLevel := []interface{}{l.pid, loglevel[level]}
 	params = append(pidAndLevel, params...)
-	if l.mode == LogFile || l.mode == LogFileAndConsole {
+	if l.mode & LogFile != 0 {
 		l.loggers[0].Printf("%d %s "+format+l.lineEnding, params...)
 	}
-	if l.mode == LogConsole || l.mode == LogFileAndConsole {
+	if l.mode & LogConsole != 0 {
 		l.stdLogger.Printf("%d %s "+format+l.lineEnding, params...)
 	}
 }
@@ -157,10 +156,10 @@ func (l *logger) Println(level LogLevel, params ...interface{}) {
 	pidAndLevel := []interface{}{l.pid, " ", loglevel[level], " "}
 	params = append(pidAndLevel, params...)
 	params = append(params, l.lineEnding)
-	if l.mode == LogFile || l.mode == LogFileAndConsole {
+	if l.mode & LogFile != 0 {
 		l.loggers[0].Print(params...)
 	}
-	if l.mode == LogConsole || l.mode == LogFileAndConsole {
+	if l.mode & LogConsole != 0 {
 		l.stdLogger.Print(params...)
 	}
 }
