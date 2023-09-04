@@ -17,11 +17,17 @@ import (
 	"time"
 )
 
-func update(host string, port int) {
+func update(host string, port int) error {
 	gLog.Println(LvINFO, "update start")
 	defer gLog.Println(LvINFO, "update end")
-	caCertPool := x509.NewCertPool()
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		gLog.Println(LvERROR, "Failed to load system root CAs:", err)
+	} else {
+		caCertPool = x509.NewCertPool()
+	}
 	caCertPool.AppendCertsFromPEM([]byte(rootCA))
+	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 
 	c := http.Client{
 		Transport: &http.Transport{
@@ -35,32 +41,33 @@ func update(host string, port int) {
 	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s&user=%s&node=%s", host, port, OpenP2PVersion, goos, goarch, gConf.Network.User, gConf.Network.Node))
 	if err != nil {
 		gLog.Println(LvERROR, "update:query update list failed:", err)
-		return
+		return err
 	}
 	defer rsp.Body.Close()
 	if rsp.StatusCode != http.StatusOK {
 		gLog.Println(LvERROR, "get update info error:", rsp.Status)
-		return
+		return err
 	}
 	rspBuf, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
 		gLog.Println(LvERROR, "update:read update list failed:", err)
-		return
+		return err
 	}
 	updateInfo := UpdateInfo{}
 	if err = json.Unmarshal(rspBuf, &updateInfo); err != nil {
 		gLog.Println(LvERROR, rspBuf, " update info decode error:", err)
-		return
+		return err
 	}
 	if updateInfo.Error != 0 {
 		gLog.Println(LvERROR, "update error:", updateInfo.Error, updateInfo.ErrorDetail)
-		return
+		return err
 	}
 	err = updateFile(updateInfo.Url, "", "openp2p")
 	if err != nil {
 		gLog.Println(LvERROR, "update: download failed:", err)
-		return
+		return err
 	}
+	return nil
 }
 
 // todo rollback on error
@@ -72,8 +79,18 @@ func updateFile(url string, checksum string, dst string) error {
 		gLog.Printf(LvERROR, "OpenFile %s error:%s", tmpFile, err)
 		return err
 	}
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		gLog.Println(LvERROR, "Failed to load system root CAs:", err)
+	} else {
+		caCertPool = x509.NewCertPool()
+	}
+	caCertPool.AppendCertsFromPEM([]byte(rootCA))
+	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
+		TLSClientConfig: &tls.Config{
+			RootCAs:            caCertPool,
+			InsecureSkipVerify: false},
 	}
 	client := &http.Client{Transport: tr}
 	response, err := client.Get(url)
@@ -94,9 +111,13 @@ func updateFile(url string, checksum string, dst string) error {
 	gLog.Println(LvINFO, "download ", url, " ok")
 	gLog.Printf(LvINFO, "size: %d bytes", n)
 
-	err = os.Rename(os.Args[0], os.Args[0]+"0")
-	if err != nil && os.IsExist(err) {
-		gLog.Printf(LvINFO, " rename %s error:%s", os.Args[0], err)
+	err = os.Rename(os.Args[0], os.Args[0]+"0") // the old daemon process was using the 0 file, so it will prevent override it
+	if err != nil {
+		gLog.Printf(LvINFO, " rename %s error:%s, retry 1", os.Args[0], err)
+		err = os.Rename(os.Args[0], os.Args[0]+"1")
+		if err != nil {
+			gLog.Printf(LvINFO, " rename %s error:%s", os.Args[0], err)
+		}
 	}
 	// extract
 	gLog.Println(LvINFO, "extract files")
@@ -194,4 +215,15 @@ func extractTgz(dst, src string) error {
 		}
 	}
 	return nil
+}
+
+func cleanTempFiles() {
+	err := os.Remove(os.Args[0] + "0")
+	if err != nil {
+		gLog.Printf(LvDEBUG, " remove %s error:%s", os.Args[0]+"0", err)
+	}
+	err = os.Remove(os.Args[0] + "1")
+	if err != nil {
+		gLog.Printf(LvDEBUG, " remove %s error:%s", os.Args[0]+"0", err)
+	}
 }

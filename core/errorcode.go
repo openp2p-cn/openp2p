@@ -18,4 +18,5 @@ var (
 	ErrMsgFormat             = errors.New("message format wrong")
 	ErrVersionNotCompatible  = errors.New("version not compatible")
 	ErrOverlayConnDisconnect = errors.New("overlay connection is disconnected")
+	ErrConnectRelayNode      = errors.New("connect relay node error")
 )

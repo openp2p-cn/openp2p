@@ -20,8 +20,7 @@ func UDPWrite(conn *net.UDPConn, dst net.Addr, mainType uint16, subType uint16, 
 
 func UDPRead(conn *net.UDPConn, timeout time.Duration) (ra net.Addr, head *openP2PHeader, result []byte, len int, err error) {
 	if timeout > 0 {
-		deadline := time.Now().Add(timeout)
-		err = conn.SetReadDeadline(deadline)
+		err = conn.SetReadDeadline(time.Now().Add(timeout))
 		if err != nil {
 			gLog.Println(LvERROR, "SetReadDeadline error")
 			return nil, nil, nil, 0, err

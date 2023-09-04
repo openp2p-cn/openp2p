@@ -27,8 +27,12 @@ var (
 const (
 	retryLimit    = 20
 	retryInterval = 10 * time.Second
-	dtma          = 20
-	ddtma         = 5
+)
+
+// golang not support float64 const
+var (
+	ma10 float64 = 1.0 / 10
+	ma20 float64 = 1.0 / 20
 )
 
 type P2PNetwork struct {
@@ -40,18 +44,25 @@ type P2PNetwork struct {
 	writeMtx    sync.Mutex
 	hbTime      time.Time
 	// for sync server time
-	t1   int64 // nanoSeconds
-	dt   int64 // client faster then server dt nanoSeconds
-	dtma int64
-	ddt  int64 // differential of dt
+	t1    int64 // nanoSeconds
+	dt    int64 // client faster then server dt nanoSeconds
+	ddtma int64
+	ddt   int64 // differential of dt
 	// msgMap    sync.Map
-	msgMap     map[uint64]chan []byte //key: nodeID
+	msgMap     map[uint64]chan pushMsg //key: nodeID
 	msgMapMtx  sync.Mutex
 	config     NetworkConfig
 	allTunnels sync.Map
 	apps       sync.Map //key: protocol+srcport; value: p2pApp
 	limiter    *BandwidthLimiter
 }
+
+type pushMsg struct {
+	data []byte
+	ts   time.Time
+}
+
+const msgExpiredTime = time.Minute
 
 func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 	if instance == nil {
@@ -60,17 +71,24 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 				restartCh: make(chan bool, 2),
 				online:    false,
 				running:   true,
-				msgMap:    make(map[uint64]chan []byte),
+				msgMap:    make(map[uint64]chan pushMsg),
 				limiter:   newBandwidthLimiter(config.ShareBandwidth),
 				dt:        0,
 				ddt:       0,
 			}
-			instance.msgMap[0] = make(chan []byte) // for gateway
+			instance.msgMap[0] = make(chan pushMsg) // for gateway
 			if config != nil {
 				instance.config = *config
 			}
 			instance.init()
 			go instance.run()
+			go func() {
+				for {
+					instance.refreshIPv6(false)
+					time.Sleep(time.Hour)
+				}
+			}()
+			cleanTempFiles()
 		})
 	}
 	return instance
@@ -166,49 +184,56 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 	gLog.Printf(LvINFO, "addRelayTunnel to %s start", config.PeerNode)
 	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.PeerNode)
 	// request a relay node or specify manually(TODO)
-	pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
-	head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, ClientAPITimeout)
-	if head == nil {
-		return nil, 0, "", errors.New("read MsgRelayNodeRsp error")
-	}
-	rsp := RelayNodeRsp{}
-	if err := json.Unmarshal(body, &rsp); err != nil {
-		return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
-	}
-	if rsp.RelayName == "" || rsp.RelayToken == 0 {
-		gLog.Printf(LvERROR, "MsgRelayNodeReq error")
-		return nil, 0, "", errors.New("MsgRelayNodeReq error")
-	}
-	gLog.Printf(LvINFO, "got relay node:%s", rsp.RelayName)
 	relayConfig := config
-	relayConfig.PeerNode = rsp.RelayName
-	relayConfig.peerToken = rsp.RelayToken
+	relayMode := "private"
+	if config.RelayNode == "" {
+		pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
+		head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, ClientAPITimeout)
+		if head == nil {
+			return nil, 0, "", errors.New("read MsgRelayNodeRsp error")
+		}
+		rsp := RelayNodeRsp{}
+		if err := json.Unmarshal(body, &rsp); err != nil {
+			return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
+		}
+		if rsp.RelayName == "" || rsp.RelayToken == 0 {
+			gLog.Printf(LvERROR, "MsgRelayNodeReq error")
+			return nil, 0, "", errors.New("MsgRelayNodeReq error")
+		}
+		gLog.Printf(LvINFO, "got relay node:%s", rsp.RelayName)
+
+		relayConfig.PeerNode = rsp.RelayName
+		relayConfig.peerToken = rsp.RelayToken
+		relayMode = rsp.Mode
+	} else {
+		relayConfig.PeerNode = config.RelayNode
+	}
 	///
 	t, err := pn.addDirectTunnel(relayConfig, 0)
 	if err != nil {
 		gLog.Println(LvERROR, "direct connect error:", err)
-		return nil, 0, "", err
+		return nil, 0, "", ErrConnectRelayNode // relay offline will stop retry
 	}
 	// notify peer addRelayTunnel
 	req := AddRelayTunnelReq{
 		From:       pn.config.Node,
-		RelayName:  rsp.RelayName,
-		RelayToken: rsp.RelayToken,
+		RelayName:  relayConfig.PeerNode,
+		RelayToken: relayConfig.peerToken,
 	}
-	gLog.Printf(LvINFO, "push relay %s---------%s", config.PeerNode, rsp.RelayName)
+	gLog.Printf(LvINFO, "push relay %s---------%s", config.PeerNode, relayConfig.PeerNode)
 	pn.push(config.PeerNode, MsgPushAddRelayTunnelReq, &req)
 
 	// wait relay ready
-	head, body = pn.read(config.PeerNode, MsgPush, MsgPushAddRelayTunnelRsp, PeerAddRelayTimeount) // TODO: const value
+	head, body := pn.read(config.PeerNode, MsgPush, MsgPushAddRelayTunnelRsp, PeerAddRelayTimeount)
 	if head == nil {
 		gLog.Printf(LvERROR, "read MsgPushAddRelayTunnelRsp error")
 		return nil, 0, "", errors.New("read MsgPushAddRelayTunnelRsp error")
 	}
 	rspID := TunnelMsg{}
 	if err = json.Unmarshal(body, &rspID); err != nil {
-		return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
+		return nil, 0, "", errors.New("peer connect relayNode error")
 	}
-	return t, rspID.ID, rsp.Mode, err
+	return t, rspID.ID, relayMode, err
 }
 
 // use *AppConfig to save status
@@ -343,13 +368,8 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		isClient = true
 	}
 
-	if t = pn.findTunnel(&config); t != nil {
-		return t, nil
-	}
-	// create tunnel if not exist
-
 	pn.msgMapMtx.Lock()
-	pn.msgMap[nodeNameToID(config.PeerNode)] = make(chan []byte, 50)
+	pn.msgMap[nodeNameToID(config.PeerNode)] = make(chan pushMsg, 50)
 	pn.msgMapMtx.Unlock()
 	// server side
 	if !isClient {
@@ -365,7 +385,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		return nil, initErr
 	}
 	// try TCP6
-	if IsIPv6(config.peerIPv6) && IsIPv6(pn.config.publicIPv6) {
+	if IsIPv6(config.peerIPv6) && IsIPv6(gConf.IPv6()) {
 		gLog.Println(LvINFO, "try TCP6")
 		config.linkMode = LinkModeTCP6
 		config.isUnderlayServer = 0
@@ -422,9 +442,12 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 }
 
 func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t *P2PTunnel, err error) {
-	if existTunnel := pn.findTunnel(&config); existTunnel != nil {
-		return existTunnel, nil
+	if isClient { // only client side find existing tunnel
+		if existTunnel := pn.findTunnel(&config); existTunnel != nil {
+			return existTunnel, nil
+		}
 	}
+
 	t = &P2PTunnel{pn: pn,
 		config: config,
 		id:     tid,
@@ -475,9 +498,14 @@ func (pn *P2PNetwork) init() error {
 		gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
 		uri := "/api/v1/login"
-		caCertPool := x509.NewCertPool()
+		caCertPool, err := x509.SystemCertPool()
+		if err != nil {
+			gLog.Println(LvERROR, "Failed to load system root CAs:", err)
+		} else {
+			caCertPool = x509.NewCertPool()
+		}
 		caCertPool.AppendCertsFromPEM([]byte(rootCA))
-
+		caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 		config := tls.Config{
 			RootCAs:            caCertPool,
 			InsecureSkipVerify: false} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
@@ -520,13 +548,13 @@ func (pn *P2PNetwork) init() error {
 			gLog.Println(LvDEBUG, "netinfo:", rsp)
 			if rsp != nil && rsp.Country != "" {
 				if IsIPv6(rsp.IP.String()) {
-					pn.config.publicIPv6 = rsp.IP.String()
+					gConf.setIPv6(rsp.IP.String())
 				}
 				req.NetInfo = *rsp
 			} else {
 				pn.refreshIPv6(true)
 			}
-			req.IPv6 = pn.config.publicIPv6
+			req.IPv6 = gConf.IPv6()
 			pn.write(MsgReport, MsgReportBasic, &req)
 		}()
 		go pn.autorunApp()
@@ -576,27 +604,30 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 		rtt := pn.hbTime.UnixNano() - pn.t1
 		t2 := int64(binary.LittleEndian.Uint64(msg[openP2PHeaderSize : openP2PHeaderSize+8]))
 		dt := pn.t1 + rtt/2 - t2
-		if pn.dtma == 0 {
-			pn.dtma = dt
-		} else {
+		if pn.dt != 0 {
 			ddt := dt - pn.dt
-			// if pn.ddt == 0 {
+			if pn.ddtma > 0 && (ddt > (pn.ddtma+pn.ddtma/3) || ddt < (pn.ddtma-pn.ddtma/3)) {
+				newdt := pn.dt + pn.ddtma
+				gLog.Printf(LvDEBUG, "server time auto adjust dt=%.2fms to %.2fms", float64(dt)/float64(time.Millisecond), float64(newdt)/float64(time.Millisecond))
+				dt = newdt
+			}
 			pn.ddt = ddt
-			// } else {
-			// 	pn.ddt = pn.ddt/ddtma*(ddtma-1) + ddt/ddtma // avoid int64 overflow
-			// }
-
-			pn.dtma = pn.dtma/dtma*(dtma-1) + dt/dtma // avoid int64 overflow
+			if pn.ddtma == 0 {
+				pn.ddtma = pn.ddt
+			} else {
+				pn.ddtma = int64(float64(pn.ddtma)*(1-ma10) + float64(pn.ddt)*ma10) // avoid int64 overflow
+			}
 		}
 		pn.dt = dt
-		gLog.Printf(LvDEBUG, "server time dt=%dms ddt=%dns rtt=%dms", pn.dt/int64(time.Millisecond), pn.ddt, rtt/int64(time.Millisecond))
+
+		gLog.Printf(LvDEBUG, "server time dt=%dms ddt=%dns ddtma=%dns rtt=%dms ", pn.dt/int64(time.Millisecond), pn.ddt, pn.ddtma, rtt/int64(time.Millisecond))
 	case MsgPush:
 		handlePush(pn, head.SubType, msg)
 	default:
 		pn.msgMapMtx.Lock()
 		ch := pn.msgMap[0]
 		pn.msgMapMtx.Unlock()
-		ch <- msg
+		ch <- pushMsg{data: msg, ts: time.Now()}
 		return
 	}
 }
@@ -695,19 +726,25 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 			gLog.Printf(LvERROR, "wait msg%d:%d timeout", mainType, subType)
 			return
 		case msg := <-ch:
+			if msg.ts.Before(time.Now().Add(-msgExpiredTime)) {
+				gLog.Printf(LvDEBUG, "msg expired error %d:%d", head.MainType, head.SubType)
+				continue
+			}
 			head = &openP2PHeader{}
-			err := binary.Read(bytes.NewReader(msg[:openP2PHeaderSize]), binary.LittleEndian, head)
+			err := binary.Read(bytes.NewReader(msg.data[:openP2PHeaderSize]), binary.LittleEndian, head)
 			if err != nil {
 				gLog.Println(LvERROR, "read msg error:", err)
 				break
 			}
 			if head.MainType != mainType || head.SubType != subType {
+				gLog.Printf(LvDEBUG, "read msg type error %d:%d, requeue it", head.MainType, head.SubType)
+				ch <- msg
 				continue
 			}
 			if mainType == MsgPush {
-				body = msg[openP2PHeaderSize+PushHeaderSize:]
+				body = msg.data[openP2PHeaderSize+PushHeaderSize:]
 			} else {
-				body = msg[openP2PHeaderSize:]
+				body = msg.data[openP2PHeaderSize:]
 			}
 			return
 		}
@@ -727,29 +764,33 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
 
 // ipv6 will expired need to refresh.
 func (pn *P2PNetwork) refreshIPv6(force bool) {
-	if !force && !IsIPv6(pn.config.publicIPv6) { // not support ipv6, not refresh
+	if !force && !IsIPv6(gConf.IPv6()) { // not support ipv6, not refresh
 		return
 	}
-	client := &http.Client{Timeout: time.Second * 10}
-	r, err := client.Get("http://6.ipw.cn")
-	if err != nil {
-		gLog.Println(LvDEBUG, "refreshIPv6 error:", err)
-		return
+	for i := 0; i < 3; i++ {
+		client := &http.Client{Timeout: time.Second * 10}
+		r, err := client.Get("http://6.ipw.cn")
+		if err != nil {
+			gLog.Println(LvDEBUG, "refreshIPv6 error:", err)
+			continue
+		}
+		defer r.Body.Close()
+		buf := make([]byte, 1024)
+		n, err := r.Body.Read(buf)
+		if n <= 0 {
+			gLog.Println(LvINFO, "refreshIPv6 error:", err, n)
+			continue
+		}
+		gConf.setIPv6(string(buf[:n]))
+		break
 	}
-	defer r.Body.Close()
-	buf := make([]byte, 1024)
-	n, err := r.Body.Read(buf)
-	if n <= 0 {
-		gLog.Println(LvINFO, "refreshIPv6 error:", err, n)
-		return
-	}
-	pn.config.publicIPv6 = string(buf[:n])
+
 }
 
 func (pn *P2PNetwork) requestPeerInfo(config *AppConfig) error {
 	// request peer info
 	pn.write(MsgQuery, MsgQueryPeerInfoReq, &QueryPeerInfoReq{config.peerToken, config.PeerNode})
-	head, body := pn.read("", MsgQuery, MsgQueryPeerInfoRsp, UnderlayConnectTimeout)
+	head, body := pn.read("", MsgQuery, MsgQueryPeerInfoRsp, ClientAPITimeout)
 	if head == nil {
 		return ErrNetwork // network error, should not be ErrPeerOffline
 	}

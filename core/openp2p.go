@@ -20,16 +20,6 @@ func Run() {
 		case "version", "-v", "--version":
 			fmt.Println(OpenP2PVersion)
 			return
-		case "update":
-			targetPath := filepath.Join(defaultInstallPath, defaultBinName)
-			d := daemon{}
-			err := d.Control("restart", targetPath, nil)
-			if err != nil {
-				gLog.Println(LvERROR, "restart service error:", err)
-			} else {
-				gLog.Println(LvINFO, "restart service ok.")
-			}
-			return
 		case "install":
 			install()
 			return

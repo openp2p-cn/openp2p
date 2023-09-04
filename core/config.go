@@ -23,6 +23,7 @@ type AppConfig struct {
 	DstPort   int
 	DstHost   string
 	PeerUser  string
+	RelayNode string
 	Enabled   int // default:1
 	// runtime info
 	peerVersion      string
@@ -127,7 +128,7 @@ func (c *Config) save() {
 }
 
 func init() {
-	gConf.LogLevel = 1
+	gConf.LogLevel = int(LvINFO)
 	gConf.Network.ShareBandwidth = 10
 	gConf.Network.ServerHost = "api.openp2p.cn"
 	gConf.Network.ServerPort = WsPort
@@ -176,6 +177,16 @@ func (c *Config) setShareBandwidth(bw int) {
 	defer c.save()
 	c.Network.ShareBandwidth = bw
 }
+func (c *Config) setIPv6(v6 string) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.Network.publicIPv6 = v6
+}
+func (c *Config) IPv6() string {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.Network.publicIPv6
+}
 
 type NetworkConfig struct {
 	// local info
@@ -214,6 +225,7 @@ func parseParams(subCommand string) {
 	tcpPort := fset.Int("tcpport", 0, "tcp port for upnp or publicip")
 	protocol := fset.String("protocol", "tcp", "tcp or udp")
 	appName := fset.String("appname", "", "app name")
+	relayNode := fset.String("relaynode", "", "relaynode")
 	shareBandwidth := fset.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
@@ -233,6 +245,7 @@ func parseParams(subCommand string) {
 	config.SrcPort = *srcPort
 	config.Protocol = *protocol
 	config.AppName = *appName
+	config.RelayNode = *relayNode
 	if !*newconfig {
 		gConf.load() // load old config. otherwise will clear all apps
 	}

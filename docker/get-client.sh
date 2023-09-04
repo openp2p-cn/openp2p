@@ -1,5 +1,7 @@
 #!/bin/sh
 
+
+echo "Building version:${DOCKER_VER}"
 echo "Running on platform: $TARGETPLATFORM"
 # TARGETPLATFORM=$(echo $TARGETPLATFORM | tr ',' '/')
 echo "Running on platform: $TARGETPLATFORM"
@@ -23,7 +25,7 @@ sysType="linux-amd64"
 				sysType="linux-mipsbe"
 			fi
 		fi
-url="https://openp2p.cn/download/v1/latest/openp2p-latest.$sysType.tar.gz"
+url="https://openp2p.cn/download/v1/${DOCKER_VER}/openp2p-latest.$sysType.tar.gz"
 echo "download $url start"
 
 if [ -f /usr/bin/curl ]; then

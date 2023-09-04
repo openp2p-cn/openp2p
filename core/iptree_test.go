@@ -71,7 +71,7 @@ func TestSegment2(t *testing.T) {
 	iptree.Print()
 	iptree.Add("10.1.1.90", "10.1.1.110") // interset
 	iptree.Print()
-	t.Logf("blocklist size:%d\n", iptree.Size())
+	t.Logf("ipTree size:%d\n", iptree.Size())
 	wrapTestContains(t, iptree, "10.1.1.40", true)
 	wrapTestContains(t, iptree, "10.1.5.50", true)
 	wrapTestContains(t, iptree, "10.1.6.50", true)
@@ -94,7 +94,7 @@ func TestSegment2(t *testing.T) {
 
 }
 
-func BenchmarkBuildBlockList20k(t *testing.B) {
+func BenchmarkBuildipTree20k(t *testing.B) {
 	iptree := NewIPTree("")
 	iptree.Clear()
 	iptree.Add("10.1.5.50", "10.1.5.100")
@@ -116,16 +116,16 @@ func BenchmarkBuildBlockList20k(t *testing.B) {
 	gap := uint32(10)
 	for i := minIP; i < minIP+nodeNum*gap; i += gap {
 		iptree.AddIntIP(i, i)
-		// t.Logf("blocklist size:%d\n", iptree.Size())
+		// t.Logf("ipTree size:%d\n", iptree.Size())
 	}
 	binary.Read(bytes.NewBuffer(net.ParseIP("100.1.1.1").To4()), binary.BigEndian, &minIP)
 	// insert 100k block ip segment
 	for i := minIP; i < minIP+nodeNum*gap; i += gap {
 		iptree.AddIntIP(i, i+5)
 	}
-	t.Logf("blocklist size:%d\n", iptree.Size())
+	t.Logf("ipTree size:%d\n", iptree.Size())
 	iptree.Clear()
-	t.Logf("clear. blocklist size:%d\n", iptree.Size())
+	t.Logf("clear. ipTree size:%d\n", iptree.Size())
 }
 func BenchmarkQuery(t *testing.B) {
 	iptree := NewIPTree("")
@@ -149,14 +149,14 @@ func BenchmarkQuery(t *testing.B) {
 	gap := uint32(10)
 	for i := minIP; i < minIP+nodeNum*gap; i += gap {
 		iptree.AddIntIP(i, i)
-		// t.Logf("blocklist size:%d\n", iptree.Size())
+		// t.Logf("ipTree size:%d\n", iptree.Size())
 	}
 	binary.Read(bytes.NewBuffer(net.ParseIP("100.1.1.1").To4()), binary.BigEndian, &minIP)
 	// insert 100k block ip segment
 	for i := minIP; i < minIP+nodeNum*gap; i += gap {
 		iptree.AddIntIP(i, i+5)
 	}
-	t.Logf("blocklist size:%d\n", iptree.Size())
+	t.Logf("ipTree size:%d\n", iptree.Size())
 	t.ResetTimer()
 	queryNum := 100 * 10000
 	for i := 0; i < queryNum; i++ {

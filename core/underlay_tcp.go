@@ -77,7 +77,7 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 			time.Sleep(ts)
 		}
 		gLog.Println(LvDEBUG, (time.Now().UnixNano()-t.pn.dt)/(int64)(time.Millisecond), " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
-		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), HandshakeTimeout)
+		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
 		if err != nil {
 			gLog.Println(LvDEBUG, "send tcp punch: ", err)
 			return nil, err
@@ -90,7 +90,7 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 	if err != nil {
 		return nil, err
 	}
-	l.SetDeadline(time.Now().Add(HandshakeTimeout))
+	l.SetDeadline(time.Now().Add(CheckActiveTimeout))
 	c, err := l.Accept()
 	defer l.Close()
 	if err != nil {
@@ -103,9 +103,9 @@ func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, e
 	var c net.Conn
 	var err error
 	if mode == LinkModeTCPPunch {
-		c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), HandshakeTimeout)
+		c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
 	} else {
-		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), HandshakeTimeout)
+		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
 	}
 
 	if err != nil {
