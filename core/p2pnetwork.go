@@ -469,104 +469,102 @@ func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t 
 	pn.allTunnels.Store(tid, t)
 	return
 }
-func (pn *P2PNetwork) init() error {
+func (pn *P2PNetwork) init() (err error) {
 	gLog.Println(LvINFO, "init start")
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
-	var err error
-	for {
-		// detect nat type
-		pn.config.publicIP, pn.config.natType, pn.config.hasIPv4, pn.config.hasUPNPorNATPMP, err = getNATType(pn.config.ServerHost, pn.config.UDPPort1, pn.config.UDPPort2)
-		// for testcase
-		if strings.Contains(pn.config.Node, "openp2pS2STest") {
-			pn.config.natType = NATSymmetric
-			pn.config.hasIPv4 = 0
-			pn.config.hasUPNPorNATPMP = 0
-			gLog.Println(LvINFO, "openp2pS2STest debug")
-
-		}
-		if strings.Contains(pn.config.Node, "openp2pC2CTest") {
-			pn.config.natType = NATCone
-			pn.config.hasIPv4 = 0
-			pn.config.hasUPNPorNATPMP = 0
-			gLog.Println(LvINFO, "openp2pC2CTest debug")
-		}
+	defer func() {
 		if err != nil {
-			gLog.Println(LvDEBUG, "detect NAT type error:", err)
-			break
+			// init failed, retry
+			pn.restartCh <- true
+			gLog.Println(LvERROR, "P2PNetwork init error:", err)
 		}
-		gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
-		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
-		uri := "/api/v1/login"
-		caCertPool, err := x509.SystemCertPool()
-		if err != nil {
-			gLog.Println(LvERROR, "Failed to load system root CAs:", err)
-		} else {
-			caCertPool = x509.NewCertPool()
-		}
-		caCertPool.AppendCertsFromPEM([]byte(rootCA))
-		caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
-		config := tls.Config{
-			RootCAs:            caCertPool,
-			InsecureSkipVerify: false} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
-		websocket.DefaultDialer.TLSClientConfig = &config
-		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
-		q := u.Query()
-		q.Add("node", pn.config.Node)
-		q.Add("token", fmt.Sprintf("%d", pn.config.Token))
-		q.Add("version", OpenP2PVersion)
-		q.Add("nattype", fmt.Sprintf("%d", pn.config.natType))
-		q.Add("sharebandwidth", fmt.Sprintf("%d", pn.config.ShareBandwidth))
-		u.RawQuery = q.Encode()
-		var ws *websocket.Conn
-		ws, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
-		if err != nil {
-			break
-		}
-		pn.online = true
-		pn.conn = ws
-		localAddr := strings.Split(ws.LocalAddr().String(), ":")
-		if len(localAddr) == 2 {
-			pn.config.localIP = localAddr[0]
-		} else {
-			err = errors.New("get local ip failed")
-			break
-		}
-		go pn.readLoop()
-		pn.config.mac = getmac(pn.config.localIP)
-		pn.config.os = getOsName()
-		go func() {
-			req := ReportBasic{
-				Mac:             pn.config.mac,
-				LanIP:           pn.config.localIP,
-				OS:              pn.config.os,
-				HasIPv4:         pn.config.hasIPv4,
-				HasUPNPorNATPMP: pn.config.hasUPNPorNATPMP,
-				Version:         OpenP2PVersion,
-			}
-			rsp := netInfo()
-			gLog.Println(LvDEBUG, "netinfo:", rsp)
-			if rsp != nil && rsp.Country != "" {
-				if IsIPv6(rsp.IP.String()) {
-					gConf.setIPv6(rsp.IP.String())
-				}
-				req.NetInfo = *rsp
-			} else {
-				pn.refreshIPv6(true)
-			}
-			req.IPv6 = gConf.IPv6()
-			pn.write(MsgReport, MsgReportBasic, &req)
-		}()
-		go pn.autorunApp()
-		gLog.Println(LvDEBUG, "P2PNetwork init ok")
-		break
+	}()
+	// detect nat type
+	pn.config.publicIP, pn.config.natType, pn.config.hasIPv4, pn.config.hasUPNPorNATPMP, err = getNATType(pn.config.ServerHost, pn.config.UDPPort1, pn.config.UDPPort2)
+	// for testcase
+	if strings.Contains(pn.config.Node, "openp2pS2STest") {
+		pn.config.natType = NATSymmetric
+		pn.config.hasIPv4 = 0
+		pn.config.hasUPNPorNATPMP = 0
+		gLog.Println(LvINFO, "openp2pS2STest debug")
+	}
+	if strings.Contains(pn.config.Node, "openp2pC2CTest") {
+		pn.config.natType = NATCone
+		pn.config.hasIPv4 = 0
+		pn.config.hasUPNPorNATPMP = 0
+		gLog.Println(LvINFO, "openp2pC2CTest debug")
 	}
 	if err != nil {
-		// init failed, retry
-		pn.restartCh <- true
-		gLog.Println(LvERROR, "P2PNetwork init error:", err)
+		gLog.Println(LvDEBUG, "detect NAT type error:", err)
+		return
 	}
-	return err
+	gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
+	gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
+	uri := "/api/v1/login"
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		gLog.Println(LvERROR, "Failed to load system root CAs:", err)
+	} else {
+		caCertPool = x509.NewCertPool()
+	}
+	caCertPool.AppendCertsFromPEM([]byte(rootCA))
+	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
+	config := tls.Config{
+		RootCAs:            caCertPool,
+		InsecureSkipVerify: false
+	} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
+	websocket.DefaultDialer.TLSClientConfig = &config
+	u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
+	q := u.Query()
+	q.Add("node", pn.config.Node)
+	q.Add("token", fmt.Sprintf("%d", pn.config.Token))
+	q.Add("version", OpenP2PVersion)
+	q.Add("nattype", fmt.Sprintf("%d", pn.config.natType))
+	q.Add("sharebandwidth", fmt.Sprintf("%d", pn.config.ShareBandwidth))
+	u.RawQuery = q.Encode()
+	var ws *websocket.Conn
+	ws, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		return
+	}
+	pn.online = true
+	pn.conn = ws
+	localAddr := strings.Split(ws.LocalAddr().String(), ":")
+	if len(localAddr) == 2 {
+		pn.config.localIP = localAddr[0]
+	} else {
+		err = errors.New("get local ip failed")
+		return
+	}
+	go pn.readLoop()
+	pn.config.mac = getmac(pn.config.localIP)
+	pn.config.os = getOsName()
+	go func() {
+		req := ReportBasic{
+			Mac:             pn.config.mac,
+			LanIP:           pn.config.localIP,
+			OS:              pn.config.os,
+			HasIPv4:         pn.config.hasIPv4,
+			HasUPNPorNATPMP: pn.config.hasUPNPorNATPMP,
+			Version:         OpenP2PVersion,
+		}
+		rsp := netInfo()
+		gLog.Println(LvDEBUG, "netinfo:", rsp)
+		if rsp != nil && rsp.Country != "" {
+			if IsIPv6(rsp.IP.String()) {
+				gConf.setIPv6(rsp.IP.String())
+			}
+			req.NetInfo = *rsp
+		} else {
+			pn.refreshIPv6(true)
+		}
+		req.IPv6 = gConf.IPv6()
+		pn.write(MsgReport, MsgReportBasic, &req)
+	}()
+	go pn.autorunApp()
+	gLog.Println(LvDEBUG, "P2PNetwork init ok")
+	return
 }
 
 func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
