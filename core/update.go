@@ -70,7 +70,6 @@ func update(host string, port int) error {
 	return nil
 }
 
-// todo rollback on error
 func updateFile(url string, checksum string, dst string) error {
 	gLog.Println(LvINFO, "download ", url)
 	tmpFile := filepath.Dir(os.Args[0]) + "/openp2p.tmp"
@@ -110,11 +109,12 @@ func updateFile(url string, checksum string, dst string) error {
 	output.Close()
 	gLog.Println(LvINFO, "download ", url, " ok")
 	gLog.Printf(LvINFO, "size: %d bytes", n)
-
-	err = os.Rename(os.Args[0], os.Args[0]+"0") // the old daemon process was using the 0 file, so it will prevent override it
+	backupFile := os.Args[0] + "0"
+	err = os.Rename(os.Args[0], backupFile) // the old daemon process was using the 0 file, so it will prevent override it
 	if err != nil {
 		gLog.Printf(LvINFO, " rename %s error:%s, retry 1", os.Args[0], err)
-		err = os.Rename(os.Args[0], os.Args[0]+"1")
+		backupFile = os.Args[0] + "1"
+		err = os.Rename(os.Args[0], backupFile)
 		if err != nil {
 			gLog.Printf(LvINFO, " rename %s error:%s", os.Args[0], err)
 		}
@@ -124,7 +124,7 @@ func updateFile(url string, checksum string, dst string) error {
 	err = extract(filepath.Dir(os.Args[0]), tmpFile)
 	if err != nil {
 		gLog.Printf(LvERROR, "extract error:%s. revert rename", err)
-		os.Rename(os.Args[0]+"0", os.Args[0])
+		os.Rename(backupFile, os.Args[0])
 		return err
 	}
 	os.Remove(tmpFile)
@@ -218,12 +218,16 @@ func extractTgz(dst, src string) error {
 }
 
 func cleanTempFiles() {
-	err := os.Remove(os.Args[0] + "0")
-	if err != nil {
-		gLog.Printf(LvDEBUG, " remove %s error:%s", os.Args[0]+"0", err)
+	tmpFile := os.Args[0] + "0"
+	if _, err := os.Stat(tmpFile); err == nil {
+		if err := os.Remove(tmpFile); err != nil {
+			gLog.Printf(LvDEBUG, " remove %s error:%s", tmpFile, err)
+		}
 	}
-	err = os.Remove(os.Args[0] + "1")
-	if err != nil {
-		gLog.Printf(LvDEBUG, " remove %s error:%s", os.Args[0]+"0", err)
+	tmpFile = os.Args[0] + "1"
+	if _, err := os.Stat(tmpFile); err == nil {
+		if err := os.Remove(tmpFile); err != nil {
+			gLog.Printf(LvDEBUG, " remove %s error:%s", tmpFile, err)
+		}
 	}
 }

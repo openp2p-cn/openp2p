@@ -97,7 +97,6 @@ func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, 
 		return "", 0, 0, 0, err
 	}
 	hasIPv4, hasUPNPorNATPMP := publicIPTest(ip1, echoPort)
-	gLog.Printf(LvINFO, "local port:%d, nat port:%d, hasIPv4:%d, UPNP:%d", localPort, port1, hasIPv4, hasUPNPorNATPMP)
 	_, port2, err := natTest(host, udp2, localPort) // 2rd nat test not need testing publicip
 	gLog.Printf(LvDEBUG, "local port:%d  nat port:%d", localPort, port2)
 	if err != nil {

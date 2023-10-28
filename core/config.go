@@ -42,14 +42,13 @@ type AppConfig struct {
 	connectTime      time.Time
 	fromToken        uint64
 	linkMode         string
-	isUnderlayServer int // TODO: bool?
+	isUnderlayServer int
 }
 
 func (c *AppConfig) ID() string {
 	return fmt.Sprintf("%s%d", c.Protocol, c.SrcPort)
 }
 
-// TODO: add loglevel, maxlogfilesize
 type Config struct {
 	Network    NetworkConfig `json:"network"`
 	Apps       []*AppConfig  `json:"apps"`
@@ -150,7 +149,7 @@ func (c *Config) load() error {
 	return err
 }
 
-// TODO: deal with multi-thread r/w
+// deal with multi-thread r/w
 func (c *Config) setToken(token uint64) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()

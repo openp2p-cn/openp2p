@@ -14,7 +14,6 @@ func Run() {
 	baseDir := filepath.Dir(os.Args[0])
 	os.Chdir(baseDir) // for system service
 	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFile|LogConsole)
-	// TODO: install sub command, deamon process
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version", "-v", "--version":
@@ -51,7 +50,7 @@ func Run() {
 		gLog.Println(LvERROR, "P2PNetwork login error")
 		return
 	}
-	gLog.Println(LvINFO, "waiting for connection...")
+	// gLog.Println(LvINFO, "waiting for connection...")
 	forever := make(chan bool)
 	<-forever
 }
@@ -82,7 +81,7 @@ func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork
 		gLog.Println(LvERROR, "P2PNetwork login error")
 		return nil
 	}
-	gLog.Println(LvINFO, "waiting for connection...")
+	// gLog.Println(LvINFO, "waiting for connection...")
 	return network
 }
 
