@@ -16,7 +16,7 @@ type BandwidthLimiter struct {
 
 // mbps
 func newBandwidthLimiter(bw int) *BandwidthLimiter {
-	if bw > 0 && bw >> (64 - 17) != 0 {
+	if bw > 0 && bw>>(64-17) != 0 {
 		panic("bandwidth limit is too big(it will overflow int64 type variables when running)")
 	}
 	return &BandwidthLimiter{
