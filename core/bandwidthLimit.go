@@ -9,14 +9,14 @@ import (
 type BandwidthLimiter struct {
 	ts          time.Time
 	bw          int   // mbps
-	usedBytesps int64 // byte*ns/s
+	usedBytesps int64 // byte*1s
 	waitTime    time.Duration
 	mtx         sync.Mutex
 }
 
 // mbps
 func newBandwidthLimiter(bw int) *BandwidthLimiter {
-	if bw > 0 && bw << (64 - 17) != 0 {
+	if bw > 0 && bw >> (64 - 17) != 0 {
 		panic("bandwidth limit is too big to use(will out of int64 when running)")
 	}
 	return &BandwidthLimiter{
