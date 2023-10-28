@@ -8,9 +8,9 @@ import (
 // BandwidthLimiter ...
 type BandwidthLimiter struct {
 	ts          time.Time
-	bw          int // mbps
+	bw          int   // mbps
 	usedBytesps int64 // byte*ns/s
-	waitTime    int // bytes
+	waitTime    time.Duration
 	mtx         sync.Mutex
 }
 
