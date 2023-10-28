@@ -7,39 +7,45 @@ import (
 
 // BandwidthLimiter ...
 type BandwidthLimiter struct {
-	ts           time.Time
-	bw           int // mbps
-	freeBytes    int // bytes
-	maxFreeBytes int // bytes
-	mtx          sync.Mutex
+	ts          time.Time
+	bw          int // mbps
+	usedBytesps int64 // byte*ns/s
+	waitTime    int // bytes
+	mtx         sync.Mutex
 }
 
 // mbps
 func newBandwidthLimiter(bw int) *BandwidthLimiter {
+	if bw > 0 && bw << (64 - 17) != 0 {
+		panic("bandwidth limit is too big to use(will out of int64 when running)")
+	}
 	return &BandwidthLimiter{
-		bw:           bw,
-		ts:           time.Now(),
-		maxFreeBytes: bw * 1024 * 1024 / 8,
-		freeBytes:    bw * 1024 * 1024 / 8,
+		bw:       bw,
+		ts:       time.Now(),
+		waitTime: -time.Second,
 	}
 }
 
 // Add ...
+// should call before sending message
+// in fact, waitTime=usedBytes/(byte/s(bw)*1s)
 func (bl *BandwidthLimiter) Add(bytes int) {
 	if bl.bw <= 0 {
 		return
 	}
 	bl.mtx.Lock()
 	defer bl.mtx.Unlock()
-	// calc free flow 1000*1000/1024/1024=0.954; 1024*1024/1000/1000=1.048
-	bl.freeBytes += int(time.Since(bl.ts) * time.Duration(bl.bw) / 8 / 954)
-	if bl.freeBytes > bl.maxFreeBytes {
-		bl.freeBytes = bl.maxFreeBytes
-	}
-	bl.freeBytes -= bytes
+	bl.waitTime -= time.Since(bl.ts)
 	bl.ts = time.Now()
-	if bl.freeBytes < 0 {
+	if bl.waitTime < -time.Second {
+		bl.freeBytes = -time.Second
+	}
+	bl.usedBytesps += int64(bytes) * int64(time.Second)
+	b := int64(bl.bw) << 17 // 1024*1024/8=1<<17
+	bl.waitTime += time.Duration(bl.usedBytesps / b)
+	bl.usedBytesps %= b
+	if bl.waitTime > 0 {
 		// sleep for the overflow
-		time.Sleep(time.Millisecond * time.Duration(-bl.freeBytes/(bl.bw*1048/8)))
+		time.Sleep(bl.waitTime)
 	}
 }
