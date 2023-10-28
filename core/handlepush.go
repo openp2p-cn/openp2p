@@ -21,7 +21,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 	}
 	gLog.Printf(LvDEBUG, "handle push msg type:%d, push header:%+v", subType, pushHead)
 	switch subType {
-	case MsgPushConnectReq: // TODO: handle a msg move to a new function
+	case MsgPushConnectReq:
 		err = handleConnectReq(pn, subType, msg)
 	case MsgPushRsp:
 		rsp := PushRsp{}
@@ -86,7 +86,6 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		}
 		gConf.setNode(req.NewName)
 		gConf.setShareBandwidth(req.Bandwidth)
-		// TODO: hot reload
 		os.Exit(0)
 	case MsgPushSwitchApp:
 		gLog.Println(LvINFO, "MsgPushSwitchApp")
@@ -112,10 +111,12 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		gLog.Println(LvINFO, "retry peerNode ", req.Node)
 		gConf.retryApp(req.Node)
 	default:
-		pn.msgMapMtx.Lock()
-		ch := pn.msgMap[pushHead.From]
-		pn.msgMapMtx.Unlock()
-		ch <- pushMsg{data: msg, ts: time.Now()}
+		i, ok := pn.msgMap.Load(pushHead.From)
+		if !ok {
+			return ErrMsgChannelNotFound
+		}
+		ch := i.(chan msgCtx)
+		ch <- msgCtx{data: msg, ts: time.Now()}
 	}
 	return err
 }
@@ -145,9 +146,6 @@ func handleEditApp(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	gConf.add(newConf, false)
 	pn.DeleteApp(oldConf) // DeleteApp may cost some times, execute at the end
 	return nil
-	// autoReconnect will auto AddApp
-	// pn.AddApp(config)
-	// TODO: report result
 }
 
 func handleConnectReq(pn *P2PNetwork, subType uint16, msg []byte) (err error) {

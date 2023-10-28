@@ -6,10 +6,8 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"math/big"
 	"net"
 	"sync"
@@ -33,52 +31,31 @@ func (conn *underlayQUIC) Protocol() string {
 }
 
 func (conn *underlayQUIC) ReadBuffer() (*openP2PHeader, []byte, error) {
-	headBuf := make([]byte, openP2PHeaderSize)
-	_, err := io.ReadFull(conn, headBuf)
-	if err != nil {
-		return nil, nil, err
-	}
-	head, err := decodeHeader(headBuf)
-	if err != nil {
-		return nil, nil, err
-	}
-	dataBuf := make([]byte, head.DataLen)
-	_, err = io.ReadFull(conn, dataBuf)
-	return head, dataBuf, err
+	return DefaultReadBuffer(conn)
 }
 
 func (conn *underlayQUIC) WriteBytes(mainType uint16, subType uint16, data []byte) error {
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	conn.writeMtx.Lock()
-	_, err := conn.Write(writeBytes)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteBytes(conn, mainType, subType, data)
 }
 
 func (conn *underlayQUIC) WriteBuffer(data []byte) error {
-	conn.writeMtx.Lock()
-	_, err := conn.Write(data)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteBuffer(conn, data)
 }
 
 func (conn *underlayQUIC) WriteMessage(mainType uint16, subType uint16, packet interface{}) error {
-	// TODO: call newMessage
-	data, err := json.Marshal(packet)
-	if err != nil {
-		return err
-	}
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	conn.writeMtx.Lock()
-	_, err = conn.Write(writeBytes)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteMessage(conn, mainType, subType, packet)
 }
 
 func (conn *underlayQUIC) Close() error {
 	conn.Stream.CancelRead(1)
 	conn.Connection.CloseWithError(0, "")
 	return nil
+}
+func (conn *underlayQUIC) WLock() {
+	conn.writeMtx.Lock()
+}
+func (conn *underlayQUIC) WUnlock() {
+	conn.writeMtx.Unlock()
 }
 func (conn *underlayQUIC) CloseListener() {
 	if conn.listener != nil {

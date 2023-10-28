@@ -1,9 +1,7 @@
 package openp2p
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -20,52 +18,30 @@ func (conn *underlayTCP6) Protocol() string {
 }
 
 func (conn *underlayTCP6) ReadBuffer() (*openP2PHeader, []byte, error) {
-	headBuf := make([]byte, openP2PHeaderSize)
-	_, err := io.ReadFull(conn, headBuf)
-	if err != nil {
-		return nil, nil, err
-	}
-	head, err := decodeHeader(headBuf)
-	if err != nil {
-		return nil, nil, err
-	}
-	dataBuf := make([]byte, head.DataLen)
-	_, err = io.ReadFull(conn, dataBuf)
-	return head, dataBuf, err
+	return DefaultReadBuffer(conn)
 }
 
 func (conn *underlayTCP6) WriteBytes(mainType uint16, subType uint16, data []byte) error {
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	conn.writeMtx.Lock()
-	_, err := conn.Write(writeBytes)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteBytes(conn, mainType, subType, data)
 }
 
 func (conn *underlayTCP6) WriteBuffer(data []byte) error {
-	conn.writeMtx.Lock()
-	_, err := conn.Write(data)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteBuffer(conn, data)
 }
 
 func (conn *underlayTCP6) WriteMessage(mainType uint16, subType uint16, packet interface{}) error {
-	// TODO: call newMessage
-	data, err := json.Marshal(packet)
-	if err != nil {
-		return err
-	}
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	conn.writeMtx.Lock()
-	_, err = conn.Write(writeBytes)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteMessage(conn, mainType, subType, packet)
 }
 
 func (conn *underlayTCP6) Close() error {
 	return conn.Conn.Close()
 }
-
+func (conn *underlayTCP6) WLock() {
+	conn.writeMtx.Lock()
+}
+func (conn *underlayTCP6) WUnlock() {
+	conn.writeMtx.Unlock()
+}
 func listenTCP6(port int, idleTimeout time.Duration) (*underlayTCP6, error) {
 	addr, _ := net.ResolveTCPAddr("tcp6", fmt.Sprintf("[::]:%d", port))
 	l, err := net.ListenTCP("tcp6", addr)
@@ -73,7 +49,7 @@ func listenTCP6(port int, idleTimeout time.Duration) (*underlayTCP6, error) {
 		return nil, err
 	}
 	defer l.Close()
-	l.SetDeadline(time.Now().Add(HandshakeTimeout))
+	l.SetDeadline(time.Now().Add(UnderlayConnectTimeout))
 	c, err := l.Accept()
 	defer l.Close()
 	if err != nil {
@@ -83,7 +59,7 @@ func listenTCP6(port int, idleTimeout time.Duration) (*underlayTCP6, error) {
 }
 
 func dialTCP6(host string, port int) (*underlayTCP6, error) {
-	c, err := net.DialTimeout("tcp6", fmt.Sprintf("[%s]:%d", host, port), HandshakeTimeout)
+	c, err := net.DialTimeout("tcp6", fmt.Sprintf("[%s]:%d", host, port), UnderlayConnectTimeout)
 	if err != nil {
 		gLog.Printf(LvERROR, "Dial %s:%d error:%s", host, port, err)
 		return nil, err

@@ -20,8 +20,10 @@ import (
 )
 
 var (
-	instance *P2PNetwork
-	once     sync.Once
+	v4l            *v4Listener
+	instance       *P2PNetwork
+	once           sync.Once
+	onceV4Listener sync.Once
 )
 
 const (
@@ -32,7 +34,7 @@ const (
 // golang not support float64 const
 var (
 	ma10 float64 = 1.0 / 10
-	ma20 float64 = 1.0 / 20
+	ma5  float64 = 1.0 / 5
 )
 
 type P2PNetwork struct {
@@ -44,25 +46,22 @@ type P2PNetwork struct {
 	writeMtx    sync.Mutex
 	hbTime      time.Time
 	// for sync server time
-	t1    int64 // nanoSeconds
-	dt    int64 // client faster then server dt nanoSeconds
-	ddtma int64
-	ddt   int64 // differential of dt
-	// msgMap    sync.Map
-	msgMap     map[uint64]chan pushMsg //key: nodeID
-	msgMapMtx  sync.Mutex
+	t1     int64 // nanoSeconds
+	dt     int64 // client faster then server dt nanoSeconds
+	ddtma  int64
+	ddt    int64    // differential of dt
+	msgMap sync.Map //key: nodeID
+	// msgMap     map[uint64]chan pushMsg //key: nodeID
 	config     NetworkConfig
 	allTunnels sync.Map
 	apps       sync.Map //key: protocol+srcport; value: p2pApp
-	limiter    *BandwidthLimiter
+	limiter    *SpeedLimiter
 }
 
-type pushMsg struct {
+type msgCtx struct {
 	data []byte
 	ts   time.Time
 }
-
-const msgExpiredTime = time.Minute
 
 func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 	if instance == nil {
@@ -71,12 +70,11 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 				restartCh: make(chan bool, 2),
 				online:    false,
 				running:   true,
-				msgMap:    make(map[uint64]chan pushMsg),
-				limiter:   newBandwidthLimiter(config.ShareBandwidth),
+				limiter:   newSpeedLimiter(config.ShareBandwidth*1024*1024/8, 1),
 				dt:        0,
 				ddt:       0,
 			}
-			instance.msgMap[0] = make(chan pushMsg) // for gateway
+			instance.msgMap.Store(uint64(0), make(chan msgCtx)) // for gateway
 			if config != nil {
 				instance.config = *config
 			}
@@ -183,7 +181,6 @@ func (pn *P2PNetwork) autorunApp() {
 func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, string, error) {
 	gLog.Printf(LvINFO, "addRelayTunnel to %s start", config.PeerNode)
 	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.PeerNode)
-	// request a relay node or specify manually(TODO)
 	relayConfig := config
 	relayMode := "private"
 	if config.RelayNode == "" {
@@ -265,8 +262,6 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		peerNatType = t.config.peerNatType
 		peerIP = t.config.peerIP
 	}
-	// TODO: if tcp failed, should try udp punching, nattype should refactor also, when NATNONE and failed we don't know the peerNatType
-
 	if err != nil && err == ErrorHandshake {
 		gLog.Println(LvERROR, "direct connect failed, try to relay")
 		t, rtid, relayMode, err = pn.addRelayTunnel(config)
@@ -303,7 +298,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 			AppID:  appID,
 			AppKey: appKey,
 		}
-		gLog.Printf(LvINFO, "sync appkey to %s", config.PeerNode)
+		gLog.Printf(LvDEBUG, "sync appkey to %s", config.PeerNode)
 		pn.push(config.PeerNode, MsgPushAPPKey, &req)
 	}
 	app := p2pApp{
@@ -317,7 +312,7 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		relayMode: relayMode,
 		hbTime:    time.Now()}
 	pn.apps.Store(config.ID(), &app)
-	gLog.Printf(LvINFO, "%s use tunnel %d", app.config.AppName, app.tunnel.id)
+	gLog.Printf(LvDEBUG, "%s use tunnel %d", app.config.AppName, app.tunnel.id)
 	if err == nil {
 		go app.listen()
 	}
@@ -359,18 +354,18 @@ func (pn *P2PNetwork) findTunnel(config *AppConfig) (t *P2PTunnel) {
 }
 
 func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunnel, err error) {
-	gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
-	defer gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort)
+	gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort, tid)
+	defer gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort, tid)
 	isClient := false
 	// client side tid=0, assign random uint64
 	if tid == 0 {
 		tid = rand.Uint64()
 		isClient = true
 	}
+	if _, ok := pn.msgMap.Load(nodeNameToID(config.PeerNode)); !ok {
+		pn.msgMap.Store(nodeNameToID(config.PeerNode), make(chan msgCtx, 50))
+	}
 
-	pn.msgMapMtx.Lock()
-	pn.msgMap[nodeNameToID(config.PeerNode)] = make(chan pushMsg, 50)
-	pn.msgMapMtx.Unlock()
 	// server side
 	if !isClient {
 		t, err = pn.newTunnel(config, tid, isClient)
@@ -407,13 +402,15 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		}
 		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
 			return t, nil
+		} else if config.hasIPv4 == 1 || config.hasUPNPorNATPMP == 1 { // peer has ipv4 no punching
+			return nil, ErrConnectPublicV4
 		}
 	}
 	// TODO: try UDP4
 
 	// try TCPPunch
-	for i := 0; i < Cone2ConePunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
-		if config.peerNatType == NATCone && pn.config.natType == NATCone { // TODO: support c2s
+	for i := 0; i < Cone2ConeTCPPunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
+		if config.peerNatType == NATCone && pn.config.natType == NATCone {
 			gLog.Println(LvINFO, "try TCP4 Punch")
 			config.linkMode = LinkModeTCPPunch
 			config.isUnderlayServer = 0
@@ -425,7 +422,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 	}
 
 	// try UDPPunch
-	for i := 0; i < Cone2ConePunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
+	for i := 0; i < Cone2ConeUDPPunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
 		if config.peerNatType == NATCone || pn.config.natType == NATCone {
 			gLog.Println(LvINFO, "try UDP4 Punch")
 			config.linkMode = LinkModeUDPPunch
@@ -470,7 +467,7 @@ func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t 
 	return
 }
 func (pn *P2PNetwork) init() error {
-	gLog.Println(LvINFO, "init start")
+	gLog.Println(LvINFO, "P2PNetwork start")
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
 	var err error
@@ -495,7 +492,13 @@ func (pn *P2PNetwork) init() error {
 			gLog.Println(LvDEBUG, "detect NAT type error:", err)
 			break
 		}
-		gLog.Println(LvDEBUG, "detect NAT type:", pn.config.natType, " publicIP:", pn.config.publicIP)
+		if pn.config.hasIPv4 == 1 || pn.config.hasUPNPorNATPMP == 1 {
+			onceV4Listener.Do(func() {
+				v4l = &v4Listener{port: gConf.Network.TCPPort}
+				go v4l.start()
+			})
+		}
+		gLog.Printf(LvINFO, "hasIPv4:%d, UPNP:%d, NAT type:%d, publicIP:%s", pn.config.hasIPv4, pn.config.hasUPNPorNATPMP, pn.config.natType, pn.config.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", pn.config.ServerHost, pn.config.ServerPort)
 		uri := "/api/v1/login"
 		caCertPool, err := x509.SystemCertPool()
@@ -510,6 +513,7 @@ func (pn *P2PNetwork) init() error {
 			RootCAs:            caCertPool,
 			InsecureSkipVerify: false} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
 		websocket.DefaultDialer.TLSClientConfig = &config
+		websocket.DefaultDialer.HandshakeTimeout = ClientAPITimeout
 		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
 		q := u.Query()
 		q.Add("node", pn.config.Node)
@@ -521,6 +525,7 @@ func (pn *P2PNetwork) init() error {
 		var ws *websocket.Conn
 		ws, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
 		if err != nil {
+			gLog.Println(LvERROR, "Dial error:", err)
 			break
 		}
 		pn.online = true
@@ -606,28 +611,27 @@ func (pn *P2PNetwork) handleMessage(t int, msg []byte) {
 		dt := pn.t1 + rtt/2 - t2
 		if pn.dt != 0 {
 			ddt := dt - pn.dt
-			if pn.ddtma > 0 && (ddt > (pn.ddtma+pn.ddtma/3) || ddt < (pn.ddtma-pn.ddtma/3)) {
-				newdt := pn.dt + pn.ddtma
-				gLog.Printf(LvDEBUG, "server time auto adjust dt=%.2fms to %.2fms", float64(dt)/float64(time.Millisecond), float64(newdt)/float64(time.Millisecond))
-				dt = newdt
-			}
 			pn.ddt = ddt
 			if pn.ddtma == 0 {
 				pn.ddtma = pn.ddt
 			} else {
 				pn.ddtma = int64(float64(pn.ddtma)*(1-ma10) + float64(pn.ddt)*ma10) // avoid int64 overflow
+				newdt := pn.dt + pn.ddtma
+				// gLog.Printf(LvDEBUG, "server time auto adjust dt=%.2fms to %.2fms", float64(dt)/float64(time.Millisecond), float64(newdt)/float64(time.Millisecond))
+				dt = newdt
 			}
 		}
 		pn.dt = dt
-
-		gLog.Printf(LvDEBUG, "server time dt=%dms ddt=%dns ddtma=%dns rtt=%dms ", pn.dt/int64(time.Millisecond), pn.ddt, pn.ddtma, rtt/int64(time.Millisecond))
+		gLog.Printf(LvDEBUG, "synctime dt=%dms ddt=%dns ddtma=%dns rtt=%dms ", pn.dt/int64(time.Millisecond), pn.ddt, pn.ddtma, rtt/int64(time.Millisecond))
 	case MsgPush:
 		handlePush(pn, head.SubType, msg)
 	default:
-		pn.msgMapMtx.Lock()
-		ch := pn.msgMap[0]
-		pn.msgMapMtx.Unlock()
-		ch <- pushMsg{data: msg, ts: time.Now()}
+		i, ok := pn.msgMap.Load(uint64(0))
+		if ok {
+			ch := i.(chan msgCtx)
+			ch <- msgCtx{data: msg, ts: time.Now()}
+		}
+
 		return
 	}
 }
@@ -668,17 +672,20 @@ func (pn *P2PNetwork) write(mainType uint16, subType uint16, packet interface{})
 }
 
 func (pn *P2PNetwork) relay(to uint64, body []byte) error {
-	gLog.Printf(LvDEBUG, "relay data to %d", to)
 	i, ok := pn.allTunnels.Load(to)
 	if !ok {
-		return nil
+		gLog.Printf(LvERROR, "relay to %d len=%d error:%s", to, len(body), ErrRelayTunnelNotFound)
+		return ErrRelayTunnelNotFound
 	}
 	tunnel := i.(*P2PTunnel)
 	if tunnel.config.shareBandwidth > 0 {
-		pn.limiter.Add(len(body))
+		pn.limiter.Add(len(body), true)
 	}
-	tunnel.conn.WriteBuffer(body)
-	return nil
+	var err error
+	if err = tunnel.conn.WriteBuffer(body); err != nil {
+		gLog.Printf(LvERROR, "relay to %d len=%d error:%s", to, len(body), err)
+	}
+	return err
 }
 
 func (pn *P2PNetwork) push(to string, subType uint16, packet interface{}) error {
@@ -717,28 +724,31 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 	} else {
 		nodeID = nodeNameToID(node)
 	}
-	pn.msgMapMtx.Lock()
-	ch := pn.msgMap[nodeID]
-	pn.msgMapMtx.Unlock()
+	i, ok := pn.msgMap.Load(nodeID)
+	if !ok {
+		return
+	}
+	ch := i.(chan msgCtx)
 	for {
 		select {
 		case <-time.After(timeout):
 			gLog.Printf(LvERROR, "wait msg%d:%d timeout", mainType, subType)
 			return
 		case msg := <-ch:
-			if msg.ts.Before(time.Now().Add(-msgExpiredTime)) {
-				gLog.Printf(LvDEBUG, "msg expired error %d:%d", head.MainType, head.SubType)
-				continue
-			}
 			head = &openP2PHeader{}
 			err := binary.Read(bytes.NewReader(msg.data[:openP2PHeaderSize]), binary.LittleEndian, head)
 			if err != nil {
 				gLog.Println(LvERROR, "read msg error:", err)
 				break
 			}
+			if time.Since(msg.ts) > ReadMsgTimeout {
+				gLog.Printf(LvDEBUG, "msg expired error %d:%d", head.MainType, head.SubType)
+				continue
+			}
 			if head.MainType != mainType || head.SubType != subType {
 				gLog.Printf(LvDEBUG, "read msg type error %d:%d, requeue it", head.MainType, head.SubType)
 				ch <- msg
+				time.Sleep(time.Second)
 				continue
 			}
 			if mainType == MsgPush {

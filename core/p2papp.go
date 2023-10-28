@@ -52,7 +52,11 @@ func (app *p2pApp) listenTCP() error {
 	gLog.Printf(LvDEBUG, "tcp accept on port %d start", app.config.SrcPort)
 	defer gLog.Printf(LvDEBUG, "tcp accept on port %d end", app.config.SrcPort)
 	var err error
-	app.listener, err = net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", app.config.SrcPort)) // support tcp4 and tcp6
+	listenAddr := ""
+	if IsLocalhost(app.config.Whitelist) { // not expose port
+		listenAddr = "127.0.0.1"
+	}
+	app.listener, err = net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, app.config.SrcPort))
 	if err != nil {
 		gLog.Printf(LvERROR, "listen error:%s", err)
 		return err
@@ -67,8 +71,8 @@ func (app *p2pApp) listenTCP() error {
 		}
 		// check white list
 		if app.config.Whitelist != "" {
-			remoteIP := strings.Split(conn.RemoteAddr().String(), ":")[0]
-			if !app.iptree.Contains(remoteIP) {
+			remoteIP := conn.RemoteAddr().(*net.TCPAddr).IP.String()
+			if !app.iptree.Contains(remoteIP) && !IsLocalhost(remoteIP) {
 				conn.Close()
 				gLog.Printf(LvERROR, "%s not in whitelist, access denied", remoteIP)
 				continue
@@ -252,8 +256,8 @@ func (app *p2pApp) close() {
 func (app *p2pApp) relayHeartbeatLoop() {
 	app.wg.Add(1)
 	defer app.wg.Done()
-	gLog.Printf(LvDEBUG, "relayHeartbeat to %d start", app.rtid)
-	defer gLog.Printf(LvDEBUG, "relayHeartbeat to %d end", app.rtid)
+	gLog.Printf(LvDEBUG, "relayHeartbeat to rtid:%d start", app.rtid)
+	defer gLog.Printf(LvDEBUG, "relayHeartbeat to rtid%d end", app.rtid)
 	relayHead := new(bytes.Buffer)
 	binary.Write(relayHead, binary.LittleEndian, app.rtid)
 	req := RelayHeartbeat{RelayTunnelID: app.tunnel.id,
@@ -261,7 +265,12 @@ func (app *p2pApp) relayHeartbeatLoop() {
 	msg, _ := newMessage(MsgP2P, MsgRelayHeartbeat, &req)
 	msgWithHead := append(relayHead.Bytes(), msg...)
 	for app.tunnel.isRuning() && app.running {
-		app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
+		err := app.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
+		if err != nil {
+			gLog.Printf(LvERROR, "%d app write relay tunnel heartbeat error %s", app.rtid, err)
+			return
+		}
+		gLog.Printf(LvDEBUG, "%d app write relay tunnel heartbeat ok", app.rtid)
 		time.Sleep(TunnelHeartbeatTime)
 	}
 }

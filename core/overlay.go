@@ -67,13 +67,13 @@ func (oConn *overlayConn) run() {
 		writeBytes := append(tunnelHead.Bytes(), payload...)
 		if oConn.rtid == 0 {
 			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgOverlayData, writeBytes)
-			gLog.Printf(LvDEBUG, "write overlay data to %d:%d bodylen=%d", oConn.rtid, oConn.id, len(writeBytes))
+			gLog.Printf(LvDEBUG, "write overlay data to tid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.id, len(writeBytes))
 		} else {
 			// write raley data
 			all := append(relayHead.Bytes(), encodeHeader(MsgP2P, MsgOverlayData, uint32(len(writeBytes)))...)
 			all = append(all, writeBytes...)
 			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, all)
-			gLog.Printf(LvDEBUG, "write relay data to %d:%d bodylen=%d", oConn.rtid, oConn.id, len(writeBytes))
+			gLog.Printf(LvDEBUG, "write relay data to tid:%d,rtid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.rtid, oConn.id, len(writeBytes))
 		}
 	}
 	if oConn.connTCP != nil {

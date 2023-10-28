@@ -24,13 +24,8 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 	}
 	ra, head, _, _, err := UDPRead(conn, HandshakeTimeout)
 	if err != nil {
-		time.Sleep(time.Millisecond * 200)
-		gLog.Println(LvDEBUG, err, ", return this error when ip was not reachable, retry read")
-		ra, head, _, _, err = UDPRead(conn, HandshakeTimeout)
-		if err != nil {
-			gLog.Println(LvDEBUG, "handshakeC2C read MsgPunchHandshake error:", err)
-			return err
-		}
+		gLog.Println(LvDEBUG, "handshakeC2C read MsgPunchHandshake error:", err)
+		return err
 	}
 	t.ra, _ = net.ResolveUDPAddr("udp", ra.String())
 	if head.MainType == MsgP2P && head.SubType == MsgPunchHandshake {
@@ -57,6 +52,7 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 func handshakeC2S(t *P2PTunnel) error {
 	gLog.Printf(LvDEBUG, "handshakeC2S start")
 	defer gLog.Printf(LvDEBUG, "handshakeC2S end")
+	startTime := time.Now()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randPorts := r.Perm(65532)
 	conn, err := net.ListenUDP("udp", t.la)
@@ -68,7 +64,6 @@ func handshakeC2S(t *P2PTunnel) error {
 	go func() error {
 		gLog.Printf(LvDEBUG, "send symmetric handshake to %s from %d:%d start", t.config.peerIP, t.coneLocalPort, t.coneNatPort)
 		for i := 0; i < SymmetricHandshakeNum; i++ {
-			// TODO: auto calc cost time
 			// time.Sleep(SymmetricHandshakeInterval)
 			dst, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", t.config.peerIP, randPorts[i]+2))
 			if err != nil {
@@ -124,19 +119,19 @@ func handshakeC2S(t *P2PTunnel) error {
 	} else {
 		gLog.Println(LvDEBUG, "handshakeS2C read msg but not MsgPunchHandshakeAck")
 	}
-	gLog.Printf(LvINFO, "handshakeC2S ok")
+	gLog.Printf(LvINFO, "handshakeC2S ok. cost %d ms", time.Since(startTime)/time.Millisecond)
 	return nil
 }
 
 func handshakeS2C(t *P2PTunnel) error {
 	gLog.Printf(LvDEBUG, "handshakeS2C start")
 	defer gLog.Printf(LvDEBUG, "handshakeS2C end")
+	startTime := time.Now()
 	gotCh := make(chan *net.UDPAddr, 5)
 	// sequencely udp send handshake, do not parallel send
 	gLog.Printf(LvDEBUG, "send symmetric handshake to %s:%d start", t.config.peerIP, t.config.peerConeNatPort)
 	gotIt := false
 	for i := 0; i < SymmetricHandshakeNum; i++ {
-		// TODO: auto calc cost time
 		// time.Sleep(SymmetricHandshakeInterval)
 		go func(t *P2PTunnel) error {
 			conn, err := net.ListenUDP("udp", nil) // TODO: system allocated port really random?
@@ -197,7 +192,7 @@ func handshakeS2C(t *P2PTunnel) error {
 	case la := <-gotCh:
 		t.la = la
 		gLog.Println(LvDEBUG, "symmetric handshake ok", la)
-		gLog.Printf(LvINFO, "handshakeS2C ok")
+		gLog.Printf(LvINFO, "handshakeS2C ok. cost %dms", time.Since(startTime)/time.Millisecond)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"net"
 	"testing"
+	"time"
 )
 
 func wrapTestContains(t *testing.T, iptree *IPTree, ip string, result bool) {
@@ -128,6 +129,7 @@ func BenchmarkBuildipTree20k(t *testing.B) {
 	t.Logf("clear. ipTree size:%d\n", iptree.Size())
 }
 func BenchmarkQuery(t *testing.B) {
+	ts := time.Now()
 	iptree := NewIPTree("")
 	iptree.Clear()
 	iptree.Add("10.1.5.50", "10.1.5.100")
@@ -145,7 +147,7 @@ func BenchmarkQuery(t *testing.B) {
 	binary.Read(bytes.NewBuffer(net.ParseIP("10.1.1.1").To4()), binary.BigEndian, &minIP)
 
 	// insert 10k block ip single
-	nodeNum := uint32(10000 * 100)
+	nodeNum := uint32(10000 * 1000)
 	gap := uint32(10)
 	for i := minIP; i < minIP+nodeNum*gap; i += gap {
 		iptree.AddIntIP(i, i)
@@ -156,8 +158,9 @@ func BenchmarkQuery(t *testing.B) {
 	for i := minIP; i < minIP+nodeNum*gap; i += gap {
 		iptree.AddIntIP(i, i+5)
 	}
-	t.Logf("ipTree size:%d\n", iptree.Size())
-	t.ResetTimer()
+	t.Logf("ipTree size:%d cost:%dms\n", iptree.Size(), time.Since(ts)/time.Millisecond)
+	ts = time.Now()
+	// t.ResetTimer()
 	queryNum := 100 * 10000
 	for i := 0; i < queryNum; i++ {
 		iptree.ContainsInt(minIP + uint32(i))
@@ -166,6 +169,6 @@ func BenchmarkQuery(t *testing.B) {
 		wrapBenchmarkContains(t, iptree, "10.1.5.200", false)
 		wrapBenchmarkContains(t, iptree, "200.1.1.1", false)
 	}
-	t.Logf("query list:%d\n", queryNum*4)
+	t.Logf("query num:%d cost:%dms\n", queryNum*4, time.Since(ts)/time.Millisecond)
 
 }

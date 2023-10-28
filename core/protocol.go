@@ -10,11 +10,12 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.10.9"
+const OpenP2PVersion = "3.12.0"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
 const SymmetricSimultaneouslySendVersion = "3.10.7"
+const PublicIPVersion = "3.11.2"
 
 const (
 	IfconfigPort1 = 27180
@@ -38,6 +39,8 @@ type PushHeader struct {
 }
 
 var PushHeaderSize = binary.Size(PushHeader{})
+
+const RelayHeaderSize = 8
 
 type overlayHeader struct {
 	id uint64
@@ -134,27 +137,29 @@ const (
 )
 
 const (
-	ReadBuffLen           = 4096             // for UDP maybe not enough
-	NetworkHeartbeatTime  = time.Second * 30 // TODO: server no response hb, save flow
+	ReadBuffLen           = 4096 // for UDP maybe not enough
+	NetworkHeartbeatTime  = time.Second * 30
 	TunnelHeartbeatTime   = time.Second * 10 // some nat udp session expired time less than 15s. change to 10s
 	TunnelIdleTimeout     = time.Minute
 	SymmetricHandshakeNum = 800 // 0.992379
 	// SymmetricHandshakeNum        = 1000 // 0.999510
 	SymmetricHandshakeInterval = time.Millisecond
-	HandshakeTimeout           = time.Second * 10
-	PeerAddRelayTimeount       = time.Second * 30 // peer need times
+	HandshakeTimeout           = time.Second * 7
+	PunchTsDelay               = time.Second * 3
+	PeerAddRelayTimeount       = time.Second * 30 // peer need times. S2C\TCP\TCP Punch\UDP Punch
 	CheckActiveTimeout         = time.Second * 5
+	ReadMsgTimeout             = time.Second * 5
 	PaddingSize                = 16
 	AESKeySize                 = 16
 	MaxRetry                   = 10
-	Cone2ConePunchMaxRetry     = 1
+	Cone2ConeTCPPunchMaxRetry  = 1
+	Cone2ConeUDPPunchMaxRetry  = 1
 	PublicIPEchoTimeout        = time.Second * 1
 	NatTestTimeout             = time.Second * 5
 	UDPReadTimeout             = time.Second * 5
 	ClientAPITimeout           = time.Second * 10
 	UnderlayConnectTimeout     = time.Second * 10
 	MaxDirectTry               = 3
-	PunchTsDelay               = time.Second * 3
 )
 
 // NATNone has public ip

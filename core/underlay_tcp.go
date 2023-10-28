@@ -1,9 +1,8 @@
 package openp2p
 
 import (
-	"encoding/json"
+	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -21,50 +20,29 @@ func (conn *underlayTCP) Protocol() string {
 }
 
 func (conn *underlayTCP) ReadBuffer() (*openP2PHeader, []byte, error) {
-	headBuf := make([]byte, openP2PHeaderSize)
-	_, err := io.ReadFull(conn, headBuf)
-	if err != nil {
-		return nil, nil, err
-	}
-	head, err := decodeHeader(headBuf)
-	if err != nil {
-		return nil, nil, err
-	}
-	dataBuf := make([]byte, head.DataLen)
-	_, err = io.ReadFull(conn, dataBuf)
-	return head, dataBuf, err
+	return DefaultReadBuffer(conn)
 }
 
 func (conn *underlayTCP) WriteBytes(mainType uint16, subType uint16, data []byte) error {
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	conn.writeMtx.Lock()
-	_, err := conn.Write(writeBytes)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteBytes(conn, mainType, subType, data)
 }
 
 func (conn *underlayTCP) WriteBuffer(data []byte) error {
-	conn.writeMtx.Lock()
-	_, err := conn.Write(data)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteBuffer(conn, data)
 }
 
 func (conn *underlayTCP) WriteMessage(mainType uint16, subType uint16, packet interface{}) error {
-	// TODO: call newMessage
-	data, err := json.Marshal(packet)
-	if err != nil {
-		return err
-	}
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	conn.writeMtx.Lock()
-	_, err = conn.Write(writeBytes)
-	conn.writeMtx.Unlock()
-	return err
+	return DefaultWriteMessage(conn, mainType, subType, packet)
 }
 
 func (conn *underlayTCP) Close() error {
 	return conn.Conn.Close()
+}
+func (conn *underlayTCP) WLock() {
+	conn.writeMtx.Lock()
+}
+func (conn *underlayTCP) WUnlock() {
+	conn.writeMtx.Unlock()
 }
 
 func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) (*underlayTCP, error) {
@@ -76,34 +54,46 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 			gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
 			time.Sleep(ts)
 		}
-		gLog.Println(LvDEBUG, (time.Now().UnixNano()-t.pn.dt)/(int64)(time.Millisecond), " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
+		gLog.Println(LvDEBUG, " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
 		c, err := reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
 		if err != nil {
 			gLog.Println(LvDEBUG, "send tcp punch: ", err)
 			return nil, err
 		}
-		return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
+		utcp := &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}
+		_, buff, err := utcp.ReadBuffer()
+		if err != nil {
+			return nil, fmt.Errorf("read start msg error:%s", err)
+		}
+		if buff != nil {
+			gLog.Println(LvDEBUG, string(buff))
+		}
+		utcp.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, buff)
+		return utcp, nil
 	}
 	t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
-	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", localPort))
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return nil, err
+	tid := t.id
+	if compareVersion(t.config.peerVersion, PublicIPVersion) == LESS { // old version
+		ipBytes := net.ParseIP(t.config.peerIP).To4()
+		tid = uint64(binary.BigEndian.Uint32(ipBytes))
+		gLog.Println(LvDEBUG, "compatible with old client, use ip as key:", tid)
 	}
-	l.SetDeadline(time.Now().Add(CheckActiveTimeout))
-	c, err := l.Accept()
-	defer l.Close()
-	if err != nil {
-		return nil, err
+	utcp := v4l.getUnderlayTCP(tid)
+	if utcp == nil {
+		return nil, ErrConnectPublicV4
 	}
-	return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
+	return utcp, nil
 }
 
 func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, error) {
 	var c net.Conn
 	var err error
 	if mode == LinkModeTCPPunch {
-		c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
+		gLog.Println(LvDEBUG, " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
+		if c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout); err != nil {
+			gLog.Println(LvDEBUG, "send tcp punch: ", err)
+		}
+
 	} else {
 		c, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
 	}

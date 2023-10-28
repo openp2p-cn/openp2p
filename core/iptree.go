@@ -76,6 +76,13 @@ func (iptree *IPTree) Contains(ipStr string) bool {
 	return iptree.ContainsInt(ip)
 }
 
+func IsLocalhost(ipStr string) bool {
+	if ipStr == "localhost" || ipStr == "127.0.0.1" || ipStr == "::1" {
+		return true
+	}
+	return false
+}
+
 func (iptree *IPTree) ContainsInt(ip uint32) bool {
 	iptree.treeMtx.RLock()
 	defer iptree.treeMtx.RUnlock()
