@@ -78,7 +78,7 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 			if config != nil {
 				instance.config = *config
 			}
-			instance.doInit()
+			instance.tryInit()
 			go instance.run()
 			go func() {
 				for {
@@ -92,8 +92,9 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 	return instance
 }
 
-func (pn *P2PNetwork) doInit() {
-	if pn.init() != nil {
+func (pn *P2PNetwork) tryInit() {
+	err := pn.init()
+	if err != nil {
 		// init failed, retry
 		pn.restartCh <- true
 		gLog.Println(LvERROR, "P2PNetwork init error:", err)
@@ -111,13 +112,13 @@ func (pn *P2PNetwork) run() {
 			pn.write(MsgHeartbeat, 0, "")
 		case <-pn.restartCh:
 			pn.online = false
+			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
+			time.Sleep(ClientAPITimeout)
 			if pn.conn != nil {
 				pn.conn.Close()
 				pn.conn = nil
 			}
-			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
-			time.Sleep(ClientAPITimeout)
-			pn.doInit()
+			pn.tryInit()
 		}
 	}
 }
