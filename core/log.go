@@ -97,6 +97,11 @@ func (l *logger) setMode(mode int) {
 	defer l.mtx.Unlock()
 	l.mode = mode
 }
+func (l *logger) Mode() int {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	return l.mode
+}
 
 func (l *logger) checkFile() {
 	if l.maxLogSize <= 0 {
