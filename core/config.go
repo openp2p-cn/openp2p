@@ -229,7 +229,7 @@ func parseParams(subCommand string) {
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
-	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
+	logLevel := fset.Int("loglevel", int(LvINFO), "0:debug 1:info 2:warn 3:error")
 	if subCommand == "" { // no subcommand
 		fset.Parse(os.Args[1:])
 	} else {
@@ -255,22 +255,16 @@ func parseParams(subCommand string) {
 	gConf.daemonMode = *daemonMode
 	// spec paramters in commandline will always be used
 	fset.Visit(func(f *flag.Flag) {
-		if f.Name == "sharebandwidth" {
+		select f.Name {
+		case "sharebandwidth":
 			gConf.Network.ShareBandwidth = *shareBandwidth
-		}
-		if f.Name == "node" {
-			gConf.Network.Node = *node
-		}
-		if f.Name == "serverhost" {
-			gConf.Network.ServerHost = *serverHost
-		}
-		if f.Name == "loglevel" {
+		case "serverhost":
+			gConf.Network.ServerHost = ""
+		case "loglevel":
 			gConf.LogLevel = *logLevel
-		}
-		if f.Name == "tcpport" {
-			gConf.Network.TCPPort = *tcpPort
-		}
-		if f.Name == "token" {
+		case "tcpport":
+			gConf.Network.TCPPort = 0
+		case "token":
 			gConf.setToken(*token)
 		}
 	})
@@ -309,7 +303,7 @@ func parseParams(subCommand string) {
 	gConf.Network.UDPPort2 = UDPPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	if *notVerbose {
-		gLog.setMode(LogFile)
+		gLog.setMode(gLog.Mode() &^ LogConsole)
 	}
 	// gConf.mtx.Unlock()
 	gConf.save()
