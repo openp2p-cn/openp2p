@@ -35,7 +35,7 @@ func install() {
 
 	uninstall()
 	// save config file
-	parseParams("install")
+	parseParams("install", os.Args[2:])
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 	d := daemon{}
 	// copy files

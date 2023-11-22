@@ -209,8 +209,8 @@ type NetworkConfig struct {
 	TCPPort    int
 }
 
-func parseParams(subCommand string) {
-	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
+func parseParams(name string, arguments []string) {
+	fset := flag.NewFlagSet(name, flag.ExitOnError)
 	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
 	serverPort := fset.Int("serverport", WsPort, "server port ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
@@ -230,11 +230,7 @@ func parseParams(subCommand string) {
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
 	logLevel := fset.Int("loglevel", int(LvINFO), "0:debug 1:info 2:warn 3:error")
-	if subCommand == "" { // no subcommand
-		fset.Parse(os.Args[1:])
-	} else {
-		fset.Parse(os.Args[2:])
-	}
+	fset.Parse(arguments)
 
 	config := AppConfig{Enabled: 1}
 	config.PeerNode = *peerNode
