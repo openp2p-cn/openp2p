@@ -299,7 +299,7 @@ func parseParams(name string, arguments []string) {
 	gConf.Network.UDPPort2 = UDPPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	if *notVerbose {
-		gLog.setMode(gLog.Mode() &^ LogConsole)
+		gLog.setMode(gLog.mode() &^ LogConsole)
 	}
 	// gConf.mtx.Unlock()
 	gConf.save()

@@ -97,7 +97,7 @@ func (l *logger) setMode(mode int) {
 	defer l.mtx.Unlock()
 	l.mode = mode
 }
-func (l *logger) Mode() int {
+func (l *logger) mode() int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	return l.mode
