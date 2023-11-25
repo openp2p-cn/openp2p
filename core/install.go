@@ -38,28 +38,32 @@ func install() {
 	parseParams("install")
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 	d := daemon{}
-	// copy files
-
 	binPath, _ := os.Executable()
-	src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
-	if errFiles != nil {
-		gLog.Printf(LvERROR, "os.OpenFile %s error:%s", os.Args[0], errFiles)
-		return
-	}
+	if targetPath != binPath {
+		// copy files
+		src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
+		if errFiles != nil {
+			gLog.Printf(LvERROR, "os.Open %s error:%s", os.Args[0], errFiles)
+			return
+		}
 
-	dst, errFiles := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
-	if errFiles != nil {
-		gLog.Printf(LvERROR, "os.OpenFile %s error:%s", targetPath, errFiles)
-		return
-	}
+		dst, errFiles := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+		if errFiles != nil {
+			gLog.Printf(LvERROR, "os.OpenFile %s error:%s", targetPath, errFiles)
+			src.Close()
+			return
+		}
 
-	_, errFiles = io.Copy(dst, src)
-	if errFiles != nil {
-		gLog.Printf(LvERROR, "io.Copy error:%s", errFiles)
-		return
+		_, errFiles = io.Copy(dst, src)
+		if errFiles != nil {
+			gLog.Printf(LvERROR, "io.Copy error:%s", errFiles)
+			src.Close()
+			dst.Close()
+			return
+		}
+		src.Close()
+		dst.Close()
 	}
-	src.Close()
-	dst.Close()
 
 	// install system service
 	gLog.Println(LvINFO, "targetPath:", targetPath)
