@@ -32,7 +32,6 @@ func install() {
 		gLog.Println(LvERROR, "cd error:", err)
 		return
 	}
-
 	uninstall()
 	// save config file
 	parseParams("install")
@@ -43,7 +42,7 @@ func install() {
 		// copy files
 		src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
 		if errFiles != nil {
-			gLog.Printf(LvERROR, "os.Open %s error:%s", os.Args[0], errFiles)
+			gLog.Printf(LvERROR, "os.Open %s error:%s", binPath, errFiles)
 			return
 		}
 
