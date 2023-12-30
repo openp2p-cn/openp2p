@@ -259,32 +259,26 @@ func parseParams(name string, arguments []string) {
 		case "loglevel":
 			gConf.LogLevel = *logLevel
 		case "tcpport":
-			gConf.Network.TCPPort = 0
+			gConf.Network.TCPPort = *tcpPort
 		case "token":
 			gConf.setToken(*token)
+		case "node":
+			gConf.Network.Node = *node
 		}
 	})
 	// set default value
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
 	}
-	if *node != "" {
-		gConf.Network.Node = *node
-	} else {
+	if gConf.Network.Node == "" {
 		envNode := os.Getenv("OPENP2P_NODE")
-		if envNode != "" {
-			gConf.Network.Node = envNode
+		if envNode == "" { // if node name not set. use os.Hostname
+			envNode = defaultNodeName()
 		}
-		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
-			gConf.Network.Node = defaultNodeName()
-		}
+		gConf.Network.Node = envNode
 	}
 	if gConf.Network.TCPPort == 0 {
-		if *tcpPort == 0 {
-			p := int(nodeNameToID(gConf.Network.Node)%15000 + 50000)
-			tcpPort = &p
-		}
-		gConf.Network.TCPPort = *tcpPort
+		gConf.Network.TCPPort = int(nodeNameToID(gConf.Network.Node)%15000 + 50000)
 	}
 	if *token == 0 {
 		envToken := os.Getenv("OPENP2P_TOKEN")
