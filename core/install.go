@@ -37,7 +37,7 @@ func install() {
 	parseParams("install")
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 	d := daemon{}
-	binPath, _ := os.Executable()
+	binPath, _ := os.Executable() // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
 	if targetPath != binPath {
 		// copy files
 		errFiles := copyFile(targetPath, binPath)
@@ -63,7 +63,7 @@ func install() {
 }
 
 func copyFile(dst, src string) error {
-	srcF, err := os.Open(src) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
+	srcF, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("os.Open %s error: %w", src, err)
 	}
