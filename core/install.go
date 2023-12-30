@@ -40,28 +40,10 @@ func install() {
 	binPath, _ := os.Executable()
 	if targetPath != binPath {
 		// copy files
-		src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
+		errFiles := copyFile(targetPath, binPath)
 		if errFiles != nil {
-			gLog.Printf(LvERROR, "os.Open %s error:%s", binPath, errFiles)
-			return
+			gLog.Println(LvERROR, errFiles)
 		}
-
-		dst, errFiles := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
-		if errFiles != nil {
-			gLog.Printf(LvERROR, "os.OpenFile %s error:%s", targetPath, errFiles)
-			src.Close()
-			return
-		}
-
-		_, errFiles = io.Copy(dst, src)
-		if errFiles != nil {
-			gLog.Printf(LvERROR, "io.Copy error:%s", errFiles)
-			src.Close()
-			dst.Close()
-			return
-		}
-		src.Close()
-		dst.Close()
 	}
 
 	// install system service
@@ -78,6 +60,23 @@ func install() {
 		gLog.Println(LvINFO, "start openp2p service ok.")
 	}
 	gLog.Println(LvINFO, "Visit WebUI on https://console.openp2p.cn")
+}
+
+func copyFile(dst, src string) error {
+	srcF, err := os.Open(src) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
+	if err != nil {
+		return fmt.Errorf("os.Open %s error: %w", src, err)
+	}
+	defer srcF.Close()
+	dstF, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+	if err != nil {
+		return fmt.Errorf("os.OpenFile %s error: %w", dst, err)
+	}
+	defer dstF.Close()
+	_, err = io.Copy(dstF, srcF)
+	if err != nil {
+		return fmt.Errorf("io.Copy error: %w", err)
+	}
 }
 
 func installByFilename() {
