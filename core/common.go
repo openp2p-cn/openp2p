@@ -176,13 +176,15 @@ func compareVersion(v1, v2 string) int {
 		if len(v2Arr) <= i {
 			return GREATER
 		}
-		subv1, _ := strconv.Atoi(subVer)
-		subv2, _ := strconv.Atoi(v2Arr[i])
-		if subv1 > subv2 {
-			return GREATER
-		}
-		if subv1 < subv2 {
-			return LESS
+		if subVer != v2Arr[i] {
+			subv1, _ := strconv.Atoi(subVer)
+			subv2, _ := strconv.Atoi(v2Arr[i])
+			if subv1 > subv2 {
+				return GREATER
+			}
+			if subv1 < subv2 {
+				return LESS
+			}
 		}
 	}
 	return LESS

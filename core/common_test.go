@@ -60,6 +60,8 @@ func TestCompareVersion(t *testing.T) {
 	assertCompareVersion(t, "0.98", "0.98", EQUAL)
 	assertCompareVersion(t, "1.4.0", "1.4.0", EQUAL)
 	assertCompareVersion(t, "1.5.0", "1.5.0", EQUAL)
+	assertCompareVersion(t, "1.5.105b2f", "1.5.105b2f", EQUAL)
+	assertCompareVersion(t, "1.b5.0", "1.b5.0", EQUAL)
 	// test >
 	assertCompareVersion(t, "0.98.0.22345", "0.98.0.12345", GREATER)
 	assertCompareVersion(t, "1.98.0.12345", "0.98", GREATER)
@@ -72,7 +74,7 @@ func TestCompareVersion(t *testing.T) {
 	assertCompareVersion(t, "9.98.0.12345", "10.98.0.12345", LESS)
 	assertCompareVersion(t, "1.4.2", "1.5.0", LESS)
 	assertCompareVersion(t, "", "1.5.0", LESS)
-
+	assertCompareVersion(t, "1.5.105b2f", "1.5.105b2f.1", LESS)
 }
 
 func TestParseMajorVer(t *testing.T) {
