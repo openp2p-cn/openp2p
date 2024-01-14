@@ -1,4 +1,4 @@
-package openp2p
+package util
 
 import (
 	"log"
