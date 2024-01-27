@@ -1,4 +1,4 @@
-package openp2p
+package speedlimiter
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 
 func TestBandwidth(t *testing.T) {
 	speed := 10 * 1024 * 1024 / 8 // 10mbps
-	speedl := newSpeedLimiter(speed, 1)
+	speedl := New(speed, 1)
 	oneBuffSize := 4096
 	writeNum := 5000
 	expectTime := oneBuffSize * writeNum / speed
@@ -23,7 +23,7 @@ func TestBandwidth(t *testing.T) {
 
 func TestSymmetric(t *testing.T) {
 	speed := 20000 / 180
-	speedl := newSpeedLimiter(speed, 180)
+	speedl := New(speed, 180)
 	oneBuffSize := 300
 	writeNum := 100
 	expectTime := (oneBuffSize*writeNum - 20000) / speed
@@ -39,7 +39,7 @@ func TestSymmetric(t *testing.T) {
 
 func TestSymmetric2(t *testing.T) {
 	speed := 30000 / 180
-	speedl := newSpeedLimiter(speed, 180)
+	speedl := New(speed, 180)
 	oneBuffSize := 800
 	writeNum := 50
 	expectTime := (oneBuffSize*writeNum - 30000) / speed

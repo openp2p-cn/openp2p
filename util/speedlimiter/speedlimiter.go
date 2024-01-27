@@ -1,4 +1,4 @@
-package openp2p
+package speedlimiter
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 )
 
 // SpeedLimiter ...
-type SpeedLimiter struct {
+type Instance struct {
 	lastUpdate time.Time
 	speed      int // per second
 	precision  int // seconds
@@ -16,8 +16,8 @@ type SpeedLimiter struct {
 	mtx        sync.Mutex
 }
 
-func newSpeedLimiter(speed int, precision int) *SpeedLimiter {
-	return &SpeedLimiter{
+func New(speed int, precision int) *Instance {
+	return &Instance{
 		speed:      speed,
 		precision:  precision,
 		lastUpdate: time.Now(),
@@ -27,7 +27,7 @@ func newSpeedLimiter(speed int, precision int) *SpeedLimiter {
 }
 
 // Add ...
-func (sl *SpeedLimiter) Add(increment int, wait bool) bool {
+func (sl *Instance) Add(increment int, wait bool) bool {
 	if sl.speed <= 0 {
 		return true
 	}
