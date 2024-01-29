@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"openp2p/util/speedlimiter"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -55,7 +57,7 @@ type P2PNetwork struct {
 	config     NetworkConfig
 	allTunnels sync.Map
 	apps       sync.Map //key: protocol+srcport; value: p2pApp
-	limiter    *SpeedLimiter
+	limiter    *speedlimiter.Instance
 }
 
 type msgCtx struct {
@@ -70,7 +72,7 @@ func P2PNetworkInstance(config *NetworkConfig) *P2PNetwork {
 				restartCh: make(chan bool, 2),
 				online:    false,
 				running:   true,
-				limiter:   newSpeedLimiter(config.ShareBandwidth*1024*1024/8, 1),
+				limiter:   speedlimiter.New(config.ShareBandwidth*1024*1024/8, 1),
 				dt:        0,
 				ddt:       0,
 			}

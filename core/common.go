@@ -1,5 +1,10 @@
-package util
+package openp2p
 
+import (
+	"openp2p/util"
+)
+
+/*
 import (
 	"bytes"
 	"crypto/aes"
@@ -111,34 +116,21 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 	mode.CryptBlocks(out[:dataLen], in[:dataLen])
 	return pkcs7UnPadding(out, dataLen)
 }
-
+*/
 // {240e:3b7:622:3440:59ad:7fa1:170c:ef7f 47924975352157270363627191692449083263 China CN 0xc0000965c8 Guangdong GD 0  Guangzhou 23.1167 113.25 Asia/Shanghai AS4134 Chinanet }
-func GetNetInfo() (*NetInfo, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		/*DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "tcp6", addr)
-		},*/
+func netInfo() *util.NetInfo {
+	// sometime will be failed, retry
+	for i := 0; i < 2; i++ {
+		r, err := util.GetNetInfo()
+		if err == nil {
+			return r
+		}
+		gLog.Printf(LvERROR, "GetNetInfo at %d time(s) failed: %v", i+1, err)
 	}
-	client := &http.Client{Transport: tr, Timeout: time.Second * 10}
-	r, err := client.Get("https://ifconfig.co/json")
-	if err != nil {
-		return nil, fmt.Errorf("get NetInfo: %w", err)
-	}
-	defer r.Body.Close()
-	buf := make([]byte, 1024*64)
-	n, err := r.Body.Read(buf)
-	if err != nil {
-		return nil, fmt.Errorf("read NetInfo: %w", err)
-	}
-	var rsp NetInfo
-	if err = json.Unmarshal(buf[:n], &rsp); err != nil {
-		return &rsp, fmt.Errorf("parse NetInfo: %w", err)
-	}
-	return &rsp, nil
+	return nil
 }
 
+/*
 func execOutput(name string, args ...string) string {
 	cmdGetOsName := exec.Command(name, args...)
 	var cmdOut bytes.Buffer
@@ -203,3 +195,4 @@ func randStr(n int) string {
 	}
 	return string(b)
 }
+*/
