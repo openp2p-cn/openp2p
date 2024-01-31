@@ -1,10 +1,10 @@
 package util
 
 import (
-	"log"
 	"testing"
 )
 
+/*
 func TestAESCBC(t *testing.T) {
 	for packetSize := 1; packetSize <= 8192; packetSize++ {
 		log.Println("test packetSize=", packetSize)
@@ -12,13 +12,13 @@ func TestAESCBC(t *testing.T) {
 		for i := 0; i < packetSize; i++ {
 			data[i] = byte('0' + i%10)
 		}
-		p2pEncryptBuf := make([]byte, len(data)+PaddingSize)
+		encryptBuf := make([]byte, len(data)+PaddingSize)
 		inBuf := make([]byte, len(data)+PaddingSize)
 		copy(inBuf, data)
 		cryptKey := []byte("0123456789ABCDEF")
-		sendBuf, err := encryptBytes(cryptKey, p2pEncryptBuf, inBuf, len(data))
+		sendBuf, err := encryptBytes(cryptKey, encryptBuf, inBuf, len(data))
 		if err != nil {
-			t.Errorf("encrypt packet failed:%s", err)
+			t.Errorf("encrypt packet failed: %v", err)
 		}
 		log.Printf("encrypt data len=%d\n", len(sendBuf))
 
@@ -39,10 +39,10 @@ func TestAESCBC(t *testing.T) {
 	}
 
 }
-
-func TestNetInfo(t *testing.T) {
-	log.Println(netInfo())
-}
+*/
+// func TestNetInfo(t *testing.T) {
+// 	t.Log(GetNetInfo())
+// }
 
 func assertCompareVersion(t *testing.T, v1 string, v2 string, result int) {
 	if compareVersion(v1, v2) != result {

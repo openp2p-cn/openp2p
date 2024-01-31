@@ -2,6 +2,21 @@ package util
 
 import (
 	"bytes"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"math/rand"
+	"net"
+	"net/http"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+)
+
+/*
+import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/tls"
@@ -16,6 +31,7 @@ import (
 	"strings"
 	"time"
 )
+*/
 
 const MinNodeNameLen = 8
 
@@ -42,6 +58,7 @@ func getmac(ip string) string {
 	return firstMac
 }
 
+/*
 var cbcIVBlock = []byte("UHNJUSBACIJFYSQN")
 
 var paddingArray = [][]byte{
@@ -89,10 +106,10 @@ func encryptBytes(key []byte, out, in []byte, plainLen int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	//iv := out[:aes.BlockSize]
-	//if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-	//	return nil, err
-	//}
+	// iv := out[:aes.BlockSize]
+	// if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+	// 	return nil, err
+	// }
 	mode := cipher.NewCBCEncrypter(block, cbcIVBlock)
 	total := pkcs7Padding(in, plainLen, aes.BlockSize) + plainLen
 	mode.CryptBlocks(out[:total], in[:total])
@@ -111,7 +128,7 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 	mode.CryptBlocks(out[:dataLen], in[:dataLen])
 	return pkcs7UnPadding(out, dataLen)
 }
-
+*/
 // {240e:3b7:622:3440:59ad:7fa1:170c:ef7f 47924975352157270363627191692449083263 China CN 0xc0000965c8 Guangdong GD 0  Guangzhou 23.1167 113.25 Asia/Shanghai AS4134 Chinanet }
 func GetNetInfo() (*NetInfo, error) {
 	tr := &http.Transport{
@@ -147,12 +164,23 @@ func execOutput(name string, args ...string) string {
 	return cmdOut.String()
 }
 
-func defaultNodeName() string {
-	name, _ := os.Hostname()
-	for len(name) < MinNodeNameLen {
-		name = fmt.Sprintf("%s%d", name, rand.Int()%10)
+func RandString(lengh int) string {
+	if lengh <= 0 {
+		return strconv.FormatInt(rand.Int63(), 10)
 	}
-	return name
+	var str string
+	for len(str) < lengh {
+		r := strconv.FormatInt(rand.Int63(), 10)
+		if len(r) <= 3 {
+			continue
+		}
+		r = r[3:]
+		str += r
+	}
+	if len(str) > lengh {
+		str = str[:lengh]
+	}
+	return str
 }
 
 const EQUAL int = 0
