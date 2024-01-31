@@ -1,4 +1,4 @@
-package util
+package aescbc
 
 import (
 	"crypto/aes"
