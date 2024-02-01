@@ -2,7 +2,7 @@ __debug_bin
 __debug_bin.exe
 # .vscode
 test/
-openp2p.exe*
+openp2p*
 *.log*
 go.sum
 *.tar.gz
@@ -12,7 +12,4 @@ config.json
 libs/
 */app/.idea/
 */app/release/
-openp2p.app.jks
-openp2p.aar
-openp2p-sources.jar
 build.gradle
