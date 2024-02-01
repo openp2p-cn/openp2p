@@ -2,6 +2,7 @@ package openp2p
 
 import (
 	"openp2p/util"
+	"os"
 )
 
 /*
@@ -21,9 +22,11 @@ import (
 	"strings"
 	"time"
 )
+*/
 
 const MinNodeNameLen = 8
 
+/*
 func getmac(ip string) string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -138,15 +141,17 @@ func execOutput(name string, args ...string) string {
 	cmdGetOsName.Run()
 	return cmdOut.String()
 }
+*/
 
 func defaultNodeName() string {
 	name, _ := os.Hostname()
-	for len(name) < MinNodeNameLen {
-		name = fmt.Sprintf("%s%d", name, rand.Int()%10)
+	if len(name) < MinNodeNameLen {
+		name += util.RandNumbers(MinNodeNameLen - len(name))
 	}
 	return name
 }
 
+/*
 const EQUAL int = 0
 const GREATER int = 1
 const LESS int = -1
