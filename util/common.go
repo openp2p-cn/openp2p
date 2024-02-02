@@ -164,19 +164,19 @@ func execOutput(name string, args ...string) string {
 	return cmdOut.String()
 }
 
-func RandNumbers(lengh int) string {
-	if lengh <= 0 {
+func RandNumbers(length int) string {
+	if length <= 0 {
 		return strconv.FormatInt(rand.Int63(), 10)
 	}
 	var buf bytes.Buffer
-	for buf.Len() < lengh {
+	for buf.Len() < length {
 		r := strconv.FormatInt(rand.Int63(), 10)
 		if len(r) <= 3 {
 			continue
 		}
 		buf.WriteString(r[3:])
 	}
-	return buf.String()[:lengh]
+	return buf.String()[:length]
 }
 
 const EQUAL int = 0
