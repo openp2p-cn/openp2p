@@ -12,4 +12,7 @@ config.json
 libs/
 */app/.idea/
 */app/release/
+openp2p.app.jks
+openp2p.aar
+openp2p-sources.jar
 build.gradle
