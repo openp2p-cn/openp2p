@@ -1,7 +1,7 @@
 __debug_bin
 __debug_bin.exe
 # .vscode
-/*test*/
+*test*/
 *.log*
 go.sum
 *.tar.gz
