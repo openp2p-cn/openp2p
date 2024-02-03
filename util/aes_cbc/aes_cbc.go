@@ -8,6 +8,16 @@ import (
 
 var cbcIVBlock = []byte("UHNJUSBACIJFYSQN")
 
+/*
+func PKCS7PaddingArray(size byte)[]byte{
+	a:=make([]byte,size)
+	for i:=byte(0);i<size;i++{
+		a[i]=size
+	}
+	return a
+}
+*/
+/*
 var paddingArray = [][]byte{
 	{0},
 	{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
@@ -27,13 +37,22 @@ var paddingArray = [][]byte{
 	{15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15},
 	{16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16},
 }
+*/
 
-func pkcs7Padding(plainData []byte, dataLen, blockSize int) int {
-	padLen := blockSize - dataLen%blockSize
-	pPadding := plainData[dataLen : dataLen+padLen]
-
-	copy(pPadding, paddingArray[padLen][:padLen])
-	return padLen
+func PKCS7Padding(plainData []byte, blockSize int) []byte {
+	paddingLen := blockSize - len(plainData)%blockSize
+	// pPadding := plainData[dataLen : dataLen+padLen]
+	if cap(plainData[len(plainData):]) < paddingLen {
+		new := make([]byte, len(plainData)+paddingLen)
+		copy(new, plainData)
+		plainData = new[:len(plainData)]
+	}
+	pPadding := plainData[len(plainData):][:paddingLen]
+	for i := 0; i < paddingLen; i++ {
+		pPadding[i] = byte(paddingLen)
+	}
+	// copy(pPadding, paddingArray[padLen][:padLen])
+	return plainData[:len(plainData)+paddingLen]
 }
 
 func pkcs7UnPadding(origData []byte, dataLen int) ([]byte, error) {
@@ -58,9 +77,9 @@ func encryptBytes(key []byte, out, in []byte, plainLen int) ([]byte, error) {
 	// 	return nil, err
 	// }
 	mode := cipher.NewCBCEncrypter(block, cbcIVBlock)
-	total := pkcs7Padding(in, plainLen, aes.BlockSize) + plainLen
-	mode.CryptBlocks(out[:total], in[:total])
-	return out[:total], nil
+	in = PKCS7Padding(in[:plainLen], aes.BlockSize)
+	mode.CryptBlocks(out[:len(in)], in)
+	return out[:len(in)], nil
 }
 
 func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {

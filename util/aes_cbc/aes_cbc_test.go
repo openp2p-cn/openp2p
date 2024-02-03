@@ -1,6 +1,7 @@
 package aescbc
 
 import (
+	"crypto/aes"
 	"log"
 	"testing"
 )
@@ -12,8 +13,8 @@ func TestAESCBC(t *testing.T) {
 		for i := 0; i < packetSize; i++ {
 			data[i] = byte('0' + i%10)
 		}
-		encryptBuf := make([]byte, len(data)+PaddingSize)
-		inBuf := make([]byte, len(data)+PaddingSize)
+		encryptBuf := make([]byte, len(data)+aes.BlockSize)
+		inBuf := make([]byte, len(data)+aes.BlockSize)
 		copy(inBuf, data)
 		cryptKey := []byte("0123456789ABCDEF")
 		sendBuf, err := encryptBytes(cryptKey, encryptBuf, inBuf, len(data))
