@@ -1,14 +1,13 @@
 __debug_bin
 __debug_bin.exe
 # .vscode
-test/
-/openp2p*
+/*test*/
 *.log*
 go.sum
 *.tar.gz
 *.zip
-*.exe
-config.json
+*.exe*
+config*.json
 libs/
 */app/.idea/
 */app/release/
