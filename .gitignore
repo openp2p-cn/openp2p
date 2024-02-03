@@ -2,7 +2,7 @@ __debug_bin
 __debug_bin.exe
 # .vscode
 test/
-openp2p*
+/openp2p*
 *.log*
 go.sum
 *.tar.gz
