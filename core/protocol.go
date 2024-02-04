@@ -326,14 +326,14 @@ type RelayHeartbeat struct {
 }
 
 type ReportBasic struct {
-	OS              string       `json:"os,omitempty"`
-	Mac             string       `json:"mac,omitempty"`
-	LanIP           string       `json:"lanIP,omitempty"`
-	HasIPv4         int          `json:"hasIPv4,omitempty"`
-	IPv6            string       `json:"IPv6,omitempty"`
-	HasUPNPorNATPMP int          `json:"hasUPNPorNATPMP,omitempty"`
-	Version         string       `json:"version,omitempty"`
-	NetInfo         util.NetInfo `json:"netInfo,omitempty"`
+	OS              string  `json:"os,omitempty"`
+	Mac             string  `json:"mac,omitempty"`
+	LanIP           string  `json:"lanIP,omitempty"`
+	HasIPv4         int     `json:"hasIPv4,omitempty"`
+	IPv6            string  `json:"IPv6,omitempty"`
+	HasUPNPorNATPMP int     `json:"hasUPNPorNATPMP,omitempty"`
+	Version         string  `json:"version,omitempty"`
+	NetInfo         NetInfo `json:"netInfo,omitempty"`
 }
 
 type ReportConnect struct {
@@ -399,6 +399,8 @@ type UpdateInfo struct {
 	ErrorDetail string `json:"errorDetail,omitempty"`
 	Url         string `json:"url,omitempty"`
 }
+
+type NetInfo = util.NetInfo
 
 type ProfileInfo struct {
 	User     string `json:"user,omitempty"`
