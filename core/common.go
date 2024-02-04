@@ -121,7 +121,7 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 }
 */
 // {240e:3b7:622:3440:59ad:7fa1:170c:ef7f 47924975352157270363627191692449083263 China CN 0xc0000965c8 Guangdong GD 0  Guangzhou 23.1167 113.25 Asia/Shanghai AS4134 Chinanet }
-func netInfo() *util.NetInfo {
+func netInfo() *NetInfo {
 	// sometime will be failed, retry
 	for i := 0; i < 2; i++ {
 		r, err := util.GetNetInfo()
