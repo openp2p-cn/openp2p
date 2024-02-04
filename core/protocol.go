@@ -2,6 +2,7 @@ package openp2p
 
 import (
 	"bytes"
+	"crypto/aes"
 	"encoding/binary"
 	"encoding/json"
 	"hash/crc64"
@@ -149,7 +150,7 @@ const (
 	PeerAddRelayTimeount       = time.Second * 30 // peer need times. S2C\TCP\TCP Punch\UDP Punch
 	CheckActiveTimeout         = time.Second * 5
 	ReadMsgTimeout             = time.Second * 5
-	PaddingSize                = 16
+	PaddingSize                = aes.BlockSize
 	AESKeySize                 = 16
 	MaxRetry                   = 10
 	Cone2ConeTCPPunchMaxRetry  = 1

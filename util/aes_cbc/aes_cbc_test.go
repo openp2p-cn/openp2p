@@ -1,4 +1,4 @@
-package aescbc
+package aes_cbc
 
 import (
 	"crypto/aes"
@@ -14,17 +14,17 @@ func TestAESCBC(t *testing.T) {
 			data[i] = byte('0' + i%10)
 		}
 		encryptBuf := make([]byte, len(data)+aes.BlockSize)
-		inBuf := make([]byte, len(data)+aes.BlockSize)
+		inBuf := make([]byte, len(data)+aes.BlockSize/2)
 		copy(inBuf, data)
 		cryptKey := []byte("0123456789ABCDEF")
-		sendBuf, err := encryptBytes(cryptKey, encryptBuf, inBuf, len(data))
+		sendBuf, err := Encrypt(cryptKey, encryptBuf, inBuf, len(data))
 		if err != nil {
 			t.Errorf("encrypt packet failed: %v", err)
 		}
 		log.Printf("encrypt data len=%d\n", len(sendBuf))
 
 		decryptBuf := make([]byte, len(sendBuf))
-		outBuf, err := decryptBytes(cryptKey, decryptBuf, sendBuf, len(sendBuf))
+		outBuf, err := Decrypt(cryptKey, decryptBuf, sendBuf, len(sendBuf))
 		if err != nil {
 			t.Errorf("decrypt packet failed:%s", err)
 		}

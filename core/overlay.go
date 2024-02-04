@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net"
 	"time"
+
+	"openp2p/util/aes_cbc"
 )
 
 var ErrDeadlineExceeded error = &DeadlineExceededError{}
@@ -62,7 +64,7 @@ func (oConn *overlayConn) run() {
 		}
 		payload := readBuff[:dataLen]
 		if oConn.appKey != 0 {
-			payload, _ = encryptBytes(oConn.appKeyBytes, encryptData, readBuff[:dataLen], dataLen)
+			payload, _ = aes_cbc.Encrypt(oConn.appKeyBytes, encryptData, readBuff[:dataLen], dataLen)
 		}
 		writeBytes := append(tunnelHead.Bytes(), payload...)
 		if oConn.rtid == 0 {

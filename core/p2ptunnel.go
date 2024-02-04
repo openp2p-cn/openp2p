@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"openp2p/util/aes_cbc"
 )
 
 type P2PTunnel struct {
@@ -431,7 +433,7 @@ func (t *P2PTunnel) readLoop() {
 			payload := body[overlayHeaderSize:]
 			var err error
 			if overlayConn.appKey != 0 {
-				payload, _ = decryptBytes(overlayConn.appKeyBytes, decryptData, body[overlayHeaderSize:], int(head.DataLen-uint32(overlayHeaderSize)))
+				payload, _ = aes_cbc.Decrypt(overlayConn.appKeyBytes, decryptData, body[overlayHeaderSize:], int(head.DataLen-uint32(overlayHeaderSize)))
 			}
 			_, err = overlayConn.Write(payload)
 			if err != nil {

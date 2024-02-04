@@ -1,8 +1,9 @@
 package openp2p
 
 import (
-	"openp2p/util"
 	"os"
+
+	"openp2p/util"
 )
 
 /*

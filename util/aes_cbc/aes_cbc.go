@@ -1,4 +1,4 @@
-package aescbc
+package aes_cbc
 
 import (
 	"crypto/aes"
@@ -40,31 +40,28 @@ var paddingArray = [][]byte{
 */
 
 func PKCS7Padding(plainData []byte, blockSize int) []byte {
-	paddingLen := blockSize - len(plainData)%blockSize
+	var padLen = blockSize - len(plainData)%blockSize
 	// pPadding := plainData[dataLen : dataLen+padLen]
-	if cap(plainData[len(plainData):]) < paddingLen {
-		new := make([]byte, len(plainData)+paddingLen)
+	if cap(plainData[len(plainData):]) < padLen {
+		new := make([]byte, len(plainData)+padLen)
 		copy(new, plainData)
 		plainData = new[:len(plainData)]
 	}
-	pPadding := plainData[len(plainData):][:paddingLen]
-	for i := 0; i < paddingLen; i++ {
-		pPadding[i] = byte(paddingLen)
+	pPadding := plainData[len(plainData):][:padLen]
+	for i := 0; i < padLen; i++ {
+		pPadding[i] = byte(padLen)
 	}
 	// copy(pPadding, paddingArray[padLen][:padLen])
-	return plainData[:len(plainData)+paddingLen]
+	return plainData[:len(plainData)+padLen]
 }
 
-func pkcs7UnPadding(origData []byte, dataLen int) ([]byte, error) {
-	unPadLen := int(origData[dataLen-1])
-	if unPadLen <= 0 || unPadLen > 16 {
-		return nil, fmt.Errorf("wrong pkcs7 padding head size:%d", unPadLen)
-	}
-	return origData[:(dataLen - unPadLen)], nil
+func PKCS7UnPadding(origData []byte) []byte {
+	var unPadLen = origData[len(origData)-1]
+	return origData[:len(origData)-int(unPadLen)]
 }
 
 // AES-CBC
-func encryptBytes(key []byte, out, in []byte, plainLen int) ([]byte, error) {
+func Encrypt(key []byte, out, in []byte, plainLen int) ([]byte, error) {
 	if len(key) == 0 {
 		return in[:plainLen], nil
 	}
@@ -82,7 +79,7 @@ func encryptBytes(key []byte, out, in []byte, plainLen int) ([]byte, error) {
 	return out[:len(in)], nil
 }
 
-func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
+func Decrypt(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 	if len(key) == 0 {
 		return in[:dataLen], nil
 	}
@@ -92,5 +89,8 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 	}
 	mode := cipher.NewCBCDecrypter(block, cbcIVBlock)
 	mode.CryptBlocks(out[:dataLen], in[:dataLen])
-	return pkcs7UnPadding(out, dataLen)
+	if out[dataLen-1] > aes.BlockSize {
+		return nil, fmt.Errorf("wrong pkcs7 padding head size: %d", out[dataLen-1])
+	}
+	return PKCS7UnPadding(out[:dataLen]), nil
 }
