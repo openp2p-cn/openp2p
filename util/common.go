@@ -33,9 +33,7 @@ import (
 )
 */
 
-const MinNodeNameLen = 8
-
-func getmac(ip string) string {
+func Getmac(ip string) string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return ""
@@ -129,6 +127,7 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 	return pkcs7UnPadding(out, dataLen)
 }
 */
+
 // {240e:3b7:622:3440:59ad:7fa1:170c:ef7f 47924975352157270363627191692449083263 China CN 0xc0000965c8 Guangdong GD 0  Guangzhou 23.1167 113.25 Asia/Shanghai AS4134 Chinanet }
 func GetNetInfo() (*NetInfo, error) {
 	tr := &http.Transport{
@@ -156,7 +155,8 @@ func GetNetInfo() (*NetInfo, error) {
 	return &rsp, nil
 }
 
-func execOutput(name string, args ...string) string {
+// unused?
+func ExecOutput(name string, args ...string) string {
 	cmdGetOsName := exec.Command(name, args...)
 	var cmdOut bytes.Buffer
 	cmdGetOsName.Stdout = &cmdOut
@@ -179,6 +179,7 @@ func RandNumbers(length int) string {
 	return buf.String()[:length]
 }
 
+/*
 const EQUAL int = 0
 const GREATER int = 1
 const LESS int = -1
@@ -213,17 +214,20 @@ func parseMajorVer(ver string) int {
 	}
 	return 0
 }
+*/
 
 func IsIPv6(address string) bool {
 	return strings.Count(address, ":") >= 2
 }
 
-var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-")
+// var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-")
+const Letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-"
 
-func randStr(n int) string {
+// unused?
+func RandStr(n int) string {
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		b[i] = Letters[rand.Intn(len(Letters))]
 	}
 	return string(b)
 }

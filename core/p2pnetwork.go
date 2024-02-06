@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"openp2p/util"
 	"openp2p/util/speedlimiter"
 	"openp2p/util/versions"
 
@@ -383,7 +384,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		return nil, initErr
 	}
 	// try TCP6
-	if IsIPv6(config.peerIPv6) && IsIPv6(gConf.IPv6()) {
+	if util.IsIPv6(config.peerIPv6) && util.IsIPv6(gConf.IPv6()) {
 		gLog.Println(LvINFO, "try TCP6")
 		config.linkMode = LinkModeTCP6
 		config.isUnderlayServer = 0
@@ -541,7 +542,7 @@ func (pn *P2PNetwork) init() error {
 			break
 		}
 		go pn.readLoop()
-		pn.config.mac = getmac(pn.config.localIP)
+		pn.config.mac = util.Getmac(pn.config.localIP)
 		pn.config.os = getOsName()
 		go func() {
 			req := ReportBasic{
@@ -555,7 +556,7 @@ func (pn *P2PNetwork) init() error {
 			rsp := netInfo()
 			gLog.Println(LvDEBUG, "netinfo:", rsp)
 			if rsp != nil && rsp.Country != "" {
-				if IsIPv6(rsp.IP.String()) {
+				if util.IsIPv6(rsp.IP.String()) {
 					gConf.setIPv6(rsp.IP.String())
 				}
 				req.NetInfo = *rsp
@@ -777,7 +778,7 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
 
 // ipv6 will expired need to refresh.
 func (pn *P2PNetwork) refreshIPv6(force bool) {
-	if !force && !IsIPv6(gConf.IPv6()) { // not support ipv6, not refresh
+	if !force && !util.IsIPv6(gConf.IPv6()) { // not support ipv6, not refresh
 		return
 	}
 	for i := 0; i < 3; i++ {
