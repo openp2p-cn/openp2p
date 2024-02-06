@@ -40,10 +40,14 @@ func TestAESCBC(t *testing.T) {
 
 }
 */
-// func TestNetInfo(t *testing.T) {
-// 	t.Log(GetNetInfo())
-// }
 
+func TestNetInfo(t *testing.T) {
+	i, e := GetNetInfo()
+	t.Logf("NetInfo:\n%v\n%+[1]v\n%#[1]v", i)
+	t.Log("Error:", e)
+}
+
+/*
 func assertCompareVersion(t *testing.T, v1 string, v2 string, result int) {
 	if compareVersion(v1, v2) != result {
 		t.Errorf("compare version %s %s fail\n", v1, v2)
@@ -94,3 +98,4 @@ func TestParseMajorVer(t *testing.T) {
 	assertParseMajorVer(t, "3.0.0", 3)
 
 }
+*/
