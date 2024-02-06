@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"openp2p/util/versions"
+
 	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
@@ -47,7 +49,7 @@ func (conn *underlayTCP) WUnlock() {
 
 func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) (*underlayTCP, error) {
 	if mode == LinkModeTCPPunch {
-		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) == LESS {
+		if versions.Compare(t.config.peerVersion, SyncServerTimeVersion) == versions.LESS {
 			gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 		} else {
 			ts := time.Duration(int64(t.punchTs) + t.pn.dt - time.Now().UnixNano())
@@ -73,7 +75,7 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 	}
 	t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
 	tid := t.id
-	if compareVersion(t.config.peerVersion, PublicIPVersion) == LESS { // old version
+	if versions.Compare(t.config.peerVersion, PublicIPVersion) == versions.LESS { // old version
 		ipBytes := net.ParseIP(t.config.peerIP).To4()
 		tid = uint64(binary.BigEndian.Uint32(ipBytes))
 		gLog.Println(LvDEBUG, "compatible with old client, use ip as key:", tid)

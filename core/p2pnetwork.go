@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"openp2p/util/speedlimiter"
+	"openp2p/util/versions"
 
 	"github.com/gorilla/websocket"
 )
@@ -813,7 +814,7 @@ func (pn *P2PNetwork) requestPeerInfo(config *AppConfig) error {
 	if rsp.Online == 0 {
 		return ErrPeerOffline
 	}
-	if compareVersion(rsp.Version, LeastSupportVersion) == LESS {
+	if versions.Compare(rsp.Version, LeastSupportVersion) == versions.LESS {
 		return ErrVersionNotCompatible
 	}
 	config.peerVersion = rsp.Version

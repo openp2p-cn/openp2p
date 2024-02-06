@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"time"
 
+	"openp2p/util/versions"
+
 	"github.com/openp2p-cn/totp"
 )
 
@@ -156,7 +158,7 @@ func handleConnectReq(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	}
 	gLog.Printf(LvDEBUG, "%s is connecting...", req.From)
 	gLog.Println(LvDEBUG, "push connect response to ", req.From)
-	if compareVersion(req.Version, LeastSupportVersion) == LESS {
+	if versions.Compare(req.Version, LeastSupportVersion) == versions.LESS {
 		gLog.Println(LvERROR, ErrVersionNotCompatible.Error(), ":", req.From)
 		rsp := PushConnectRsp{
 			Error:  10,

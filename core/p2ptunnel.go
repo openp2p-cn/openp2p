@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"openp2p/util/aes_cbc"
+	"openp2p/util/versions"
 )
 
 type P2PTunnel struct {
@@ -178,7 +179,7 @@ func (t *P2PTunnel) handshake() error {
 			return err
 		}
 	}
-	if compareVersion(t.config.peerVersion, SyncServerTimeVersion) == LESS {
+	if versions.Compare(t.config.peerVersion, SyncServerTimeVersion) == versions.LESS {
 		gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 	} else {
 		ts := time.Duration(int64(t.punchTs) + t.pn.dt + t.pn.ddtma*int64(time.Since(t.pn.hbTime)+PunchTsDelay)/int64(NetworkHeartbeatTime) - time.Now().UnixNano())
@@ -310,7 +311,7 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 	if t.config.linkMode == LinkModeTCP4 {
 		t.pn.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, ReadMsgTimeout)
 	} else { //tcp punch should sleep for punch the same time
-		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) == LESS {
+		if versions.Compare(t.config.peerVersion, SyncServerTimeVersion) == versions.LESS {
 			gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 		} else {
 			ts := time.Duration(int64(t.punchTs) + t.pn.dt + t.pn.ddtma*int64(time.Since(t.pn.hbTime)+PunchTsDelay)/int64(NetworkHeartbeatTime) - time.Now().UnixNano())

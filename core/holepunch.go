@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"net"
 	"time"
+
+	"openp2p/util/versions"
 )
 
 func handshakeC2C(t *P2PTunnel) (err error) {
@@ -181,7 +183,7 @@ func handshakeS2C(t *P2PTunnel) error {
 		}(t)
 	}
 	gLog.Printf(LvDEBUG, "send symmetric handshake end")
-	if compareVersion(t.config.peerVersion, SymmetricSimultaneouslySendVersion) == LESS { // compatible with old client
+	if versions.Compare(t.config.peerVersion, SymmetricSimultaneouslySendVersion) == versions.LESS { // compatible with old client
 		gLog.Println(LvDEBUG, "handshakeS2C ready, notify peer connect")
 		t.pn.push(t.config.PeerNode, MsgPushHandshakeStart, TunnelMsg{ID: t.id})
 	}
