@@ -29,8 +29,8 @@ func init() {
 	loglevel = make(map[LogLevel]string)
 	logFileNames[0] = ".log"
 	loglevel[LvDEBUG] = "DEBUG"
-	loglevel[LvINFO] = "INFO"
-	loglevel[LvWARN] = "WARN"
+	loglevel[LvINFO] = "INFO "
+	loglevel[LvWARN] = "WARN "
 	loglevel[LvERROR] = "ERROR"
 
 }
@@ -144,10 +144,10 @@ func (l *logger) Printf(level LogLevel, format string, params ...interface{}) {
 	}
 	pidAndLevel := []interface{}{l.pid, loglevel[level]}
 	params = append(pidAndLevel, params...)
-	if l.mode & LogFile != 0 {
+	if l.mode&LogFile != 0 {
 		l.loggers[0].Printf("%d %s "+format+l.lineEnding, params...)
 	}
-	if l.mode & LogConsole != 0 {
+	if l.mode&LogConsole != 0 {
 		l.stdLogger.Printf("%d %s "+format+l.lineEnding, params...)
 	}
 }
@@ -161,10 +161,10 @@ func (l *logger) Println(level LogLevel, params ...interface{}) {
 	pidAndLevel := []interface{}{l.pid, " ", loglevel[level], " "}
 	params = append(pidAndLevel, params...)
 	params = append(params, l.lineEnding)
-	if l.mode & LogFile != 0 {
+	if l.mode&LogFile != 0 {
 		l.loggers[0].Print(params...)
 	}
-	if l.mode & LogConsole != 0 {
+	if l.mode&LogConsole != 0 {
 		l.stdLogger.Print(params...)
 	}
 }
