@@ -209,8 +209,8 @@ type NetworkConfig struct {
 	TCPPort    int
 }
 
-func parseParams(subCommand string) {
-	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
+func parseParams(name string, arguments []string) {
+	fset := flag.NewFlagSet(name, flag.ExitOnError)
 	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
 	serverPort := fset.Int("serverport", WsPort, "server port ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
@@ -229,12 +229,8 @@ func parseParams(subCommand string) {
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
-	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
-	if subCommand == "" { // no subcommand
-		fset.Parse(os.Args[1:])
-	} else {
-		fset.Parse(os.Args[2:])
-	}
+	logLevel := fset.Int("loglevel", int(LvINFO), "0:debug 1:info 2:warn 3:error")
+	fset.Parse(arguments)
 
 	config := AppConfig{Enabled: 1}
 	config.PeerNode = *peerNode
@@ -255,46 +251,34 @@ func parseParams(subCommand string) {
 	gConf.daemonMode = *daemonMode
 	// spec paramters in commandline will always be used
 	fset.Visit(func(f *flag.Flag) {
-		if f.Name == "sharebandwidth" {
+		select f.Name {
+		case "sharebandwidth":
 			gConf.Network.ShareBandwidth = *shareBandwidth
-		}
-		if f.Name == "node" {
-			gConf.Network.Node = *node
-		}
-		if f.Name == "serverhost" {
-			gConf.Network.ServerHost = *serverHost
-		}
-		if f.Name == "loglevel" {
+		case "serverhost":
+			gConf.Network.ServerHost = ""
+		case "loglevel":
 			gConf.LogLevel = *logLevel
-		}
-		if f.Name == "tcpport" {
+		case "tcpport":
 			gConf.Network.TCPPort = *tcpPort
-		}
-		if f.Name == "token" {
+		case "token":
 			gConf.setToken(*token)
+		case "node":
+			gConf.Network.Node = *node
 		}
 	})
 	// set default value
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
 	}
-	if *node != "" {
-		gConf.Network.Node = *node
-	} else {
+	if gConf.Network.Node == "" {
 		envNode := os.Getenv("OPENP2P_NODE")
-		if envNode != "" {
-			gConf.Network.Node = envNode
+		if envNode == "" { // if node name not set. use os.Hostname
+			envNode = defaultNodeName()
 		}
-		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
-			gConf.Network.Node = defaultNodeName()
-		}
+		gConf.Network.Node = envNode
 	}
 	if gConf.Network.TCPPort == 0 {
-		if *tcpPort == 0 {
-			p := int(nodeNameToID(gConf.Network.Node)%15000 + 50000)
-			tcpPort = &p
-		}
-		gConf.Network.TCPPort = *tcpPort
+		gConf.Network.TCPPort = int(nodeNameToID(gConf.Network.Node)%15000 + 50000)
 	}
 	if *token == 0 {
 		envToken := os.Getenv("OPENP2P_TOKEN")
@@ -309,7 +293,7 @@ func parseParams(subCommand string) {
 	gConf.Network.UDPPort2 = UDPPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	if *notVerbose {
-		gLog.setMode(LogFile)
+		gLog.setMode(gLog.mode() &^ LogConsole)
 	}
 	// gConf.mtx.Unlock()
 	gConf.save()

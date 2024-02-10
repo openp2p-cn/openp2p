@@ -29,7 +29,7 @@ func Run() {
 	} else {
 		installByFilename()
 	}
-	parseParams("")
+	parseParams("", os.Args[1:])
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
 	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
 
@@ -64,14 +64,10 @@ func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork
 	os.Chdir(baseDir) // for system service
 	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFile|LogConsole)
 
-	parseParams("")
+	args := append(os.Args[1:], "-token", token, "-loglevel", strconv.FormatInt(logLevel, 10),
+		"-sharebandwidth", strconv.FormatInt(bw, 10))
+	parseParams("", args)
 
-	n, err := strconv.ParseUint(token, 10, 64)
-	if err == nil {
-		gConf.setToken(n)
-	}
-	gLog.setLevel(LogLevel(logLevel))
-	gConf.setShareBandwidth(bw)
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
 	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
 	gLog.Println(LvINFO, &gConf)
