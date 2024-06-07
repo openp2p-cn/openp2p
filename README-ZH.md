@@ -31,7 +31,7 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 ## 快速入门
 仅需简单4步就能用起来。  
 下面是一个远程办公例子：在家里连入办公室Windows电脑。  
-（另外一个快速入门视频 https://www.bilibili.com/video/BV1Et4y1P7bF/）
+（另外一个快速入门视频 <https://www.bilibili.com/video/BV1Et4y1P7bF/>）
 ### 1.注册
 前往<https://console.openp2p.cn> 注册新用户，暂无需任何认证
 
