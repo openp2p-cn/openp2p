@@ -1,7 +1,6 @@
 package openp2p
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -44,7 +43,7 @@ func (sl *SpeedLimiter) Add(increment int, wait bool) bool {
 	sl.lastUpdate = time.Now()
 	if sl.freeCap < 0 {
 		// sleep for the overflow
-		fmt.Println("sleep ", time.Millisecond*time.Duration(-sl.freeCap*100)/time.Duration(sl.speed))
+		// fmt.Println("sleep ", time.Millisecond*time.Duration(-sl.freeCap*100)/time.Duration(sl.speed))
 		time.Sleep(time.Millisecond * time.Duration(-sl.freeCap*1000) / time.Duration(sl.speed)) // sleep ms
 	}
 	return true

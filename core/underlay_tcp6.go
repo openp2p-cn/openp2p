@@ -8,7 +8,6 @@ import (
 )
 
 type underlayTCP6 struct {
-	listener net.Listener
 	writeMtx *sync.Mutex
 	net.Conn
 }
@@ -42,14 +41,14 @@ func (conn *underlayTCP6) WLock() {
 func (conn *underlayTCP6) WUnlock() {
 	conn.writeMtx.Unlock()
 }
-func listenTCP6(port int, idleTimeout time.Duration) (*underlayTCP6, error) {
+func listenTCP6(port int, timeout time.Duration) (*underlayTCP6, error) {
 	addr, _ := net.ResolveTCPAddr("tcp6", fmt.Sprintf("[::]:%d", port))
 	l, err := net.ListenTCP("tcp6", addr)
 	if err != nil {
 		return nil, err
 	}
 	defer l.Close()
-	l.SetDeadline(time.Now().Add(UnderlayConnectTimeout))
+	l.SetDeadline(time.Now().Add(timeout))
 	c, err := l.Accept()
 	defer l.Close()
 	if err != nil {

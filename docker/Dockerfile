@@ -2,7 +2,7 @@ FROM  alpine:3.18.2
 
 # Replace the default Alpine repositories with Aliyun mirrors
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
-    apk add --no-cache ca-certificates && \
+    apk add --no-cache ca-certificates iptables && \
     rm -rf /tmp/* /var/tmp/* /var/cache/apk/* /var/cache/distfiles/*
 
 COPY get-client.sh /

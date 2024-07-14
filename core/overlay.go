@@ -23,15 +23,16 @@ func (e *DeadlineExceededError) Temporary() bool { return true }
 
 // implement io.Writer
 type overlayConn struct {
-	tunnel      *P2PTunnel
+	tunnel      *P2PTunnel // TODO: del
+	app         *p2pApp
 	connTCP     net.Conn
 	id          uint64
 	rtid        uint64
 	running     bool
 	isClient    bool
-	appID       uint64
-	appKey      uint64
-	appKeyBytes []byte
+	appID       uint64 // TODO: del
+	appKey      uint64 // TODO: del
+	appKeyBytes []byte // TODO: del
 	// for udp
 	connUDP       *net.UDPConn
 	remoteAddr    net.Addr
@@ -65,15 +66,16 @@ func (oConn *overlayConn) run() {
 			payload, _ = encryptBytes(oConn.appKeyBytes, encryptData, readBuff[:dataLen], dataLen)
 		}
 		writeBytes := append(tunnelHead.Bytes(), payload...)
+		// TODO: app.write
 		if oConn.rtid == 0 {
 			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgOverlayData, writeBytes)
-			gLog.Printf(LvDEBUG, "write overlay data to tid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.id, len(writeBytes))
+			gLog.Printf(LvDev, "write overlay data to tid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.id, len(writeBytes))
 		} else {
 			// write raley data
 			all := append(relayHead.Bytes(), encodeHeader(MsgP2P, MsgOverlayData, uint32(len(writeBytes)))...)
 			all = append(all, writeBytes...)
 			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, all)
-			gLog.Printf(LvDEBUG, "write relay data to tid:%d,rtid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.rtid, oConn.id, len(writeBytes))
+			gLog.Printf(LvDev, "write relay data to tid:%d,rtid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.rtid, oConn.id, len(writeBytes))
 		}
 	}
 	if oConn.connTCP != nil {
@@ -85,14 +87,7 @@ func (oConn *overlayConn) run() {
 	oConn.tunnel.overlayConns.Delete(oConn.id)
 	// notify peer disconnect
 	req := OverlayDisconnectReq{ID: oConn.id}
-	if oConn.rtid == 0 {
-		oConn.tunnel.conn.WriteMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
-	} else {
-		// write relay data
-		msg, _ := newMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
-		msgWithHead := append(relayHead.Bytes(), msg...)
-		oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, msgWithHead)
-	}
+	oConn.tunnel.WriteMessage(oConn.rtid, MsgP2P, MsgOverlayDisconnectReq, &req)
 }
 
 func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, dataLen int, err error) {
@@ -163,11 +158,11 @@ func (oConn *overlayConn) Close() (err error) {
 	oConn.running = false
 	if oConn.connTCP != nil {
 		oConn.connTCP.Close()
-		oConn.connTCP = nil
+		// oConn.connTCP = nil
 	}
 	if oConn.connUDP != nil {
 		oConn.connUDP.Close()
-		oConn.connUDP = nil
+		// oConn.connUDP = nil
 	}
 	return nil
 }

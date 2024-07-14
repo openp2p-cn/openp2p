@@ -19,10 +19,10 @@ The code is open source, the P2P tunnel uses TLS1.3+AES double encryption, and t
 [details](#Safety)
 
 ### 4. Lightweight
-2MB+ filesize, 2MB+ memory. It runs at appllication layer, no vitrual NIC, no kernel driver.
+2MB+ filesize, 2MB+ memory. It could only runs at application layer, or uses wintun driver for SDWAN.
 
 ### 5. Cross-platform
-Benefit from lightweight, it easily supports most of major OS, like Windows, Linux, MacOS, also most of CPU architecture, like 386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64.
+Benefit from lightweight, it easily supports most of major OS, like Windows, Linux, MacOS, also most of CPU architecture, like 386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64、s390x、ppc64le.
 
 ### 6. Efficient
 P2P direct connection lets your devices make good use of bandwidth.  Your device can be connected in any network environments, even supports NAT1-4 (Cone or Symmetric),UDP or TCP punching,UPNP,IPv6.  Relying on the excellent congestion algorithm of the Quic protocol, high bandwidth and low latency can be obtained in a bad network environment.
@@ -136,14 +136,15 @@ Short-Term:
 6. Provide WebUI on client side.
 7. ~~Support private server, open source server program.~~(100%)
 8. Optimize our share scheduling model for different network operators.
-9. Provide REST APIs and libary for secondary development.
+9. ~~Provide REST APIs and libary for secondary development.~~(100%)
 10. ~~Support UDP at application layer, it is easy to implement but not urgent due to only a few applicaitons using UDP protocol.~~(100%)
-11. Support KCP protocol underlay, currently support Quic only. KCP focus on delay optimization,which has been widely used as game accelerator,it can sacrifice part of bandwidth to reduce timelag. 
+11. ~~Support KCP protocol underlay, currently support Quic only. KCP focus on delay optimization,which has been widely used as game accelerator,it can sacrifice part of bandwidth to reduce timelag. ~~(100%)
 12. ~~Support Android platform, let the phones to be mobile gateway.~~(100%)
-13. Support SMB Windows neighborhood.
-14. Direct connection on intranet, for testing.
+13. ~~Support SMB Windows neighborhood.~~(100%)
+14. ~~Direct connection on intranet, for testing.~~(100%)
 15. ~~Support UPNP.~~(100%)
-
+16. ~~Support Android~~(100%)
+17. Support IOS
 
 Long-Term:
 1. Use blockchain technology to decentralize, so that users who share equipment have benefits, thereby promoting more users to share, and achieving a positive closed loop.

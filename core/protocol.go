@@ -10,12 +10,14 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.12.0"
+const OpenP2PVersion = "3.18.4"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
 const SymmetricSimultaneouslySendVersion = "3.10.7"
 const PublicIPVersion = "3.11.2"
+const SupportIntranetVersion = "3.14.5"
+const SupportDualTunnelVersion = "3.15.5"
 
 const (
 	IfconfigPort1 = 27180
@@ -82,26 +84,30 @@ const (
 	MsgRelay     = 5
 	MsgReport    = 6
 	MsgQuery     = 7
+	MsgSDWAN     = 8
 )
 
 // TODO: seperate node push and web push.
 const (
-	MsgPushRsp               = 0
-	MsgPushConnectReq        = 1
-	MsgPushConnectRsp        = 2
-	MsgPushHandshakeStart    = 3
-	MsgPushAddRelayTunnelReq = 4
-	MsgPushAddRelayTunnelRsp = 5
-	MsgPushUpdate            = 6
-	MsgPushReportApps        = 7
-	MsgPushUnderlayConnect   = 8
-	MsgPushEditApp           = 9
-	MsgPushSwitchApp         = 10
-	MsgPushRestart           = 11
-	MsgPushEditNode          = 12
-	MsgPushAPPKey            = 13
-	MsgPushReportLog         = 14
-	MsgPushDstNodeOnline     = 15
+	MsgPushRsp                  = 0
+	MsgPushConnectReq           = 1
+	MsgPushConnectRsp           = 2
+	MsgPushHandshakeStart       = 3
+	MsgPushAddRelayTunnelReq    = 4
+	MsgPushAddRelayTunnelRsp    = 5
+	MsgPushUpdate               = 6
+	MsgPushReportApps           = 7
+	MsgPushUnderlayConnect      = 8
+	MsgPushEditApp              = 9
+	MsgPushSwitchApp            = 10
+	MsgPushRestart              = 11
+	MsgPushEditNode             = 12
+	MsgPushAPPKey               = 13
+	MsgPushReportLog            = 14
+	MsgPushDstNodeOnline        = 15
+	MsgPushReportGoroutine      = 16
+	MsgPushReportMemApps        = 17
+	MsgPushServerSideSaveMemApp = 18
 )
 
 // MsgP2P sub type message
@@ -119,6 +125,8 @@ const (
 	MsgRelayData
 	MsgRelayHeartbeat
 	MsgRelayHeartbeatAck
+	MsgNodeData
+	MsgRelayNodeData
 )
 
 // MsgRelay sub type message
@@ -134,14 +142,17 @@ const (
 	MsgReportConnect
 	MsgReportApps
 	MsgReportLog
+	MsgReportMemApps
 )
 
 const (
-	ReadBuffLen           = 4096 // for UDP maybe not enough
-	NetworkHeartbeatTime  = time.Second * 30
-	TunnelHeartbeatTime   = time.Second * 10 // some nat udp session expired time less than 15s. change to 10s
-	TunnelIdleTimeout     = time.Minute
-	SymmetricHandshakeNum = 800 // 0.992379
+	ReadBuffLen               = 4096 // for UDP maybe not enough
+	NetworkHeartbeatTime      = time.Second * 30
+	TunnelHeartbeatTime       = time.Second * 10 // some nat udp session expired time less than 15s. change to 10s
+	UnderlayTCPKeepalive      = time.Second * 5
+	UnderlayTCPConnectTimeout = time.Second * 5
+	TunnelIdleTimeout         = time.Minute
+	SymmetricHandshakeNum     = 800 // 0.992379
 	// SymmetricHandshakeNum        = 1000 // 0.999510
 	SymmetricHandshakeInterval = time.Millisecond
 	HandshakeTimeout           = time.Second * 7
@@ -160,6 +171,10 @@ const (
 	ClientAPITimeout           = time.Second * 10
 	UnderlayConnectTimeout     = time.Second * 10
 	MaxDirectTry               = 3
+
+	// sdwan
+	ReadTunBuffSize = 1600
+	ReadTunBuffNum  = 10
 )
 
 // NATNone has public ip
@@ -181,8 +196,9 @@ const (
 const (
 	LinkModeUDPPunch = "udppunch"
 	LinkModeTCPPunch = "tcppunch"
-	LinkModeIPv4     = "ipv4" // for web
-	LinkModeIPv6     = "ipv6" // for web
+	LinkModeIPv4     = "ipv4"     // for web
+	LinkModeIntranet = "intranet" // for web
+	LinkModeIPv6     = "ipv6"     // for web
 	LinkModeTCP6     = "tcp6"
 	LinkModeTCP4     = "tcp4"
 	LinkModeUDP6     = "udp6"
@@ -192,6 +208,11 @@ const (
 const (
 	MsgQueryPeerInfoReq = iota
 	MsgQueryPeerInfoRsp
+)
+
+const (
+	MsgSDWANInfoReq = iota
+	MsgSDWANInfoRsp
 )
 
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
@@ -214,7 +235,7 @@ func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, er
 	return writeBytes, nil
 }
 
-func nodeNameToID(name string) uint64 {
+func NodeNameToID(name string) uint64 {
 	return crc64.Checksum([]byte(name), crc64.MakeTable(crc64.ISO))
 }
 
@@ -232,7 +253,8 @@ type PushConnectReq struct {
 	ID               uint64 `json:"id,omitempty"`
 	AppKey           uint64 `json:"appKey,omitempty"` // for underlay tcp
 	LinkMode         string `json:"linkMode,omitempty"`
-	IsUnderlayServer int    `json:"isServer,omitempty"` // Requset spec peer is server
+	IsUnderlayServer int    `json:"isServer,omitempty"`         // Requset spec peer is server
+	UnderlayProtocol string `json:"underlayProtocol,omitempty"` // quic or kcp, default quic
 }
 type PushDstNodeOnline struct {
 	Node string `json:"node,omitempty"`
@@ -258,12 +280,13 @@ type PushRsp struct {
 }
 
 type LoginRsp struct {
-	Error  int    `json:"error,omitempty"`
-	Detail string `json:"detail,omitempty"`
-	User   string `json:"user,omitempty"`
-	Node   string `json:"node,omitempty"`
-	Token  uint64 `json:"token,omitempty"`
-	Ts     int64  `json:"ts,omitempty"`
+	Error         int    `json:"error,omitempty"`
+	Detail        string `json:"detail,omitempty"`
+	User          string `json:"user,omitempty"`
+	Node          string `json:"node,omitempty"`
+	Token         uint64 `json:"token,omitempty"`
+	Ts            int64  `json:"ts,omitempty"`
+	LoginMaxDelay int    `json:"loginMaxDelay,omitempty"` // seconds
 }
 
 type NatDetectReq struct {
@@ -308,11 +331,13 @@ type RelayNodeRsp struct {
 }
 
 type AddRelayTunnelReq struct {
-	From       string `json:"from,omitempty"`
-	RelayName  string `json:"relayName,omitempty"`
-	RelayToken uint64 `json:"relayToken,omitempty"`
-	AppID      uint64 `json:"appID,omitempty"`  // deprecated
-	AppKey     uint64 `json:"appKey,omitempty"` // deprecated
+	From          string `json:"from,omitempty"`
+	RelayName     string `json:"relayName,omitempty"`
+	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"`
+	RelayToken    uint64 `json:"relayToken,omitempty"`
+	RelayMode     string `json:"relayMode,omitempty"`
+	AppID         uint64 `json:"appID,omitempty"`  // deprecated
+	AppKey        uint64 `json:"appKey,omitempty"` // deprecated
 }
 
 type APPKeySync struct {
@@ -321,6 +346,7 @@ type APPKeySync struct {
 }
 
 type RelayHeartbeat struct {
+	From          string `json:"from,omitempty"`
 	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"`
 	AppID         uint64 `json:"appID,omitempty"`
 }
@@ -356,6 +382,7 @@ type AppInfo struct {
 	AppName        string `json:"appName,omitempty"`
 	Error          string `json:"error,omitempty"`
 	Protocol       string `json:"protocol,omitempty"`
+	PunchPriority  int    `json:"punchPriority,omitempty"`
 	Whitelist      string `json:"whitelist,omitempty"`
 	SrcPort        int    `json:"srcPort,omitempty"`
 	Protocol0      string `json:"protocol0,omitempty"`
@@ -369,6 +396,7 @@ type AppInfo struct {
 	PeerIP         string `json:"peerIP,omitempty"`
 	ShareBandwidth int    `json:"shareBandWidth,omitempty"`
 	RelayNode      string `json:"relayNode,omitempty"`
+	SpecRelayNode  string `json:"specRelayNode,omitempty"`
 	RelayMode      string `json:"relayMode,omitempty"`
 	LinkMode       string `json:"linkMode,omitempty"`
 	Version        string `json:"version,omitempty"`
@@ -438,13 +466,48 @@ type QueryPeerInfoReq struct {
 	PeerNode string `json:"peerNode,omitempty"`
 }
 type QueryPeerInfoRsp struct {
+	PeerNode        string `json:"peerNode,omitempty"`
 	Online          int    `json:"online,omitempty"`
 	Version         string `json:"version,omitempty"`
 	NatType         int    `json:"natType,omitempty"`
 	IPv4            string `json:"IPv4,omitempty"`
+	LanIP           string `json:"lanIP,omitempty"`
 	HasIPv4         int    `json:"hasIPv4,omitempty"` // has public ipv4
 	IPv6            string `json:"IPv6,omitempty"`    // if public relay node, ipv6 not set
 	HasUPNPorNATPMP int    `json:"hasUPNPorNATPMP,omitempty"`
+}
+
+type SDWANNode struct {
+	Name     string `json:"name,omitempty"`
+	IP       string `json:"ip,omitempty"`
+	Resource string `json:"resource,omitempty"`
+	Enable   int32  `json:"enable,omitempty"`
+}
+
+type SDWANInfo struct {
+	ID            uint64 `json:"id,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Gateway       string `json:"gateway,omitempty"`
+	Mode          string `json:"mode,omitempty"` // default: fullmesh; central
+	CentralNode   string `json:"centralNode,omitempty"`
+	ForceRelay    int32  `json:"forceRelay,omitempty"`
+	PunchPriority int32  `json:"punchPriority,omitempty"`
+	Enable        int32  `json:"enable,omitempty"`
+	Nodes         []SDWANNode
+}
+
+const (
+	SDWANModeFullmesh = "fullmesh"
+	SDWANModeCentral  = "central"
+)
+
+type ServerSideSaveMemApp struct {
+	From          string `json:"from,omitempty"`
+	Node          string `json:"node,omitempty"`          // for server side findtunnel, maybe relayNode
+	TunnelID      uint64 `json:"tunnelID,omitempty"`      // save in app.tunnel or app.relayTunnel
+	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"` // rtid, if not 0 relay
+	RelayMode     string `json:"relayMode,omitempty"`
+	AppID         uint64 `json:"appID,omitempty"`
 }
 
 const rootCA = `-----BEGIN CERTIFICATE-----

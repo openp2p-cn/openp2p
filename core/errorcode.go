@@ -25,4 +25,8 @@ var (
 	ErrMsgChannelNotFound    = errors.New("message channel not found")
 	ErrRelayTunnelNotFound   = errors.New("relay tunnel not found")
 	ErrSymmetricLimit        = errors.New("symmetric limit")
+	ErrForceRelay            = errors.New("force relay")
+	ErrPeerConnectRelay      = errors.New("peer connect relayNode error")
+	ErrBuildTunnelBusy       = errors.New("build tunnel busy")
+	ErrMemAppTunnelNotFound  = errors.New("memapp tunnel not found")
 )

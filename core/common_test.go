@@ -94,3 +94,23 @@ func TestParseMajorVer(t *testing.T) {
 	assertParseMajorVer(t, "3.0.0", 3)
 
 }
+
+func TestIsIPv6(t *testing.T) {
+	tests := []struct {
+		ipStr string
+		want  bool
+	}{
+		{"2001:0db8:85a3:0000:0000:8a2e:0370:7334", true}, // 有效的 IPv6 地址
+		{"2001:db8::2:1", true},                           // 有效的 IPv6 地址
+		{"192.168.1.1", false},                            // 无效的 IPv6 地址，是 IPv4
+		{"2001:db8::G:1", false},                          // 无效的 IPv6 地址，包含非法字符
+		// 可以添加更多测试用例
+	}
+
+	for _, tt := range tests {
+		got := IsIPv6(tt.ipStr)
+		if got != tt.want {
+			t.Errorf("isValidIPv6(%s) = %v, want %v", tt.ipStr, got, tt.want)
+		}
+	}
+}

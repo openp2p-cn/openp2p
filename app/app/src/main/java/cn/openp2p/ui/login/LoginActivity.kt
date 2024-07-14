@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -25,6 +26,7 @@ import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
+import cn.openp2p.Logger
 import cn.openp2p.OpenP2PService
 import cn.openp2p.R
 import cn.openp2p.databinding.ActivityLoginBinding
@@ -52,6 +54,14 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var binding: ActivityLoginBinding
     private lateinit var mService: OpenP2PService
     @RequiresApi(Build.VERSION_CODES.O)
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 0 && resultCode == Activity.RESULT_OK) {
+            startService(Intent(this, OpenP2PService::class.java))
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -78,22 +88,18 @@ class LoginActivity : AppCompatActivity() {
                 token.error = getString(loginState.passwordError)
             }
         })
-        val intent1 = VpnService.prepare(this) ?: return
-        loginViewModel.loginResult.observe(this@LoginActivity, Observer {
-            val loginResult = it ?: return@Observer
+        openp2pLog.setText(R.string.phone_setting)
+        val intent = VpnService.prepare(this)
+         if (intent != null)
+         {
+             Log.i("openp2p", "VpnService.prepare need permission");
+             startActivityForResult(intent, 0)
+         }
+         else {
+             Log.i("openp2p", "VpnService.prepare ready");
+             onActivityResult(0, Activity.RESULT_OK, null)
+         }
 
-            loading.visibility = View.GONE
-            if (loginResult.error != null) {
-                showLoginFailed(loginResult.error)
-            }
-            if (loginResult.success != null) {
-                updateUiWithUser(loginResult.success)
-            }
-            setResult(Activity.RESULT_OK)
-
-            //Complete and destroy login activity once successful
-            finish()
-        })
 
         profile.setOnClickListener {
             val url = "https://console.openp2p.cn/profile"
@@ -110,17 +116,23 @@ class LoginActivity : AppCompatActivity() {
             }
 
             openp2pLog.setText(R.string.phone_setting)
-            token.setText(Openp2p.getToken(getExternalFilesDir(null).toString()))
+
             login.setOnClickListener {
                 if (login.text.toString()=="退出"){
-//                    val intent = Intent(this@LoginActivity, OpenP2PService::class.java)
-//                    stopService(intent)
+                //    val intent = Intent(this@LoginActivity, OpenP2PService::class.java)
+                //    stopService(intent)
                     Log.i(LOG_TAG, "quit")
                     mService.stop()
-                    unbindService(connection)
+
                     val intent = Intent(this@LoginActivity, OpenP2PService::class.java)
                     stopService(intent)
+                    // 解绑服务
+                    unbindService(connection)
+
+                    // 结束当前 Activity
+                    finish() // 或者使用 finishAffinity() 来结束整个应用程序
                     exitAPP()
+                    // finishAffinity()
 
                 }
                 login.setText("退出")
@@ -139,12 +151,19 @@ class LoginActivity : AppCompatActivity() {
                             if (isConnect) {
                                 onlineState.setText("在线")
                             } else {
-                                onlineState.setText("离线")
+                                onlineState.setText("正在登录")
                             }
                         }
                     } while (true)
                 }
 
+            }
+            val tokenText = Openp2p.getToken(getExternalFilesDir(null).toString())
+            token.setText(tokenText.toString())
+            // Check token length and automatically click login if length > 10
+            if (tokenText.length > 10) {
+//                Logger.log("performClick ")
+                login.performClick()
             }
         }
     }

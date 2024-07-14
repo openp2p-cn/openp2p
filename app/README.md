@@ -1,7 +1,11 @@
 ## Build
+depends on openjdk 11, gradle 8.1.3, ndk 21
 ```
-cd core
+
+go install golang.org/x/mobile/cmd/gomobile@latest
+gomobile init
 go get -v golang.org/x/mobile/bind
+cd core
 gomobile bind -target android -v
 if [[ $? -ne 0 ]]; then
     echo "build error"

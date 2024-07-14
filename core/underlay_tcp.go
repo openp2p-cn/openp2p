@@ -13,6 +13,7 @@ import (
 type underlayTCP struct {
 	writeMtx *sync.Mutex
 	net.Conn
+	connectTime time.Time
 }
 
 func (conn *underlayTCP) Protocol() string {
@@ -47,7 +48,7 @@ func (conn *underlayTCP) WUnlock() {
 
 func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) (*underlayTCP, error) {
 	if mode == LinkModeTCPPunch {
-		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) == LESS {
+		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) < 0 {
 			gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 		} else {
 			ts := time.Duration(int64(t.punchTs) + t.pn.dt - time.Now().UnixNano())
@@ -73,12 +74,36 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 	}
 	t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
 	tid := t.id
-	if compareVersion(t.config.peerVersion, PublicIPVersion) == LESS { // old version
+	if compareVersion(t.config.peerVersion, PublicIPVersion) < 0 { // old version
 		ipBytes := net.ParseIP(t.config.peerIP).To4()
 		tid = uint64(binary.BigEndian.Uint32(ipBytes))
 		gLog.Println(LvDEBUG, "compatible with old client, use ip as key:", tid)
 	}
-	utcp := v4l.getUnderlayTCP(tid)
+	var utcp *underlayTCP
+	if mode == LinkModeIntranet && gConf.Network.hasIPv4 == 0 && gConf.Network.hasUPNPorNATPMP == 0 {
+		addr, _ := net.ResolveTCPAddr("tcp4", fmt.Sprintf("0.0.0.0:%d", localPort))
+		l, err := net.ListenTCP("tcp4", addr)
+		if err != nil {
+			gLog.Printf(LvERROR, "listen %d error:", localPort, err)
+			return nil, err
+		}
+		defer l.Close()
+		err = l.SetDeadline(time.Now().Add(UnderlayTCPConnectTimeout))
+		if err != nil {
+			gLog.Printf(LvERROR, "set listen timeout:", err)
+			return nil, err
+		}
+		c, err := l.Accept()
+		if err != nil {
+			return nil, err
+		}
+		utcp = &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}
+	} else {
+		if v4l != nil {
+			utcp = v4l.getUnderlayTCP(tid)
+		}
+	}
+
 	if utcp == nil {
 		return nil, ErrConnectPublicV4
 	}
@@ -89,9 +114,9 @@ func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, e
 	var c net.Conn
 	var err error
 	if mode == LinkModeTCPPunch {
-		gLog.Println(LvDEBUG, " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
+		gLog.Println(LvDev, " send tcp punch: ", fmt.Sprintf("0.0.0.0:%d", localPort), "-->", fmt.Sprintf("%s:%d", host, port))
 		if c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout); err != nil {
-			gLog.Println(LvDEBUG, "send tcp punch: ", err)
+			gLog.Println(LvDev, "send tcp punch: ", err)
 		}
 
 	} else {
@@ -99,9 +124,12 @@ func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, e
 	}
 
 	if err != nil {
-		gLog.Printf(LvERROR, "Dial %s:%d error:%s", host, port, err)
+		gLog.Printf(LvDev, "Dial %s:%d error:%s", host, port, err)
 		return nil, err
 	}
+	tc := c.(*net.TCPConn)
+	tc.SetKeepAlive(true)
+	tc.SetKeepAlivePeriod(UnderlayTCPKeepalive)
 	gLog.Printf(LvDEBUG, "Dial %s:%d OK", host, port)
 	return &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}, nil
 }

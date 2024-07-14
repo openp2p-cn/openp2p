@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,7 +39,7 @@ func update(host string, port int) error {
 	}
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
-	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s&user=%s&node=%s", host, port, OpenP2PVersion, goos, goarch, gConf.Network.User, gConf.Network.Node))
+	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s&user=%s&node=%s", host, port, OpenP2PVersion, goos, goarch, url.QueryEscape(gConf.Network.User), url.QueryEscape(gConf.Network.Node)))
 	if err != nil {
 		gLog.Println(LvERROR, "update:query update list failed:", err)
 		return err
@@ -70,12 +71,10 @@ func update(host string, port int) error {
 	return nil
 }
 
-func updateFile(url string, checksum string, dst string) error {
-	gLog.Println(LvINFO, "download ", url)
-	tmpFile := filepath.Dir(os.Args[0]) + "/openp2p.tmp"
-	output, err := os.OpenFile(tmpFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0776)
+func downloadFile(url string, checksum string, dstFile string) error {
+	output, err := os.OpenFile(dstFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0776)
 	if err != nil {
-		gLog.Printf(LvERROR, "OpenFile %s error:%s", tmpFile, err)
+		gLog.Printf(LvERROR, "OpenFile %s error:%s", dstFile, err)
 		return err
 	}
 	caCertPool, err := x509.SystemCertPool()
@@ -109,6 +108,16 @@ func updateFile(url string, checksum string, dst string) error {
 	output.Close()
 	gLog.Println(LvINFO, "download ", url, " ok")
 	gLog.Printf(LvINFO, "size: %d bytes", n)
+	return nil
+}
+
+func updateFile(url string, checksum string, dst string) error {
+	gLog.Println(LvINFO, "download ", url)
+	tmpFile := filepath.Dir(os.Args[0]) + "/openp2p.tmp"
+	err := downloadFile(url, checksum, tmpFile)
+	if err != nil {
+		return err
+	}
 	backupFile := os.Args[0] + "0"
 	err = os.Rename(os.Args[0], backupFile) // the old daemon process was using the 0 file, so it will prevent override it
 	if err != nil {
@@ -200,9 +209,6 @@ func extractTgz(dst, src string) error {
 		case tar.TypeReg:
 			filePath := filepath.Join(dst, header.Name)
 			outFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
-			if err != nil {
-				return err
-			}
 			if err != nil {
 				return err
 			}

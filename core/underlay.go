@@ -37,6 +37,7 @@ func DefaultReadBuffer(ul underlay) (*openP2PHeader, []byte, error) {
 
 func DefaultWriteBytes(ul underlay, mainType, subType uint16, data []byte) error {
 	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
+	ul.SetWriteDeadline(time.Now().Add(TunnelHeartbeatTime / 2))
 	ul.WLock()
 	_, err := ul.Write(writeBytes)
 	ul.WUnlock()
@@ -44,6 +45,7 @@ func DefaultWriteBytes(ul underlay, mainType, subType uint16, data []byte) error
 }
 
 func DefaultWriteBuffer(ul underlay, data []byte) error {
+	ul.SetWriteDeadline(time.Now().Add(TunnelHeartbeatTime / 2))
 	ul.WLock()
 	_, err := ul.Write(data)
 	ul.WUnlock()
@@ -55,6 +57,7 @@ func DefaultWriteMessage(ul underlay, mainType uint16, subType uint16, packet in
 	if err != nil {
 		return err
 	}
+	ul.SetWriteDeadline(time.Now().Add(TunnelHeartbeatTime / 2))
 	ul.WLock()
 	_, err = ul.Write(writeBytes)
 	ul.WUnlock()

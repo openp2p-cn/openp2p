@@ -88,28 +88,30 @@ func natTest(serverHost string, serverPort int, localPort int) (publicIP string,
 	return natRsp.IP, natRsp.Port, nil
 }
 
-func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, hasIPvr int, hasUPNPorNATPMP int, err error) {
+func getNATType(host string, udp1 int, udp2 int) (publicIP string, NATType int, err error) {
 	// the random local port may be used by other.
 	localPort := int(rand.Uint32()%15000 + 50000)
-	echoPort := gConf.Network.TCPPort
+
 	ip1, port1, err := natTest(host, udp1, localPort)
 	if err != nil {
-		return "", 0, 0, 0, err
+		return "", 0, err
 	}
-	hasIPv4, hasUPNPorNATPMP := publicIPTest(ip1, echoPort)
 	_, port2, err := natTest(host, udp2, localPort) // 2rd nat test not need testing publicip
 	gLog.Printf(LvDEBUG, "local port:%d  nat port:%d", localPort, port2)
 	if err != nil {
-		return "", 0, hasIPv4, hasUPNPorNATPMP, err
+		return "", 0, err
 	}
 	natType := NATSymmetric
 	if port1 == port2 {
 		natType = NATCone
 	}
-	return ip1, natType, hasIPv4, hasUPNPorNATPMP, nil
+	return ip1, natType, nil
 }
 
 func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATPMP int) {
+	if publicIP == "" || echoPort == 0 {
+		return
+	}
 	var echoConn *net.UDPConn
 	gLog.Println(LvDEBUG, "echo server start")
 	var err error

@@ -12,17 +12,18 @@ android {
             keyPassword 'YOUR-PASSWORD'
         }
     }
-    compileSdkVersion 30
+    compileSdkVersion 31
     buildToolsVersion "30.0.3"
 
     defaultConfig {
         applicationId "cn.openp2p"
         minSdkVersion 16
-        targetSdkVersion 30
+        targetSdkVersion 31
         versionCode 1
         versionName "2718281828"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        namespace "cn.openp2p"
     }
 
     buildTypes {

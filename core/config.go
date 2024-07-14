@@ -3,10 +3,9 @@ package openp2p
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,20 +14,24 @@ var gConf Config
 
 type AppConfig struct {
 	// required
-	AppName   string
-	Protocol  string
-	Whitelist string
-	SrcPort   int
-	PeerNode  string
-	DstPort   int
-	DstHost   string
-	PeerUser  string
-	RelayNode string
-	Enabled   int // default:1
+	AppName          string
+	Protocol         string
+	UnderlayProtocol string
+	PunchPriority    int // bitwise DisableTCP|DisableUDP|TCPFirst  0:tcp and udp both enable, udp first
+	Whitelist        string
+	SrcPort          int
+	PeerNode         string
+	DstPort          int
+	DstHost          string
+	PeerUser         string
+	RelayNode        string
+	ForceRelay       int // default:0 disable;1 enable
+	Enabled          int // default:1
 	// runtime info
 	peerVersion      string
 	peerToken        uint64
 	peerNatType      int
+	peerLanIP        string
 	hasIPv4          int
 	peerIPv6         string
 	hasUPNPorNATPMP  int
@@ -45,16 +48,85 @@ type AppConfig struct {
 	isUnderlayServer int
 }
 
-func (c *AppConfig) ID() string {
-	return fmt.Sprintf("%s%d", c.Protocol, c.SrcPort)
+const (
+	PunchPriorityTCPFirst   = 1
+	PunchPriorityUDPDisable = 1 << 1
+	PunchPriorityTCPDisable = 1 << 2
+)
+
+func (c *AppConfig) ID() uint64 {
+	if c.SrcPort == 0 { // memapp
+		return NodeNameToID(c.PeerNode)
+	}
+	if c.Protocol == "tcp" {
+		return uint64(c.SrcPort) * 10
+	}
+	return uint64(c.SrcPort)*10 + 1
 }
 
 type Config struct {
-	Network    NetworkConfig `json:"network"`
-	Apps       []*AppConfig  `json:"apps"`
+	Network NetworkConfig `json:"network"`
+	Apps    []*AppConfig  `json:"apps"`
+
 	LogLevel   int
 	daemonMode bool
 	mtx        sync.Mutex
+	sdwanMtx   sync.Mutex
+	sdwan      SDWANInfo
+	delNodes   []SDWANNode
+	addNodes   []SDWANNode
+}
+
+func (c *Config) getSDWAN() SDWANInfo {
+	c.sdwanMtx.Lock()
+	defer c.sdwanMtx.Unlock()
+	return c.sdwan
+}
+
+func (c *Config) getDelNodes() []SDWANNode {
+	c.sdwanMtx.Lock()
+	defer c.sdwanMtx.Unlock()
+	return c.delNodes
+}
+
+func (c *Config) getAddNodes() []SDWANNode {
+	c.sdwanMtx.Lock()
+	defer c.sdwanMtx.Unlock()
+	return c.addNodes
+}
+
+func (c *Config) setSDWAN(s SDWANInfo) {
+	c.sdwanMtx.Lock()
+	defer c.sdwanMtx.Unlock()
+	// get old-new
+	c.delNodes = []SDWANNode{}
+	for _, oldNode := range c.sdwan.Nodes {
+		isDeleted := true
+		for _, newNode := range s.Nodes {
+			if oldNode.Name == newNode.Name && oldNode.IP == newNode.IP && oldNode.Resource == newNode.Resource && c.sdwan.Mode == s.Mode && c.sdwan.CentralNode == s.CentralNode {
+				isDeleted = false
+				break
+			}
+		}
+		if isDeleted {
+			c.delNodes = append(c.delNodes, oldNode)
+		}
+	}
+	// get new-old
+	c.addNodes = []SDWANNode{}
+	for _, newNode := range s.Nodes {
+		isNew := true
+		for _, oldNode := range c.sdwan.Nodes {
+			if oldNode.Name == newNode.Name && oldNode.IP == newNode.IP && oldNode.Resource == newNode.Resource && c.sdwan.Mode == s.Mode && c.sdwan.CentralNode == s.CentralNode {
+				isNew = false
+				break
+			}
+		}
+		if isNew {
+			c.addNodes = append(c.addNodes, newNode)
+		}
+	}
+	c.sdwan = s
 }
 
 func (c *Config) switchApp(app AppConfig, enabled int) {
@@ -70,28 +142,72 @@ func (c *Config) switchApp(app AppConfig, enabled int) {
 	}
 	c.save()
 }
+
 func (c *Config) retryApp(peerNode string) {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-	for i := 0; i < len(c.Apps); i++ {
-		if c.Apps[i].PeerNode == peerNode {
-			c.Apps[i].retryNum = 0
-			c.Apps[i].nextRetryTime = time.Now()
+	GNetwork.apps.Range(func(id, i interface{}) bool {
+		app := i.(*p2pApp)
+		if app.config.PeerNode == peerNode {
+			gLog.Println(LvDEBUG, "retry app ", peerNode)
+			app.config.retryNum = 0
+			app.config.nextRetryTime = time.Now()
+			app.retryRelayNum = 0
+			app.nextRetryRelayTime = time.Now()
+			app.hbMtx.Lock()
+			app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
+			app.hbMtx.Unlock()
 		}
-	}
+		if app.config.RelayNode == peerNode {
+			gLog.Println(LvDEBUG, "retry app ", peerNode)
+			app.retryRelayNum = 0
+			app.nextRetryRelayTime = time.Now()
+			app.hbMtx.Lock()
+			app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
+			app.hbMtx.Unlock()
+		}
+		return true
+	})
+}
+
+func (c *Config) retryAllApp() {
+	GNetwork.apps.Range(func(id, i interface{}) bool {
+		app := i.(*p2pApp)
+		gLog.Println(LvDEBUG, "retry app ", app.config.PeerNode)
+		app.config.retryNum = 0
+		app.config.nextRetryTime = time.Now()
+		app.retryRelayNum = 0
+		app.nextRetryRelayTime = time.Now()
+		app.hbMtx.Lock()
+		defer app.hbMtx.Unlock()
+		app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
+		return true
+	})
+}
+
+func (c *Config) retryAllMemApp() {
+	GNetwork.apps.Range(func(id, i interface{}) bool {
+		app := i.(*p2pApp)
+		if app.config.SrcPort != 0 {
+			return true
+		}
+		gLog.Println(LvDEBUG, "retry app ", app.config.PeerNode)
+		app.config.retryNum = 0
+		app.config.nextRetryTime = time.Now()
+		app.retryRelayNum = 0
+		app.nextRetryRelayTime = time.Now()
+		app.hbMtx.Lock()
+		defer app.hbMtx.Unlock()
+		app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
+		return true
+	})
 }
 
 func (c *Config) add(app AppConfig, override bool) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	defer c.save()
-	if app.SrcPort == 0 || app.DstPort == 0 {
-		gLog.Println(LvERROR, "invalid app ", app)
-		return
-	}
 	if override {
 		for i := 0; i < len(c.Apps); i++ {
-			if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
+			if c.Apps[i].PeerNode == app.PeerNode && c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
 				c.Apps[i] = &app // override it
 				return
 			}
@@ -101,15 +217,26 @@ func (c *Config) add(app AppConfig, override bool) {
 }
 
 func (c *Config) delete(app AppConfig) {
-	if app.SrcPort == 0 || app.DstPort == 0 {
-		return
-	}
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	defer c.save()
 	for i := 0; i < len(c.Apps); i++ {
-		if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
-			c.Apps = append(c.Apps[:i], c.Apps[i+1:]...)
+		got := false
+		if app.SrcPort != 0 { // normal p2papp
+			if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
+				got = true
+			}
+		} else { // memapp
+			if c.Apps[i].PeerNode == app.PeerNode {
+				got = true
+			}
+		}
+		if got {
+			if i == len(c.Apps)-1 {
+				c.Apps = c.Apps[:i]
+			} else {
+				c.Apps = append(c.Apps[:i], c.Apps[i+1:]...)
+			}
 			return
 		}
 	}
@@ -120,9 +247,19 @@ func (c *Config) save() {
 	// c.mtx.Lock()
 	// defer c.mtx.Unlock()  // internal call
 	data, _ := json.MarshalIndent(c, "", "  ")
-	err := ioutil.WriteFile("config.json", data, 0644)
+	err := os.WriteFile("config.json", data, 0644)
 	if err != nil {
 		gLog.Println(LvERROR, "save config.json error:", err)
+	}
+}
+
+func (c *Config) saveCache() {
+	// c.mtx.Lock()
+	// defer c.mtx.Unlock()  // internal call
+	data, _ := json.MarshalIndent(c, "", "  ")
+	err := os.WriteFile("config.json0", data, 0644)
+	if err != nil {
+		gLog.Println(LvERROR, "save config.json0 error:", err)
 	}
 }
 
@@ -137,14 +274,36 @@ func init() {
 func (c *Config) load() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	data, err := ioutil.ReadFile("config.json")
+	data, err := os.ReadFile("config.json")
 	if err != nil {
-		// gLog.Println(LevelERROR, "read config.json error:", err)
-		return err
+		return c.loadCache()
 	}
 	err = json.Unmarshal(data, &c)
 	if err != nil {
 		gLog.Println(LvERROR, "parse config.json error:", err)
+		// try cache
+		return c.loadCache()
+	}
+	// load ok. cache it
+	var filteredApps []*AppConfig // filter memapp
+	for _, app := range c.Apps {
+		if app.SrcPort != 0 {
+			filteredApps = append(filteredApps, app)
+		}
+	}
+	c.Apps = filteredApps
+	c.saveCache()
+	return err
+}
+
+func (c *Config) loadCache() error {
+	data, err := os.ReadFile("config.json0")
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, &c)
+	if err != nil {
+		gLog.Println(LvERROR, "parse config.json0 error:", err)
 	}
 	return err
 }
@@ -169,6 +328,15 @@ func (c *Config) setNode(node string) {
 	defer c.mtx.Unlock()
 	defer c.save()
 	c.Network.Node = node
+	c.Network.nodeID = NodeNameToID(c.Network.Node)
+}
+func (c *Config) nodeID() uint64 {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	if c.Network.nodeID == 0 {
+		c.Network.nodeID = NodeNameToID(c.Network.Node)
+	}
+	return c.Network.nodeID
 }
 func (c *Config) setShareBandwidth(bw int) {
 	c.mtx.Lock()
@@ -191,6 +359,7 @@ type NetworkConfig struct {
 	// local info
 	Token           uint64
 	Node            string
+	nodeID          uint64
 	User            string
 	localIP         string
 	mac             string
@@ -209,7 +378,7 @@ type NetworkConfig struct {
 	TCPPort    int
 }
 
-func parseParams(subCommand string) {
+func parseParams(subCommand string, cmd string) {
 	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
 	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
 	serverPort := fset.Int("serverport", WsPort, "server port ")
@@ -223,6 +392,8 @@ func parseParams(subCommand string) {
 	srcPort := fset.Int("srcport", 0, "source port ")
 	tcpPort := fset.Int("tcpport", 0, "tcp port for upnp or publicip")
 	protocol := fset.String("protocol", "tcp", "tcp or udp")
+	underlayProtocol := fset.String("underlay_protocol", "quic", "quic or kcp")
+	punchPriority := fset.Int("punch_priority", 0, "bitwise DisableTCP|DisableUDP|UDPFirst  0:tcp and udp both enable, tcp first")
 	appName := fset.String("appname", "", "app name")
 	relayNode := fset.String("relaynode", "", "relaynode")
 	shareBandwidth := fset.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
@@ -230,12 +401,20 @@ func parseParams(subCommand string) {
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
 	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
-	if subCommand == "" { // no subcommand
-		fset.Parse(os.Args[1:])
+	maxLogSize := fset.Int("maxlogsize", 1024*1024, "default 1MB")
+	if cmd == "" {
+		if subCommand == "" { // no subcommand
+			fset.Parse(os.Args[1:])
+		} else {
+			fset.Parse(os.Args[2:])
+		}
 	} else {
-		fset.Parse(os.Args[2:])
+		gLog.Println(LvINFO, "cmd=", cmd)
+		args := strings.Split(cmd, " ")
+		fset.Parse(args)
 	}
 
+	gLog.setMaxSize(int64(*maxLogSize))
 	config := AppConfig{Enabled: 1}
 	config.PeerNode = *peerNode
 	config.DstHost = *dstIP
@@ -243,12 +422,14 @@ func parseParams(subCommand string) {
 	config.DstPort = *dstPort
 	config.SrcPort = *srcPort
 	config.Protocol = *protocol
+	config.UnderlayProtocol = *underlayProtocol
+	config.PunchPriority = *punchPriority
 	config.AppName = *appName
 	config.RelayNode = *relayNode
 	if !*newconfig {
 		gConf.load() // load old config. otherwise will clear all apps
 	}
-	if config.SrcPort != 0 {
+	if config.SrcPort != 0 { // filter memapp
 		gConf.add(config, true)
 	}
 	// gConf.mtx.Lock() // when calling this func it's single-thread no lock
@@ -259,7 +440,7 @@ func parseParams(subCommand string) {
 			gConf.Network.ShareBandwidth = *shareBandwidth
 		}
 		if f.Name == "node" {
-			gConf.Network.Node = *node
+			gConf.setNode(*node)
 		}
 		if f.Name == "serverhost" {
 			gConf.Network.ServerHost = *serverHost
@@ -279,19 +460,19 @@ func parseParams(subCommand string) {
 		gConf.Network.ServerHost = *serverHost
 	}
 	if *node != "" {
-		gConf.Network.Node = *node
+		gConf.setNode(*node)
 	} else {
 		envNode := os.Getenv("OPENP2P_NODE")
 		if envNode != "" {
-			gConf.Network.Node = envNode
+			gConf.setNode(envNode)
 		}
 		if gConf.Network.Node == "" { // if node name not set. use os.Hostname
-			gConf.Network.Node = defaultNodeName()
+			gConf.setNode(defaultNodeName())
 		}
 	}
 	if gConf.Network.TCPPort == 0 {
 		if *tcpPort == 0 {
-			p := int(nodeNameToID(gConf.Network.Node)%15000 + 50000)
+			p := int(gConf.nodeID()%15000 + 50000)
 			tcpPort = &p
 		}
 		gConf.Network.TCPPort = *tcpPort

@@ -1,9 +1,9 @@
 package main
 
 import (
-	core "openp2p/core"
+	op "openp2p/core"
 )
 
 func main() {
-	core.Run()
+	op.Run()
 }

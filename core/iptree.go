@@ -17,9 +17,18 @@ type IPTree struct {
 	tree    *avltree.Tree
 	treeMtx sync.RWMutex
 }
+type IPTreeValue struct {
+	maxIP uint32
+	v     interface{}
+}
+
+// TODO: deal interset
+func (iptree *IPTree) DelIntIP(minIP uint32, maxIP uint32) {
+	iptree.tree.Remove(minIP)
+}
 
 // add 120k cost 0.5s
-func (iptree *IPTree) AddIntIP(minIP uint32, maxIP uint32) bool {
+func (iptree *IPTree) AddIntIP(minIP uint32, maxIP uint32, v interface{}) bool {
 	if minIP > maxIP {
 		return false
 	}
@@ -32,15 +41,15 @@ func (iptree *IPTree) AddIntIP(minIP uint32, maxIP uint32) bool {
 		if cur == nil {
 			break
 		}
-		curMaxIP := cur.Value.(uint32)
+		tv := cur.Value.(*IPTreeValue)
 		curMinIP := cur.Key.(uint32)
 
 		// newNode all in existNode, treat as inserted.
-		if newMinIP >= curMinIP && newMaxIP <= curMaxIP {
+		if newMinIP >= curMinIP && newMaxIP <= tv.maxIP {
 			return true
 		}
 		// has no interset
-		if newMinIP > curMaxIP {
+		if newMinIP > tv.maxIP {
 			cur = cur.Children[1]
 			continue
 		}
@@ -53,27 +62,35 @@ func (iptree *IPTree) AddIntIP(minIP uint32, maxIP uint32) bool {
 		if curMinIP < newMinIP {
 			newMinIP = curMinIP
 		}
-		if curMaxIP > newMaxIP {
-			newMaxIP = curMaxIP
+		if tv.maxIP > newMaxIP {
+			newMaxIP = tv.maxIP
 		}
 		cur = iptree.tree.Root
 	}
 	//  put in the tree
-	iptree.tree.Put(newMinIP, newMaxIP)
+	iptree.tree.Put(newMinIP, &IPTreeValue{newMaxIP, v})
 	return true
 }
 
-func (iptree *IPTree) Add(minIPStr string, maxIPStr string) bool {
+func (iptree *IPTree) Add(minIPStr string, maxIPStr string, v interface{}) bool {
 	var minIP, maxIP uint32
 	binary.Read(bytes.NewBuffer(net.ParseIP(minIPStr).To4()), binary.BigEndian, &minIP)
 	binary.Read(bytes.NewBuffer(net.ParseIP(maxIPStr).To4()), binary.BigEndian, &maxIP)
-	return iptree.AddIntIP(minIP, maxIP)
+	return iptree.AddIntIP(minIP, maxIP, v)
+}
+
+func (iptree *IPTree) Del(minIPStr string, maxIPStr string) {
+	var minIP, maxIP uint32
+	binary.Read(bytes.NewBuffer(net.ParseIP(minIPStr).To4()), binary.BigEndian, &minIP)
+	binary.Read(bytes.NewBuffer(net.ParseIP(maxIPStr).To4()), binary.BigEndian, &maxIP)
+	iptree.DelIntIP(minIP, maxIP)
 }
 
 func (iptree *IPTree) Contains(ipStr string) bool {
 	var ip uint32
 	binary.Read(bytes.NewBuffer(net.ParseIP(ipStr).To4()), binary.BigEndian, &ip)
-	return iptree.ContainsInt(ip)
+	_, ok := iptree.Load(ip)
+	return ok
 }
 
 func IsLocalhost(ipStr string) bool {
@@ -83,26 +100,26 @@ func IsLocalhost(ipStr string) bool {
 	return false
 }
 
-func (iptree *IPTree) ContainsInt(ip uint32) bool {
+func (iptree *IPTree) Load(ip uint32) (interface{}, bool) {
 	iptree.treeMtx.RLock()
 	defer iptree.treeMtx.RUnlock()
 	if iptree.tree == nil {
-		return false
+		return nil, false
 	}
 	n := iptree.tree.Root
 	for n != nil {
-		curMaxIP := n.Value.(uint32)
+		tv := n.Value.(*IPTreeValue)
 		curMinIP := n.Key.(uint32)
 		switch {
-		case ip >= curMinIP && ip <= curMaxIP: // hit
-			return true
+		case ip >= curMinIP && ip <= tv.maxIP: // hit
+			return tv.v, true
 		case ip < curMinIP:
 			n = n.Children[0]
 		default:
 			n = n.Children[1]
 		}
 	}
-	return false
+	return nil, false
 }
 
 func (iptree *IPTree) Size() int {
@@ -142,12 +159,12 @@ func NewIPTree(ips string) *IPTree {
 			}
 			minIP := ipNet.IP.Mask(ipNet.Mask).String()
 			maxIP := calculateMaxIP(ipNet).String()
-			iptree.Add(minIP, maxIP)
+			iptree.Add(minIP, maxIP, nil)
 		} else if strings.Contains(ip, "-") { // x.x.x.x-y.y.y.y
 			minAndMax := strings.Split(ip, "-")
-			iptree.Add(minAndMax[0], minAndMax[1])
+			iptree.Add(minAndMax[0], minAndMax[1], nil)
 		} else { // single ip
-			iptree.Add(ip, ip)
+			iptree.Add(ip, ip, nil)
 		}
 	}
 	return iptree

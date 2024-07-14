@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -23,6 +24,17 @@ func getOsName() (osName string) {
 	defer k.Close()
 	pn, _, err := k.GetStringValue("ProductName")
 	if err == nil {
+		currentBuild, _, err := k.GetStringValue("CurrentBuild")
+		if err != nil {
+			return
+		}
+		buildNumber, err := strconv.Atoi(currentBuild)
+		if err != nil {
+			return
+		}
+		if buildNumber >= 22000 {
+			pn = strings.Replace(pn, "Windows 10", "Windows 11", 1)
+		}
 		osName = pn
 	}
 	return

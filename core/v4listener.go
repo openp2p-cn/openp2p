@@ -15,20 +15,20 @@ type v4Listener struct {
 }
 
 func (vl *v4Listener) start() error {
-	v4l.acceptCh = make(chan bool, 10)
+	v4l.acceptCh = make(chan bool, 500)
 	for {
 		vl.listen()
-		time.Sleep(time.Second * 5)
+		time.Sleep(UnderlayTCPConnectTimeout)
 	}
 }
 
 func (vl *v4Listener) listen() error {
-	gLog.Printf(LvINFO, "listen %d start", vl.port)
-	defer gLog.Printf(LvINFO, "listen %d end", vl.port)
-	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", vl.port))
-	l, err := net.ListenTCP("tcp", addr)
+	gLog.Printf(LvINFO, "v4Listener listen %d start", vl.port)
+	defer gLog.Printf(LvINFO, "v4Listener listen %d end", vl.port)
+	addr, _ := net.ResolveTCPAddr("tcp4", fmt.Sprintf("0.0.0.0:%d", vl.port))
+	l, err := net.ListenTCP("tcp4", addr)
 	if err != nil {
-		gLog.Printf(LvERROR, "listen %d error:", vl.port, err)
+		gLog.Printf(LvERROR, "v4Listener listen %d error:", vl.port, err)
 		return err
 	}
 	defer l.Close()
@@ -43,8 +43,8 @@ func (vl *v4Listener) listen() error {
 }
 func (vl *v4Listener) handleConnection(c net.Conn) {
 	gLog.Println(LvDEBUG, "v4Listener accept connection: ", c.RemoteAddr().String())
-	utcp := &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c}
-	utcp.SetReadDeadline(time.Now().Add(time.Second * 5))
+	utcp := &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c, connectTime: time.Now()}
+	utcp.SetReadDeadline(time.Now().Add(UnderlayTCPConnectTimeout))
 	_, buff, err := utcp.ReadBuffer()
 	if err != nil {
 		gLog.Printf(LvERROR, "utcp.ReadBuffer error:", err)
@@ -64,8 +64,18 @@ func (vl *v4Listener) handleConnection(c net.Conn) {
 		tid = binary.LittleEndian.Uint64(buff[:8])
 		gLog.Println(LvDEBUG, "hello ", tid)
 	}
+	// clear timeout connection
+	vl.conns.Range(func(idx, i interface{}) bool {
+		ut := i.(*underlayTCP)
+		if ut.connectTime.Before(time.Now().Add(-UnderlayTCPConnectTimeout)) {
+			vl.conns.Delete(idx)
+		}
+		return true
+	})
 	vl.conns.Store(tid, utcp)
-	vl.acceptCh <- true
+	if len(vl.acceptCh) == 0 {
+		vl.acceptCh <- true
+	}
 }
 
 func (vl *v4Listener) getUnderlayTCP(tid uint64) *underlayTCP {

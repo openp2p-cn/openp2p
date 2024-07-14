@@ -15,4 +15,9 @@ libs/
 openp2p.app.jks
 openp2p.aar
 openp2p-sources.jar
-build.gradle
+wintun/
+wintun.dll
+.vscode/
+app/.idea/
+*_debug_bin*
+cmd/openp2p

@@ -8,12 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"time"
 
 	"github.com/openp2p-cn/totp"
 )
 
-func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
+func handlePush(subType uint16, msg []byte) error {
 	pushHead := PushHeader{}
 	err := binary.Read(bytes.NewReader(msg[openP2PHeaderSize:openP2PHeaderSize+PushHeaderSize]), binary.LittleEndian, &pushHead)
 	if err != nil {
@@ -22,7 +23,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 	gLog.Printf(LvDEBUG, "handle push msg type:%d, push header:%+v", subType, pushHead)
 	switch subType {
 	case MsgPushConnectReq:
-		err = handleConnectReq(pn, subType, msg)
+		err = handleConnectReq(msg)
 	case MsgPushRsp:
 		rsp := PushRsp{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &rsp); err != nil {
@@ -44,15 +45,77 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		config.PeerNode = req.RelayName
 		config.peerToken = req.RelayToken
 		go func(r AddRelayTunnelReq) {
-			t, errDt := pn.addDirectTunnel(config, 0)
+			t, errDt := GNetwork.addDirectTunnel(config, 0)
 			if errDt == nil {
 				// notify peer relay ready
 				msg := TunnelMsg{ID: t.id}
-				pn.push(r.From, MsgPushAddRelayTunnelRsp, msg)
+				GNetwork.push(r.From, MsgPushAddRelayTunnelRsp, msg)
+				appConfig := config
+				appConfig.PeerNode = req.From
 			} else {
-				pn.push(r.From, MsgPushAddRelayTunnelRsp, "error") // compatible with old version client, trigger unmarshal error
+				gLog.Printf(LvERROR, "addDirectTunnel error:%s", errDt)
+				GNetwork.push(r.From, MsgPushAddRelayTunnelRsp, "error") // compatible with old version client, trigger unmarshal error
 			}
 		}(req)
+	case MsgPushServerSideSaveMemApp:
+		req := ServerSideSaveMemApp{}
+		if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
+			gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+			return err
+		}
+		gLog.Println(LvDEBUG, "handle MsgPushServerSideSaveMemApp:", prettyJson(req))
+		var existTunnel *P2PTunnel
+		i, ok := GNetwork.allTunnels.Load(req.TunnelID)
+		if !ok {
+			time.Sleep(time.Millisecond * 100)
+			i, ok = GNetwork.allTunnels.Load(req.TunnelID) // retry sometimes will receive MsgPushServerSideSaveMemApp but p2ptunnel not store yet.
+			if !ok {
+				gLog.Println(LvERROR, "handle MsgPushServerSideSaveMemApp error:", ErrMemAppTunnelNotFound)
+				return ErrMemAppTunnelNotFound
+			}
+		}
+		existTunnel = i.(*P2PTunnel)
+		peerID := NodeNameToID(req.From)
+		existApp, appok := GNetwork.apps.Load(peerID)
+		if appok {
+			app := existApp.(*p2pApp)
+			app.config.AppName = fmt.Sprintf("%d", peerID)
+			app.id = req.AppID
+			app.setRelayTunnelID(req.RelayTunnelID)
+			app.relayMode = req.RelayMode
+			app.hbTimeRelay = time.Now()
+			if req.RelayTunnelID == 0 {
+				app.setDirectTunnel(existTunnel)
+			} else {
+				app.setRelayTunnel(existTunnel)
+			}
+			gLog.Println(LvDEBUG, "find existing memapp, update it")
+		} else {
+			appConfig := existTunnel.config
+			appConfig.SrcPort = 0
+			appConfig.Protocol = ""
+			appConfig.AppName = fmt.Sprintf("%d", peerID)
+			appConfig.PeerNode = req.From
+			app := p2pApp{
+				id:          req.AppID,
+				config:      appConfig,
+				relayMode:   req.RelayMode,
+				running:     true,
+				hbTimeRelay: time.Now(),
+			}
+			if req.RelayTunnelID == 0 {
+				app.setDirectTunnel(existTunnel)
+			} else {
+				app.setRelayTunnel(existTunnel)
+				app.setRelayTunnelID(req.RelayTunnelID)
+			}
+			if req.RelayTunnelID != 0 {
+				app.relayNode = req.Node
+			}
+			GNetwork.apps.Store(NodeNameToID(req.From), &app)
+		}
+
+		return nil
 	case MsgPushAPPKey:
 		req := APPKeySync{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
@@ -62,7 +125,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		SaveKey(req.AppID, req.AppKey)
 	case MsgPushUpdate:
 		gLog.Println(LvINFO, "MsgPushUpdate")
-		err := update(pn.config.ServerHost, pn.config.ServerPort)
+		err := update(gConf.Network.ServerHost, gConf.Network.ServerPort)
 		if err == nil {
 			os.Exit(0)
 		}
@@ -72,11 +135,15 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		os.Exit(0)
 		return err
 	case MsgPushReportApps:
-		err = handleReportApps(pn, subType, msg)
+		err = handleReportApps()
+	case MsgPushReportMemApps:
+		err = handleReportMemApps()
 	case MsgPushReportLog:
-		err = handleLog(pn, subType, msg)
+		err = handleLog(msg)
+	case MsgPushReportGoroutine:
+		err = handleReportGoroutine()
 	case MsgPushEditApp:
-		err = handleEditApp(pn, subType, msg)
+		err = handleEditApp(msg)
 	case MsgPushEditNode:
 		gLog.Println(LvINFO, "MsgPushEditNode")
 		req := EditNode{}
@@ -99,7 +166,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		gConf.switchApp(config, app.Enabled)
 		if app.Enabled == 0 {
 			// disable APP
-			pn.DeleteApp(config)
+			GNetwork.DeleteApp(config)
 		}
 	case MsgPushDstNodeOnline:
 		gLog.Println(LvINFO, "MsgPushDstNodeOnline")
@@ -111,7 +178,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 		gLog.Println(LvINFO, "retry peerNode ", req.Node)
 		gConf.retryApp(req.Node)
 	default:
-		i, ok := pn.msgMap.Load(pushHead.From)
+		i, ok := GNetwork.msgMap.Load(pushHead.From)
 		if !ok {
 			return ErrMsgChannelNotFound
 		}
@@ -121,7 +188,7 @@ func handlePush(pn *P2PNetwork, subType uint16, msg []byte) error {
 	return err
 }
 
-func handleEditApp(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
+func handleEditApp(msg []byte) (err error) {
 	gLog.Println(LvINFO, "MsgPushEditApp")
 	newApp := AppInfo{}
 	if err = json.Unmarshal(msg[openP2PHeaderSize:], &newApp); err != nil {
@@ -137,18 +204,24 @@ func handleEditApp(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	oldConf.PeerNode = newApp.PeerNode
 	oldConf.DstHost = newApp.DstHost
 	oldConf.DstPort = newApp.DstPort
+	if newApp.Protocol0 != "" && newApp.SrcPort0 != 0 { // not edit
+		gConf.delete(oldConf)
+	}
 
-	gConf.delete(oldConf)
 	// AddApp
 	newConf := oldConf
 	newConf.Protocol = newApp.Protocol
 	newConf.SrcPort = newApp.SrcPort
+	newConf.RelayNode = newApp.SpecRelayNode
+	newConf.PunchPriority = newApp.PunchPriority
 	gConf.add(newConf, false)
-	pn.DeleteApp(oldConf) // DeleteApp may cost some times, execute at the end
+	if newApp.Protocol0 != "" && newApp.SrcPort0 != 0 { // not edit
+		GNetwork.DeleteApp(oldConf) // DeleteApp may cost some times, execute at the end
+	}
 	return nil
 }
 
-func handleConnectReq(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
+func handleConnectReq(msg []byte) (err error) {
 	req := PushConnectReq{}
 	if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
 		gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
@@ -156,21 +229,21 @@ func handleConnectReq(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	}
 	gLog.Printf(LvDEBUG, "%s is connecting...", req.From)
 	gLog.Println(LvDEBUG, "push connect response to ", req.From)
-	if compareVersion(req.Version, LeastSupportVersion) == LESS {
+	if compareVersion(req.Version, LeastSupportVersion) < 0 {
 		gLog.Println(LvERROR, ErrVersionNotCompatible.Error(), ":", req.From)
 		rsp := PushConnectRsp{
 			Error:  10,
 			Detail: ErrVersionNotCompatible.Error(),
 			To:     req.From,
-			From:   pn.config.Node,
+			From:   gConf.Network.Node,
 		}
-		pn.push(req.From, MsgPushConnectRsp, rsp)
+		GNetwork.push(req.From, MsgPushConnectRsp, rsp)
 		return ErrVersionNotCompatible
 	}
 	// verify totp token or token
 	t := totp.TOTP{Step: totp.RelayTOTPStep}
-	if t.Verify(req.Token, pn.config.Token, time.Now().Unix()-pn.dt/int64(time.Second)) { // localTs may behind, auto adjust ts
-		gLog.Printf(LvINFO, "Access Granted\n")
+	if t.Verify(req.Token, gConf.Network.Token, time.Now().Unix()-GNetwork.dt/int64(time.Second)) { // localTs may behind, auto adjust ts
+		gLog.Printf(LvINFO, "Access Granted")
 		config := AppConfig{}
 		config.peerNatType = req.NatType
 		config.peerConeNatPort = req.ConeNatPort
@@ -183,71 +256,153 @@ func handleConnectReq(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 		config.hasUPNPorNATPMP = req.HasUPNPorNATPMP
 		config.linkMode = req.LinkMode
 		config.isUnderlayServer = req.IsUnderlayServer
+		config.UnderlayProtocol = req.UnderlayProtocol
 		// share relay node will limit bandwidth
-		if req.Token != pn.config.Token {
-			gLog.Printf(LvINFO, "set share bandwidth %d mbps", pn.config.ShareBandwidth)
-			config.shareBandwidth = pn.config.ShareBandwidth
+		if req.Token != gConf.Network.Token {
+			gLog.Printf(LvINFO, "set share bandwidth %d mbps", gConf.Network.ShareBandwidth)
+			config.shareBandwidth = gConf.Network.ShareBandwidth
 		}
-		// go pn.AddTunnel(config, req.ID)
-		go pn.addDirectTunnel(config, req.ID)
+		// go GNetwork.AddTunnel(config, req.ID)
+		go func() {
+			GNetwork.addDirectTunnel(config, req.ID)
+		}()
 		return nil
 	}
 	gLog.Println(LvERROR, "Access Denied:", req.From)
 	rsp := PushConnectRsp{
 		Error:  1,
-		Detail: fmt.Sprintf("connect to %s error: Access Denied", pn.config.Node),
+		Detail: fmt.Sprintf("connect to %s error: Access Denied", gConf.Network.Node),
 		To:     req.From,
-		From:   pn.config.Node,
+		From:   gConf.Network.Node,
 	}
-	return pn.push(req.From, MsgPushConnectRsp, rsp)
+	return GNetwork.push(req.From, MsgPushConnectRsp, rsp)
 }
 
-func handleReportApps(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
+func handleReportApps() (err error) {
 	gLog.Println(LvINFO, "MsgPushReportApps")
 	req := ReportApps{}
 	gConf.mtx.Lock()
 	defer gConf.mtx.Unlock()
+
 	for _, config := range gConf.Apps {
 		appActive := 0
 		relayNode := ""
+		specRelayNode := ""
 		relayMode := ""
 		linkMode := LinkModeUDPPunch
-		i, ok := pn.apps.Load(config.ID())
+		var connectTime string
+		var retryTime string
+		var app *p2pApp
+		i, ok := GNetwork.apps.Load(config.ID())
 		if ok {
-			app := i.(*p2pApp)
+			app = i.(*p2pApp)
 			if app.isActive() {
 				appActive = 1
 			}
-			relayNode = app.relayNode
-			relayMode = app.relayMode
-			linkMode = app.tunnel.linkModeWeb
+			if app.config.SrcPort == 0 { // memapp
+				continue
+			}
+			specRelayNode = app.config.RelayNode
+			if !app.isDirect() { // TODO: should always report relay node for app edit
+				relayNode = app.relayNode
+				relayMode = app.relayMode
+			}
+
+			if app.Tunnel() != nil {
+				linkMode = app.Tunnel().linkModeWeb
+			}
+			retryTime = app.RetryTime().Local().Format("2006-01-02T15:04:05-0700")
+			connectTime = app.ConnectTime().Local().Format("2006-01-02T15:04:05-0700")
+
 		}
 		appInfo := AppInfo{
-			AppName:     config.AppName,
-			Error:       config.errMsg,
-			Protocol:    config.Protocol,
-			Whitelist:   config.Whitelist,
-			SrcPort:     config.SrcPort,
-			RelayNode:   relayNode,
-			RelayMode:   relayMode,
-			LinkMode:    linkMode,
-			PeerNode:    config.PeerNode,
-			DstHost:     config.DstHost,
-			DstPort:     config.DstPort,
-			PeerUser:    config.PeerUser,
-			PeerIP:      config.peerIP,
-			PeerNatType: config.peerNatType,
-			RetryTime:   config.retryTime.Local().Format("2006-01-02T15:04:05-0700"),
-			ConnectTime: config.connectTime.Local().Format("2006-01-02T15:04:05-0700"),
-			IsActive:    appActive,
-			Enabled:     config.Enabled,
+			AppName:       config.AppName,
+			Error:         config.errMsg,
+			Protocol:      config.Protocol,
+			PunchPriority: config.PunchPriority,
+			Whitelist:     config.Whitelist,
+			SrcPort:       config.SrcPort,
+			RelayNode:     relayNode,
+			SpecRelayNode: specRelayNode,
+			RelayMode:     relayMode,
+			LinkMode:      linkMode,
+			PeerNode:      config.PeerNode,
+			DstHost:       config.DstHost,
+			DstPort:       config.DstPort,
+			PeerUser:      config.PeerUser,
+			PeerIP:        config.peerIP,
+			PeerNatType:   config.peerNatType,
+			RetryTime:     retryTime,
+			ConnectTime:   connectTime,
+			IsActive:      appActive,
+			Enabled:       config.Enabled,
 		}
 		req.Apps = append(req.Apps, appInfo)
 	}
-	return pn.write(MsgReport, MsgReportApps, &req)
+	return GNetwork.write(MsgReport, MsgReportApps, &req)
+
 }
 
-func handleLog(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
+func handleReportMemApps() (err error) {
+	gLog.Println(LvINFO, "handleReportMemApps")
+	req := ReportApps{}
+	gConf.mtx.Lock()
+	defer gConf.mtx.Unlock()
+	GNetwork.sdwan.sysRoute.Range(func(key, value interface{}) bool {
+		node := value.(*sdwanNode)
+		appActive := 0
+		relayMode := ""
+		var connectTime string
+		var retryTime string
+
+		i, ok := GNetwork.apps.Load(node.id)
+		var app *p2pApp
+		if ok {
+			app = i.(*p2pApp)
+			if app.isActive() {
+				appActive = 1
+			}
+			if !app.isDirect() {
+				relayMode = app.relayMode
+			}
+			retryTime = app.RetryTime().Local().Format("2006-01-02T15:04:05-0700")
+			connectTime = app.ConnectTime().Local().Format("2006-01-02T15:04:05-0700")
+		}
+		appInfo := AppInfo{
+			RelayMode: relayMode,
+			PeerNode:  node.name,
+			IsActive:  appActive,
+			Enabled:   1,
+		}
+		if app != nil {
+			appInfo.AppName = app.config.AppName
+			appInfo.Error = app.config.errMsg
+			appInfo.Protocol = app.config.Protocol
+			appInfo.Whitelist = app.config.Whitelist
+			appInfo.SrcPort = app.config.SrcPort
+			if !app.isDirect() {
+				appInfo.RelayNode = app.relayNode
+			}
+
+			if app.Tunnel() != nil {
+				appInfo.LinkMode = app.Tunnel().linkModeWeb
+			}
+			appInfo.DstHost = app.config.DstHost
+			appInfo.DstPort = app.config.DstPort
+			appInfo.PeerUser = app.config.PeerUser
+			appInfo.PeerIP = app.config.peerIP
+			appInfo.PeerNatType = app.config.peerNatType
+			appInfo.RetryTime = retryTime
+			appInfo.ConnectTime = connectTime
+		}
+		req.Apps = append(req.Apps, appInfo)
+		return true
+	})
+	gLog.Println(LvDEBUG, "handleReportMemApps res:", prettyJson(req))
+	return GNetwork.write(MsgReport, MsgReportMemApps, &req)
+}
+
+func handleLog(msg []byte) (err error) {
 	gLog.Println(LvDEBUG, "MsgPushReportLog")
 	const defaultLen = 1024 * 128
 	const maxLen = 1024 * 1024
@@ -258,6 +413,8 @@ func handleLog(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	}
 	if req.FileName == "" {
 		req.FileName = "openp2p.log"
+	} else {
+		req.FileName = sanitizeFileName(req.FileName)
 	}
 	f, err := os.Open(filepath.Join("log", req.FileName))
 	if err != nil {
@@ -292,5 +449,12 @@ func handleLog(pn *P2PNetwork, subType uint16, msg []byte) (err error) {
 	rsp.FileName = req.FileName
 	rsp.Total = fi.Size()
 	rsp.Len = req.Len
-	return pn.write(MsgReport, MsgPushReportLog, &rsp)
+	return GNetwork.write(MsgReport, MsgPushReportLog, &rsp)
+}
+
+func handleReportGoroutine() (err error) {
+	gLog.Println(LvDEBUG, "handleReportGoroutine")
+	buf := make([]byte, 1024*128)
+	stackLen := runtime.Stack(buf, true)
+	return GNetwork.write(MsgReport, MsgPushReportLog, string(buf[:stackLen]))
 }

@@ -5,8 +5,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/tls"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
@@ -197,8 +199,12 @@ func parseMajorVer(ver string) int {
 	return 0
 }
 
-func IsIPv6(address string) bool {
-	return strings.Count(address, ":") >= 2
+func IsIPv6(ipStr string) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	return ip.To16() != nil && ip.To4() == nil
 }
 
 var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890-")
@@ -209,4 +215,68 @@ func randStr(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func execCommand(commandPath string, wait bool, arg ...string) (err error) {
+	command := exec.Command(commandPath, arg...)
+	err = command.Start()
+	if err != nil {
+		return
+	}
+	if wait {
+		err = command.Wait()
+	}
+	return
+}
+
+func sanitizeFileName(fileName string) string {
+	validFileName := fileName
+	invalidChars := []string{"\\", "/", ":", "*", "?", "\"", "<", ">", "|"}
+	for _, char := range invalidChars {
+		validFileName = strings.ReplaceAll(validFileName, char, " ")
+	}
+	return validFileName
+}
+
+func prettyJson(s interface{}) string {
+	jsonData, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshalling JSON:", err)
+		return ""
+	}
+	return string(jsonData)
+}
+
+func inetAtoN(ipstr string) (uint32, error) { // support both ipnet or single ip
+	i, _, err := net.ParseCIDR(ipstr)
+	if err != nil {
+		i = net.ParseIP(ipstr)
+		if i == nil {
+			return 0, err
+		}
+	}
+	ret := big.NewInt(0)
+	ret.SetBytes(i.To4())
+	return uint32(ret.Int64()), nil
+}
+
+func calculateChecksum(data []byte) uint16 {
+	length := len(data)
+	sum := uint32(0)
+
+	// Calculate the sum of 16-bit words
+	for i := 0; i < length-1; i += 2 {
+		sum += uint32(binary.BigEndian.Uint16(data[i : i+2]))
+	}
+
+	// Add the last byte (if odd length)
+	if length%2 != 0 {
+		sum += uint32(data[length-1])
+	}
+
+	// Fold 32-bit sum to 16 bits
+	sum = (sum >> 16) + (sum & 0xffff)
+	sum += (sum >> 16)
+
+	return uint16(^sum)
 }

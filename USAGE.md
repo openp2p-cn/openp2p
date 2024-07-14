@@ -46,7 +46,7 @@ Configuration example
 ```
 {
   "network": {
-    "Node": "hhd1207-222",
+    "Node": "YOUR-NODE-NAME",
     "Token": "TOKEN",
     "ShareBandwidth": 0,
     "ServerHost": "api.openp2p.cn",

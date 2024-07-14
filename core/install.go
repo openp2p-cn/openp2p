@@ -10,11 +10,6 @@ import (
 	"time"
 )
 
-// examples:
-// listen:
-// ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth 0
-// listen and build p2papp:
-// ./openp2p install -node hhd1207-222 -token YOUR-TOKEN -sharebandwidth 0 -peernode hhdhome-n1 -dstip 127.0.0.1 -dstport 50022 -protocol tcp -srcport 22
 func install() {
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
 	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
@@ -35,7 +30,7 @@ func install() {
 
 	uninstall()
 	// save config file
-	parseParams("install")
+	parseParams("install", "")
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 	d := daemon{}
 	// copy files

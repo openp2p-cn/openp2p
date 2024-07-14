@@ -43,7 +43,7 @@ nohup ./openp2p -d -node OFFICEPC1 -token TOKEN  &
 ```
 {
   "network": {
-    "Node": "hhd1207-222",
+    "Node": "YOUR-NODE-NAME",
     "Token": "TOKEN",
     "ShareBandwidth": 0,
     "ServerHost": "api.openp2p.cn",
@@ -87,7 +87,8 @@ systemctl stop firewalld.service
 systemctl start firewalld.service
 firewall-cmd --state
 ```
-
+## 停止
+TODO: windows linux macos
 ## 卸载
 ```
 ./openp2p uninstall

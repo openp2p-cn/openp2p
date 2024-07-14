@@ -49,6 +49,7 @@ func (conn *underlayQUIC) WriteMessage(mainType uint16, subType uint16, packet i
 func (conn *underlayQUIC) Close() error {
 	conn.Stream.CancelRead(1)
 	conn.Connection.CloseWithError(0, "")
+	conn.CloseListener()
 	return nil
 }
 func (conn *underlayQUIC) WLock() {
@@ -86,7 +87,13 @@ func listenQuic(addr string, idleTimeout time.Duration) (*underlayQUIC, error) {
 	if err != nil {
 		return nil, fmt.Errorf("quic.ListenAddr error:%s", err)
 	}
-	return &underlayQUIC{listener: listener, writeMtx: &sync.Mutex{}}, nil
+	ul := &underlayQUIC{listener: listener, writeMtx: &sync.Mutex{}}
+	err = ul.Accept()
+	if err != nil {
+		ul.CloseListener()
+		return nil, fmt.Errorf("accept quic error:%s", err)
+	}
+	return ul, nil
 }
 
 func dialQuic(conn *net.UDPConn, remoteAddr *net.UDPAddr, idleTimeout time.Duration) (*underlayQUIC, error) {

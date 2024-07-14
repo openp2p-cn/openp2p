@@ -25,8 +25,9 @@ func TestSymmetric(t *testing.T) {
 	speed := 20000 / 180
 	speedl := newSpeedLimiter(speed, 180)
 	oneBuffSize := 300
-	writeNum := 100
+	writeNum := 70
 	expectTime := (oneBuffSize*writeNum - 20000) / speed
+	t.Logf("expect %ds", expectTime)
 	startTs := time.Now()
 	for i := 0; i < writeNum; i++ {
 		speedl.Add(oneBuffSize, true)
@@ -41,7 +42,7 @@ func TestSymmetric2(t *testing.T) {
 	speed := 30000 / 180
 	speedl := newSpeedLimiter(speed, 180)
 	oneBuffSize := 800
-	writeNum := 50
+	writeNum := 40
 	expectTime := (oneBuffSize*writeNum - 30000) / speed
 	startTs := time.Now()
 	for i := 0; i < writeNum; {

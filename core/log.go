@@ -13,6 +13,7 @@ type LogLevel int
 var gLog *logger
 
 const (
+	LvDev   LogLevel = -1
 	LvDEBUG LogLevel = iota
 	LvINFO
 	LvWARN
@@ -32,12 +33,13 @@ func init() {
 	loglevel[LvINFO] = "INFO"
 	loglevel[LvWARN] = "WARN"
 	loglevel[LvERROR] = "ERROR"
+	loglevel[LvDev] = "Dev"
 
 }
 
 const (
-	LogFile = 1 << iota
-	LogConsole
+	LogFile    = 1
+	LogConsole = 1 << 1
 )
 
 type logger struct {
@@ -92,6 +94,13 @@ func (l *logger) setLevel(level LogLevel) {
 	defer l.mtx.Unlock()
 	l.level = level
 }
+
+func (l *logger) setMaxSize(size int64) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	l.maxLogSize = size
+}
+
 func (l *logger) setMode(mode int) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
@@ -139,10 +148,10 @@ func (l *logger) Printf(level LogLevel, format string, params ...interface{}) {
 	}
 	pidAndLevel := []interface{}{l.pid, loglevel[level]}
 	params = append(pidAndLevel, params...)
-	if l.mode & LogFile != 0 {
+	if l.mode&LogFile != 0 {
 		l.loggers[0].Printf("%d %s "+format+l.lineEnding, params...)
 	}
-	if l.mode & LogConsole != 0 {
+	if l.mode&LogConsole != 0 {
 		l.stdLogger.Printf("%d %s "+format+l.lineEnding, params...)
 	}
 }
@@ -156,10 +165,10 @@ func (l *logger) Println(level LogLevel, params ...interface{}) {
 	pidAndLevel := []interface{}{l.pid, " ", loglevel[level], " "}
 	params = append(pidAndLevel, params...)
 	params = append(params, l.lineEnding)
-	if l.mode & LogFile != 0 {
+	if l.mode&LogFile != 0 {
 		l.loggers[0].Print(params...)
 	}
-	if l.mode & LogConsole != 0 {
+	if l.mode&LogConsole != 0 {
 		l.stdLogger.Print(params...)
 	}
 }

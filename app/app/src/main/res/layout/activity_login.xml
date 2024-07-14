@@ -13,28 +13,27 @@
 
     <EditText
         android:id="@+id/token"
-        android:layout_width="225dp"
-        android:layout_height="46dp"
+        android:layout_width="250dp"
+        android:layout_height="45dp"
         android:hint="Token"
         android:imeActionLabel="@string/action_sign_in_short"
         android:imeOptions="actionDone"
         android:selectAllOnFocus="true"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-         />
+        app:layout_constraintTop_toTopOf="parent" />
 
     <Button
         android:id="@+id/login"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="85dp"
+        android:layout_height="45dp"
         android:layout_gravity="start"
         android:layout_marginStart="24dp"
         android:layout_marginLeft="24dp"
         android:enabled="false"
         android:text="@string/action_sign_in"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/token"
-        app:layout_constraintTop_toTopOf="parent"
-        tools:layout_editor_absoluteY="-2dp" />
+        app:layout_constraintTop_toTopOf="parent" />
 
 
 
@@ -58,28 +57,36 @@
         android:id="@+id/openp2pLog"
         android:layout_width="359dp"
         android:layout_height="548dp"
+        android:layout_marginTop="24dp"
         android:ems="10"
-        android:inputType="none"
-        android:textIsSelectable="true"
         android:focusable="false"
+        android:inputType="none"
         android:text="Name"
+        android:textIsSelectable="true"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/onlineState" />
+
     <Button
         android:id="@+id/profile"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="250dp"
+        android:layout_height="45dp"
+        android:layout_marginTop="8dp"
         android:text="打开控制台查看Token"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/token" />
 
     <EditText
         android:id="@+id/onlineState"
-        android:layout_width="113dp"
+        android:layout_width="85dp"
         android:layout_height="45dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginLeft="24dp"
+        android:layout_marginTop="8dp"
         android:ems="10"
         android:inputType="textPersonName"
         android:text="未登录"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/profile"
         app:layout_constraintTop_toBottomOf="@+id/login" />
 
