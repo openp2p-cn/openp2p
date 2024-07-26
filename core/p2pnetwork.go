@@ -125,7 +125,7 @@ func (pn *P2PNetwork) run() {
 			}
 			gConf.retryAllApp()
 		case t := <-pn.tunnelCloseCh:
-			gLog.Printf(LvDEBUG, "got tunnelCloseCh %s", t.config.PeerNode)
+			gLog.Printf(LvDEBUG, "got tunnelCloseCh %s", t.config.LogPeerNode())
 			pn.apps.Range(func(id, i interface{}) bool {
 				app := i.(*p2pApp)
 				if app.DirectTunnel() == t {
@@ -195,12 +195,12 @@ func (pn *P2PNetwork) autorunApp() {
 }
 
 func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, string, error) {
-	gLog.Printf(LvINFO, "addRelayTunnel to %s start", config.PeerNode)
-	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.PeerNode)
+	gLog.Printf(LvINFO, "addRelayTunnel to %s start", config.LogPeerNode())
+	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.LogPeerNode())
 	relayConfig := AppConfig{
 		PeerNode:  config.RelayNode,
-		peerToken: config.peerToken}
-	relayMode := "private"
+		peerToken: config.peerToken,
+		relayMode: "private"}
 	if relayConfig.PeerNode == "" {
 		// find existing relay tunnel
 		pn.apps.Range(func(id, i interface{}) bool {
@@ -212,7 +212,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 				return true
 			}
 			relayConfig.PeerNode = app.RelayTunnel().config.PeerNode
-			gLog.Printf(LvDEBUG, "found existing relay tunnel %s", relayConfig.PeerNode)
+			gLog.Printf(LvDEBUG, "found existing relay tunnel %s", relayConfig.LogPeerNode())
 			return false
 		})
 		if relayConfig.PeerNode == "" { // request relay node
@@ -231,11 +231,11 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 				gLog.Printf(LvERROR, "MsgRelayNodeReq error")
 				return nil, 0, "", errors.New("MsgRelayNodeReq error")
 			}
-			gLog.Printf(LvDEBUG, "got relay node:%s", rsp.RelayName)
+			gLog.Printf(LvDEBUG, "got relay node:%s", relayConfig.LogPeerNode())
 
 			relayConfig.PeerNode = rsp.RelayName
 			relayConfig.peerToken = rsp.RelayToken
-			relayMode = rsp.Mode
+			relayConfig.relayMode = rsp.Mode
 		}
 
 	}
@@ -250,10 +250,10 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 		From:          gConf.Network.Node,
 		RelayName:     relayConfig.PeerNode,
 		RelayToken:    relayConfig.peerToken,
-		RelayMode:     relayMode,
+		RelayMode:     relayConfig.relayMode,
 		RelayTunnelID: t.id,
 	}
-	gLog.Printf(LvDEBUG, "push %s the relay node(%s)", config.PeerNode, relayConfig.PeerNode)
+	gLog.Printf(LvDEBUG, "push %s the relay node(%s)", config.LogPeerNode(), relayConfig.LogPeerNode())
 	pn.push(config.PeerNode, MsgPushAddRelayTunnelReq, &req)
 
 	// wait relay ready
@@ -267,13 +267,13 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 		gLog.Println(LvDEBUG, ErrPeerConnectRelay)
 		return nil, 0, "", ErrPeerConnectRelay
 	}
-	return t, rspID.ID, relayMode, err
+	return t, rspID.ID, relayConfig.relayMode, err
 }
 
 // use *AppConfig to save status
 func (pn *P2PNetwork) AddApp(config AppConfig) error {
-	gLog.Printf(LvINFO, "addApp %s to %s:%s:%d start", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
-	defer gLog.Printf(LvINFO, "addApp %s to %s:%s:%d end", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
+	gLog.Printf(LvINFO, "addApp %s to %s:%s:%d start", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
+	defer gLog.Printf(LvINFO, "addApp %s to %s:%s:%d end", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
 	if !pn.online {
 		return errors.New("P2PNetwork offline")
 	}
@@ -304,8 +304,8 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 }
 
 func (pn *P2PNetwork) DeleteApp(config AppConfig) {
-	gLog.Printf(LvINFO, "DeleteApp %s to %s:%s:%d start", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
-	defer gLog.Printf(LvINFO, "DeleteApp %s to %s:%s:%d end", config.AppName, config.PeerNode, config.DstHost, config.DstPort)
+	gLog.Printf(LvINFO, "DeleteApp %s to %s:%s:%d start", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
+	defer gLog.Printf(LvINFO, "DeleteApp %s to %s:%s:%d end", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
 	// close the apps of this config
 	i, ok := pn.apps.Load(config.ID())
 	if ok {
@@ -339,8 +339,8 @@ func (pn *P2PNetwork) findTunnel(peerNode string) (t *P2PTunnel) {
 }
 
 func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunnel, err error) {
-	gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d start", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort, tid)
-	defer gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d end", config.Protocol, config.SrcPort, config.PeerNode, config.DstHost, config.DstPort, tid)
+	gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d start", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
+	defer gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d end", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
 	isClient := false
 	// client side tid=0, assign random uint64
 	if tid == 0 {
@@ -360,12 +360,12 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 	// peer info
 	initErr := pn.requestPeerInfo(&config)
 	if initErr != nil {
-		gLog.Printf(LvERROR, "%s init error:%s", config.PeerNode, initErr)
+		gLog.Printf(LvERROR, "%s init error:%s", config.LogPeerNode(), initErr)
 
 		return nil, initErr
 	}
 	gLog.Printf(LvDEBUG, "config.peerNode=%s,config.peerVersion=%s,config.peerIP=%s,config.peerLanIP=%s,gConf.Network.publicIP=%s,config.peerIPv6=%s,config.hasIPv4=%d,config.hasUPNPorNATPMP=%d,gConf.Network.hasIPv4=%d,gConf.Network.hasUPNPorNATPMP=%d,config.peerNatType=%d,gConf.Network.natType=%d,",
-		config.PeerNode, config.peerVersion, config.peerIP, config.peerLanIP, gConf.Network.publicIP, config.peerIPv6, config.hasIPv4, config.hasUPNPorNATPMP, gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, config.peerNatType, gConf.Network.natType)
+		config.LogPeerNode(), config.peerVersion, config.peerIP, config.peerLanIP, gConf.Network.publicIP, config.peerIPv6, config.hasIPv4, config.hasUPNPorNATPMP, gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, config.peerNatType, gConf.Network.natType)
 	// try Intranet
 	if config.peerIP == gConf.Network.publicIP && compareVersion(config.peerVersion, SupportIntranetVersion) >= 0 { // old version client has no peerLanIP
 		gLog.Println(LvINFO, "try Intranet")
@@ -624,8 +624,6 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 			gLog.Printf(LvERROR, "login error:%d, detail:%s", rsp.Error, rsp.Detail)
 			pn.running = false
 		} else {
-			gConf.Network.Token = rsp.Token
-			gConf.Network.User = rsp.User
 			gConf.setToken(rsp.Token)
 			gConf.setUser(rsp.User)
 			if len(rsp.Node) >= MinNodeNameLen {
@@ -726,7 +724,7 @@ func (pn *P2PNetwork) relay(to uint64, body []byte) error {
 }
 
 func (pn *P2PNetwork) push(to string, subType uint16, packet interface{}) error {
-	gLog.Printf(LvDEBUG, "push msgType %d to %s", subType, to)
+	// gLog.Printf(LvDEBUG, "push msgType %d to %s", subType, to)
 	if !pn.online {
 		return errors.New("client offline")
 	}

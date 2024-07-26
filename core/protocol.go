@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.18.4"
+const OpenP2PVersion = "3.19.0"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -108,6 +108,7 @@ const (
 	MsgPushReportGoroutine      = 16
 	MsgPushReportMemApps        = 17
 	MsgPushServerSideSaveMemApp = 18
+	MsgPushCheckRemoteService   = 19
 )
 
 // MsgP2P sub type message
@@ -143,6 +144,7 @@ const (
 	MsgReportApps
 	MsgReportLog
 	MsgReportMemApps
+	MsgReportResponse
 )
 
 const (
@@ -508,6 +510,11 @@ type ServerSideSaveMemApp struct {
 	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"` // rtid, if not 0 relay
 	RelayMode     string `json:"relayMode,omitempty"`
 	AppID         uint64 `json:"appID,omitempty"`
+}
+
+type CheckRemoteService struct {
+	Host string `json:"host,omitempty"`
+	Port uint32 `json:"port,omitempty"`
 }
 
 const rootCA = `-----BEGIN CERTIFICATE-----

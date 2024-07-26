@@ -3,6 +3,7 @@ package openp2p
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -28,6 +29,7 @@ type AppConfig struct {
 	ForceRelay       int // default:0 disable;1 enable
 	Enabled          int // default:1
 	// runtime info
+	relayMode        string // private|public
 	peerVersion      string
 	peerToken        uint64
 	peerNatType      int
@@ -62,6 +64,13 @@ func (c *AppConfig) ID() uint64 {
 		return uint64(c.SrcPort) * 10
 	}
 	return uint64(c.SrcPort)*10 + 1
+}
+
+func (c *AppConfig) LogPeerNode() string {
+	if c.relayMode == "public" { // memapp
+		return fmt.Sprintf("%d", NodeNameToID(c.PeerNode))
+	}
+	return c.PeerNode
 }
 
 type Config struct {
@@ -147,7 +156,7 @@ func (c *Config) retryApp(peerNode string) {
 	GNetwork.apps.Range(func(id, i interface{}) bool {
 		app := i.(*p2pApp)
 		if app.config.PeerNode == peerNode {
-			gLog.Println(LvDEBUG, "retry app ", peerNode)
+			gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
 			app.config.retryNum = 0
 			app.config.nextRetryTime = time.Now()
 			app.retryRelayNum = 0
@@ -157,7 +166,7 @@ func (c *Config) retryApp(peerNode string) {
 			app.hbMtx.Unlock()
 		}
 		if app.config.RelayNode == peerNode {
-			gLog.Println(LvDEBUG, "retry app ", peerNode)
+			gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
 			app.retryRelayNum = 0
 			app.nextRetryRelayTime = time.Now()
 			app.hbMtx.Lock()
@@ -171,7 +180,7 @@ func (c *Config) retryApp(peerNode string) {
 func (c *Config) retryAllApp() {
 	GNetwork.apps.Range(func(id, i interface{}) bool {
 		app := i.(*p2pApp)
-		gLog.Println(LvDEBUG, "retry app ", app.config.PeerNode)
+		gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
 		app.config.retryNum = 0
 		app.config.nextRetryTime = time.Now()
 		app.retryRelayNum = 0
@@ -189,7 +198,7 @@ func (c *Config) retryAllMemApp() {
 		if app.config.SrcPort != 0 {
 			return true
 		}
-		gLog.Println(LvDEBUG, "retry app ", app.config.PeerNode)
+		gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
 		app.config.retryNum = 0
 		app.config.nextRetryTime = time.Now()
 		app.retryRelayNum = 0
@@ -246,6 +255,9 @@ func (c *Config) delete(app AppConfig) {
 func (c *Config) save() {
 	// c.mtx.Lock()
 	// defer c.mtx.Unlock()  // internal call
+	if c.Network.Token == 0 {
+		return
+	}
 	data, _ := json.MarshalIndent(c, "", "  ")
 	err := os.WriteFile("config.json", data, 0644)
 	if err != nil {
@@ -256,6 +268,9 @@ func (c *Config) save() {
 func (c *Config) saveCache() {
 	// c.mtx.Lock()
 	// defer c.mtx.Unlock()  // internal call
+	if c.Network.Token == 0 {
+		return
+	}
 	data, _ := json.MarshalIndent(c, "", "  ")
 	err := os.WriteFile("config.json0", data, 0644)
 	if err != nil {

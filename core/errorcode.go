@@ -29,4 +29,5 @@ var (
 	ErrPeerConnectRelay      = errors.New("peer connect relayNode error")
 	ErrBuildTunnelBusy       = errors.New("build tunnel busy")
 	ErrMemAppTunnelNotFound  = errors.New("memapp tunnel not found")
+	ErrRemoteServiceUnable   = errors.New("remote service unable")
 )

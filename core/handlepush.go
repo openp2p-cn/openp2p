@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -44,6 +45,7 @@ func handlePush(subType uint16, msg []byte) error {
 		config := AppConfig{}
 		config.PeerNode = req.RelayName
 		config.peerToken = req.RelayToken
+		config.relayMode = req.RelayMode
 		go func(r AddRelayTunnelReq) {
 			t, errDt := GNetwork.addDirectTunnel(config, 0)
 			if errDt == nil {
@@ -142,6 +144,8 @@ func handlePush(subType uint16, msg []byte) error {
 		err = handleLog(msg)
 	case MsgPushReportGoroutine:
 		err = handleReportGoroutine()
+	case MsgPushCheckRemoteService:
+		err = handleCheckRemoteService(msg)
 	case MsgPushEditApp:
 		err = handleEditApp(msg)
 	case MsgPushEditNode:
@@ -457,4 +461,22 @@ func handleReportGoroutine() (err error) {
 	buf := make([]byte, 1024*128)
 	stackLen := runtime.Stack(buf, true)
 	return GNetwork.write(MsgReport, MsgPushReportLog, string(buf[:stackLen]))
+}
+
+func handleCheckRemoteService(msg []byte) (err error) {
+	gLog.Println(LvDEBUG, "handleCheckRemoteService")
+	req := CheckRemoteService{}
+	if err = json.Unmarshal(msg[openP2PHeaderSize:], &req); err != nil {
+		gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
+		return err
+	}
+	rsp := PushRsp{Error: 0}
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.Host, req.Port), time.Second*3)
+	if err != nil {
+		rsp.Error = 1
+		rsp.Detail = ErrRemoteServiceUnable.Error()
+	} else {
+		conn.Close()
+	}
+	return GNetwork.write(MsgReport, MsgReportResponse, rsp)
 }

@@ -63,7 +63,7 @@ func (t *P2PTunnel) initPort() {
 }
 
 func (t *P2PTunnel) connect() error {
-	gLog.Printf(LvDEBUG, "start p2pTunnel to %s ", t.config.PeerNode)
+	gLog.Printf(LvDEBUG, "start p2pTunnel to %s ", t.config.LogPeerNode())
 	t.tunnelServer = false
 	appKey := uint64(0)
 	req := PushConnectReq{
@@ -170,7 +170,7 @@ func (t *P2PTunnel) close() {
 		t.conn.Close()
 	}
 	t.pn.allTunnels.Delete(t.id)
-	gLog.Printf(LvINFO, "%d p2ptunnel close %s ", t.id, t.config.PeerNode)
+	gLog.Printf(LvINFO, "%d p2ptunnel close %s ", t.id, t.config.LogPeerNode())
 }
 
 func (t *P2PTunnel) start() error {
@@ -205,7 +205,7 @@ func (t *P2PTunnel) handshake() error {
 		gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
 		time.Sleep(ts)
 	}
-	gLog.Println(LvDEBUG, "handshake to ", t.config.PeerNode)
+	gLog.Println(LvDEBUG, "handshake to ", t.config.LogPeerNode())
 	var err error
 	if gConf.Network.natType == NATCone && t.config.peerNatType == NATCone {
 		err = handshakeC2C(t)
@@ -223,7 +223,7 @@ func (t *P2PTunnel) handshake() error {
 		gLog.Println(LvERROR, "punch handshake error:", err)
 		return err
 	}
-	gLog.Printf(LvDEBUG, "handshake to %s ok", t.config.PeerNode)
+	gLog.Printf(LvDEBUG, "handshake to %s ok", t.config.LogPeerNode())
 	return nil
 }
 
@@ -258,8 +258,8 @@ func (t *P2PTunnel) connectUnderlay() (err error) {
 }
 
 func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayUDP %s start ", t.config.PeerNode)
-	defer gLog.Printf(LvDEBUG, "connectUnderlayUDP %s end ", t.config.PeerNode)
+	gLog.Printf(LvDEBUG, "connectUnderlayUDP %s start ", t.config.LogPeerNode())
+	defer gLog.Printf(LvDEBUG, "connectUnderlayUDP %s end ", t.config.LogPeerNode())
 	var ul underlay
 	underlayProtocol := t.config.UnderlayProtocol
 	if underlayProtocol == "" {
@@ -330,8 +330,8 @@ func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
 }
 
 func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayTCP %s start ", t.config.PeerNode)
-	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP %s end ", t.config.PeerNode)
+	gLog.Printf(LvDEBUG, "connectUnderlayTCP %s start ", t.config.LogPeerNode())
+	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP %s end ", t.config.LogPeerNode())
 	var ul *underlayTCP
 	peerIP := t.config.peerIP
 	if t.config.linkMode == LinkModeIntranet {
@@ -392,8 +392,8 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 }
 
 func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayTCPSymmetric %s start ", t.config.PeerNode)
-	defer gLog.Printf(LvDEBUG, "connectUnderlayTCPSymmetric %s end ", t.config.PeerNode)
+	gLog.Printf(LvDEBUG, "connectUnderlayTCPSymmetric %s start ", t.config.LogPeerNode())
+	defer gLog.Printf(LvDEBUG, "connectUnderlayTCPSymmetric %s end ", t.config.LogPeerNode())
 	ts := time.Duration(int64(t.punchTs) + t.pn.dt + t.pn.ddtma*int64(time.Since(t.pn.hbTime)+PunchTsDelay)/int64(NetworkHeartbeatTime) - time.Now().UnixNano())
 	if ts > PunchTsDelay || ts < 0 {
 		ts = PunchTsDelay
@@ -486,8 +486,8 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 }
 
 func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayTCP6 %s start ", t.config.PeerNode)
-	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP6 %s end ", t.config.PeerNode)
+	gLog.Printf(LvDEBUG, "connectUnderlayTCP6 %s start ", t.config.LogPeerNode())
+	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP6 %s end ", t.config.LogPeerNode())
 	var ul *underlayTCP6
 	if t.config.isUnderlayServer == 1 {
 		t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
@@ -597,7 +597,7 @@ func (t *P2PTunnel) readLoop() {
 			tunnelID := binary.LittleEndian.Uint64(body[:8])
 			gLog.Printf(LvDev, "relay data to %d, len=%d", tunnelID, head.DataLen-RelayHeaderSize)
 			if err := t.pn.relay(tunnelID, body[RelayHeaderSize:]); err != nil {
-				gLog.Printf(LvERROR, "%s:%d relay to %d len=%d error:%s", t.config.PeerNode, t.id, tunnelID, len(body), ErrRelayTunnelNotFound)
+				gLog.Printf(LvERROR, "%s:%d relay to %d len=%d error:%s", t.config.LogPeerNode(), t.id, tunnelID, len(body), ErrRelayTunnelNotFound)
 			}
 		case MsgRelayHeartbeat:
 			req := RelayHeartbeat{}
@@ -691,8 +691,8 @@ func (t *P2PTunnel) writeLoop() {
 	t.hbMtx.Unlock()
 	tc := time.NewTicker(TunnelHeartbeatTime)
 	defer tc.Stop()
-	gLog.Printf(LvDEBUG, "%s:%d tunnel writeLoop start", t.config.PeerNode, t.id)
-	defer gLog.Printf(LvDEBUG, "%s:%d tunnel writeLoop end", t.config.PeerNode, t.id)
+	gLog.Printf(LvDEBUG, "%s:%d tunnel writeLoop start", t.config.LogPeerNode(), t.id)
+	defer gLog.Printf(LvDEBUG, "%s:%d tunnel writeLoop end", t.config.LogPeerNode(), t.id)
 	for t.isRuning() {
 		select {
 		case buff := <-t.writeDataSmall:
@@ -781,13 +781,13 @@ func (t *P2PTunnel) asyncWriteNodeData(mainType, subType uint16, data []byte) {
 		case t.writeDataSmall <- writeBytes:
 			// gLog.Printf(LvWARN, "%s:%d t.writeDataSmall write %d", t.config.PeerNode, t.id, len(t.writeDataSmall))
 		default:
-			gLog.Printf(LvWARN, "%s:%d t.writeDataSmall is full, drop it", t.config.PeerNode, t.id)
+			gLog.Printf(LvWARN, "%s:%d t.writeDataSmall is full, drop it", t.config.LogPeerNode(), t.id)
 		}
 	} else {
 		select {
 		case t.writeData <- writeBytes:
 		default:
-			gLog.Printf(LvWARN, "%s:%d t.writeData is full, drop it", t.config.PeerNode, t.id)
+			gLog.Printf(LvWARN, "%s:%d t.writeData is full, drop it", t.config.LogPeerNode(), t.id)
 		}
 	}
 
