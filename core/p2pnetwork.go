@@ -533,7 +533,6 @@ func (pn *P2PNetwork) init() error {
 		caCertPool, errCert := x509.SystemCertPool()
 		if errCert != nil {
 			gLog.Println(LvERROR, "Failed to load system root CAs:", errCert)
-		} else {
 			caCertPool = x509.NewCertPool()
 		}
 		caCertPool.AppendCertsFromPEM([]byte(rootCA))
