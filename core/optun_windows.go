@@ -133,9 +133,10 @@ func delRoutesByGateway(gateway string) error {
 			cmd := exec.Command("route", "delete", fields[0], "mask", fields[1], gateway)
 			err := cmd.Run()
 			if err != nil {
-				fmt.Println("Delete route error:", err)
+				gLog.Printf(LvERROR, "Delete route %s error:%s", fields[0], err)
+				continue
 			}
-			fmt.Printf("Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
+			gLog.Printf(LvINFO, "Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
 		}
 	}
 	return nil

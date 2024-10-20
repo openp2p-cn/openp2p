@@ -1,6 +1,7 @@
 package openp2p
 
 import (
+	"fmt"
 	"log"
 	"testing"
 )
@@ -112,5 +113,17 @@ func TestIsIPv6(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("isValidIPv6(%s) = %v, want %v", tt.ipStr, got, tt.want)
 		}
+	}
+}
+
+func TestNodeID(t *testing.T) {
+	node1 := "n1-stable"
+	node2 := "tony-stable"
+	nodeID1 := NodeNameToID(node1)
+	nodeID2 := NodeNameToID(node2)
+	if nodeID1 < nodeID2 {
+		fmt.Printf("%s < %s\n", node1, node2)
+	} else {
+		fmt.Printf("%s >= %s\n", node1, node2)
 	}
 }

@@ -52,7 +52,7 @@ func addRoute(dst, gw, ifname string) error {
 }
 
 func delRoute(dst, gw string) error {
-	err := exec.Command("route", "delete", dst, gw).Run()
+	err := exec.Command("route", "delete", dst, "-gateway", gw).Run()
 	return err
 }
 func delRoutesByGateway(gateway string) error {
@@ -68,13 +68,14 @@ func delRoutesByGateway(gateway string) error {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) >= 7 && fields[0] == "default" && fields[len(fields)-1] == gateway {
-			delCmd := exec.Command("route", "delete", "default", gateway)
-			err := delCmd.Run()
+		if len(fields) >= 2 {
+			cmd := exec.Command("route", "delete", fields[0], gateway)
+			err := cmd.Run()
 			if err != nil {
-				return err
+				gLog.Printf(LvERROR, "Delete route %s error:%s", fields[0], err)
+				continue
 			}
-			fmt.Printf("Delete route ok: %s %s\n", "default", gateway)
+			gLog.Printf(LvINFO, "Delete route ok: %s %s\n", fields[0], gateway)
 		}
 	}
 	return nil

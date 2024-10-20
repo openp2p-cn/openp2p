@@ -426,7 +426,7 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 				}
 				_, buff, err := ul.ReadBuffer()
 				if err != nil {
-					gLog.Printf(LvERROR, "utcp.ReadBuffer error:", err)
+					gLog.Println(LvDEBUG, "c2s ul.ReadBuffer error:", err)
 					return
 				}
 				req := P2PHandshakeReq{}
@@ -455,7 +455,7 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 
 				_, buff, err := ul.ReadBuffer()
 				if err != nil {
-					gLog.Printf(LvERROR, "utcp.ReadBuffer error:", err)
+					gLog.Println(LvDEBUG, "s2c ul.ReadBuffer error:", err)
 					return
 				}
 				req := P2PHandshakeReq{}
@@ -512,14 +512,14 @@ func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
 	t.pn.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, ReadMsgTimeout)
 	gLog.Println(LvDEBUG, "TCP6 dial to ", t.config.peerIPv6)
 	ul, err = dialTCP6(t.config.peerIPv6, t.config.peerConeNatPort)
-	if err != nil {
+	if err != nil || ul == nil {
 		return nil, fmt.Errorf("TCP6 dial to %s:%d error:%s", t.config.peerIPv6, t.config.peerConeNatPort, err)
 	}
 	handshakeBegin := time.Now()
 	ul.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
-	_, buff, err := ul.ReadBuffer()
-	if err != nil {
-		return nil, fmt.Errorf("read MsgTunnelHandshake error:%s", err)
+	_, buff, errR := ul.ReadBuffer()
+	if errR != nil {
+		return nil, fmt.Errorf("read MsgTunnelHandshake error:%s", errR)
 	}
 	if buff != nil {
 		gLog.Println(LvDEBUG, string(buff))

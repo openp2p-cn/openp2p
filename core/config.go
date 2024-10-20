@@ -78,12 +78,13 @@ type Config struct {
 	Apps    []*AppConfig  `json:"apps"`
 
 	LogLevel   int
+	MaxLogSize int
 	daemonMode bool
 	mtx        sync.Mutex
 	sdwanMtx   sync.Mutex
 	sdwan      SDWANInfo
-	delNodes   []SDWANNode
-	addNodes   []SDWANNode
+	delNodes   []*SDWANNode
+	addNodes   []*SDWANNode
 }
 
 func (c *Config) getSDWAN() SDWANInfo {
@@ -92,23 +93,30 @@ func (c *Config) getSDWAN() SDWANInfo {
 	return c.sdwan
 }
 
-func (c *Config) getDelNodes() []SDWANNode {
+func (c *Config) getDelNodes() []*SDWANNode {
 	c.sdwanMtx.Lock()
 	defer c.sdwanMtx.Unlock()
 	return c.delNodes
 }
 
-func (c *Config) getAddNodes() []SDWANNode {
+func (c *Config) getAddNodes() []*SDWANNode {
 	c.sdwanMtx.Lock()
 	defer c.sdwanMtx.Unlock()
 	return c.addNodes
 }
 
+func (c *Config) resetSDWAN() {
+	c.sdwanMtx.Lock()
+	defer c.sdwanMtx.Unlock()
+	c.delNodes = []*SDWANNode{}
+	c.addNodes = []*SDWANNode{}
+	c.sdwan = SDWANInfo{}
+}
 func (c *Config) setSDWAN(s SDWANInfo) {
 	c.sdwanMtx.Lock()
 	defer c.sdwanMtx.Unlock()
 	// get old-new
-	c.delNodes = []SDWANNode{}
+	c.delNodes = []*SDWANNode{}
 	for _, oldNode := range c.sdwan.Nodes {
 		isDeleted := true
 		for _, newNode := range s.Nodes {
@@ -122,7 +130,7 @@ func (c *Config) setSDWAN(s SDWANInfo) {
 		}
 	}
 	// get new-old
-	c.addNodes = []SDWANNode{}
+	c.addNodes = []*SDWANNode{}
 	for _, newNode := range s.Nodes {
 		isNew := true
 		for _, oldNode := range c.sdwan.Nodes {
@@ -230,17 +238,8 @@ func (c *Config) delete(app AppConfig) {
 	defer c.mtx.Unlock()
 	defer c.save()
 	for i := 0; i < len(c.Apps); i++ {
-		got := false
-		if app.SrcPort != 0 { // normal p2papp
-			if c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
-				got = true
-			}
-		} else { // memapp
-			if c.Apps[i].PeerNode == app.PeerNode {
-				got = true
-			}
-		}
-		if got {
+		if (app.SrcPort != 0 && c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort) || // normal app
+			(app.SrcPort == 0 && c.Apps[i].PeerNode == app.PeerNode) { // memapp
 			if i == len(c.Apps)-1 {
 				c.Apps = c.Apps[:i]
 			} else {
@@ -249,7 +248,6 @@ func (c *Config) delete(app AppConfig) {
 			return
 		}
 	}
-
 }
 
 func (c *Config) save() {
@@ -280,6 +278,7 @@ func (c *Config) saveCache() {
 
 func init() {
 	gConf.LogLevel = int(LvINFO)
+	gConf.MaxLogSize = 1024 * 1024
 	gConf.Network.ShareBandwidth = 10
 	gConf.Network.ServerHost = "api.openp2p.cn"
 	gConf.Network.ServerPort = WsPort
@@ -462,6 +461,9 @@ func parseParams(subCommand string, cmd string) {
 		}
 		if f.Name == "loglevel" {
 			gConf.LogLevel = *logLevel
+		}
+		if f.Name == "maxlogsize" {
+			gConf.MaxLogSize = *maxLogSize
 		}
 		if f.Name == "tcpport" {
 			gConf.Network.TCPPort = *tcpPort

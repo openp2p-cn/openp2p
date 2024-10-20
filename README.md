@@ -103,7 +103,7 @@ That's right, the relay node is naturally an man-in-middle, so AES encryption is
 The server side has a scheduling model, which calculate  bandwith, ping value,stability and service duration to provide a well-proportioned service to every share node. It uses TOTP(Time-based One-time Password) with hmac-sha256 algorithem, its theory as same as the cellphone validation code or bank cipher coder.
 
 ## Build
-go version go1.18.1+  
+go version 1.20 only (support win7)
 cd root directory of the socure code and execute
 ```
 make

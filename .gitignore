@@ -21,3 +21,4 @@ wintun.dll
 app/.idea/
 *_debug_bin*
 cmd/openp2p
+vendor/

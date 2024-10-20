@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.19.0"
+const OpenP2PVersion = "3.21.8"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -495,7 +495,7 @@ type SDWANInfo struct {
 	ForceRelay    int32  `json:"forceRelay,omitempty"`
 	PunchPriority int32  `json:"punchPriority,omitempty"`
 	Enable        int32  `json:"enable,omitempty"`
-	Nodes         []SDWANNode
+	Nodes         []*SDWANNode
 }
 
 const (

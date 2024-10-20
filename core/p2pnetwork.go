@@ -115,6 +115,7 @@ func (pn *P2PNetwork) run() {
 			pn.write(MsgHeartbeat, 0, "")
 		case <-pn.restartCh:
 			gLog.Printf(LvDEBUG, "got restart channel")
+			GNetwork.sdwan.reset()
 			pn.online = false
 			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
 			delay := ClientAPITimeout + time.Duration(rand.Int()%pn.loginMaxDelaySeconds)*time.Second
@@ -124,6 +125,7 @@ func (pn *P2PNetwork) run() {
 				gLog.Println(LvERROR, "P2PNetwork init error:", err)
 			}
 			gConf.retryAllApp()
+
 		case t := <-pn.tunnelCloseCh:
 			gLog.Printf(LvDEBUG, "got tunnelCloseCh %s", t.config.LogPeerNode())
 			pn.apps.Range(func(id, i interface{}) bool {

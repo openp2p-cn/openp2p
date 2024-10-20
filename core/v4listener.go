@@ -47,7 +47,7 @@ func (vl *v4Listener) handleConnection(c net.Conn) {
 	utcp.SetReadDeadline(time.Now().Add(UnderlayTCPConnectTimeout))
 	_, buff, err := utcp.ReadBuffer()
 	if err != nil {
-		gLog.Printf(LvERROR, "utcp.ReadBuffer error:", err)
+		gLog.Println(LvERROR, "utcp.ReadBuffer error:", err)
 	}
 	utcp.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, buff)
 	var tid uint64
