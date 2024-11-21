@@ -174,7 +174,7 @@ func (app *p2pApp) buildDirectTunnel() error {
 	pn := GNetwork
 	initErr := pn.requestPeerInfo(&app.config)
 	if initErr != nil {
-		gLog.Printf(LvERROR, "%s init error:%s", app.config.LogPeerNode(), initErr)
+		gLog.Printf(LvERROR, "%s requestPeerInfo error:%s", app.config.LogPeerNode(), initErr)
 		return initErr
 	}
 	t, err = pn.addDirectTunnel(app.config, 0)

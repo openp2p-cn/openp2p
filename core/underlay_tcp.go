@@ -51,7 +51,7 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) < 0 {
 			gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 		} else {
-			ts := time.Duration(int64(t.punchTs) + t.pn.dt - time.Now().UnixNano())
+			ts := time.Duration(int64(t.punchTs) + GNetwork.dt - time.Now().UnixNano())
 			gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
 			time.Sleep(ts)
 		}
@@ -72,7 +72,7 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 		utcp.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, buff)
 		return utcp, nil
 	}
-	t.pn.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
+	GNetwork.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
 	tid := t.id
 	if compareVersion(t.config.peerVersion, PublicIPVersion) < 0 { // old version
 		ipBytes := net.ParseIP(t.config.peerIP).To4()

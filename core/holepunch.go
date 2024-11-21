@@ -13,12 +13,12 @@ import (
 func handshakeC2C(t *P2PTunnel) (err error) {
 	gLog.Printf(LvDEBUG, "handshakeC2C %s:%d:%d to %s:%d", gConf.Network.Node, t.coneLocalPort, t.coneNatPort, t.config.peerIP, t.config.peerConeNatPort)
 	defer gLog.Printf(LvDEBUG, "handshakeC2C end")
-	conn, err := net.ListenUDP("udp", t.la)
+	conn, err := net.ListenUDP("udp", t.localHoleAddr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	_, err = UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshake, P2PHandshakeReq{ID: t.id})
+	_, err = UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshake, P2PHandshakeReq{ID: t.id})
 	if err != nil {
 		gLog.Println(LvDEBUG, "handshakeC2C write MsgPunchHandshake error:", err)
 		return err
@@ -28,7 +28,7 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 		gLog.Println(LvDEBUG, "handshakeC2C read MsgPunchHandshake error:", err)
 		return err
 	}
-	t.ra, _ = net.ResolveUDPAddr("udp", ra.String())
+	t.remoteHoleAddr, _ = net.ResolveUDPAddr("udp", ra.String())
 	var tunnelID uint64
 	if len(buff) > openP2PHeaderSize {
 		req := P2PHandshakeReq{}
@@ -40,7 +40,7 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 	}
 	if head.MainType == MsgP2P && head.SubType == MsgPunchHandshake && tunnelID == t.id {
 		gLog.Printf(LvDEBUG, "read %d handshake ", t.id)
-		UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
+		UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 		_, head, _, _, err = UDPRead(conn, HandshakeTimeout)
 		if err != nil {
 			gLog.Println(LvDEBUG, "handshakeC2C write MsgPunchHandshakeAck error", err)
@@ -49,7 +49,7 @@ func handshakeC2C(t *P2PTunnel) (err error) {
 	}
 	if head.MainType == MsgP2P && head.SubType == MsgPunchHandshakeAck && tunnelID == t.id {
 		gLog.Printf(LvDEBUG, "read %d handshake ack ", t.id)
-		_, err = UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
+		_, err = UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 		if err != nil {
 			gLog.Println(LvDEBUG, "handshakeC2C write MsgPunchHandshakeAck error", err)
 			return err
@@ -70,7 +70,7 @@ func handshakeC2S(t *P2PTunnel) error {
 	startTime := time.Now()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randPorts := r.Perm(65532)
-	conn, err := net.ListenUDP("udp", t.la)
+	conn, err := net.ListenUDP("udp", t.localHoleAddr)
 	if err != nil {
 		return err
 	}
@@ -111,7 +111,7 @@ func handshakeC2S(t *P2PTunnel) error {
 		gLog.Println(LvERROR, "parse p2pheader error:", err)
 		return err
 	}
-	t.ra, _ = net.ResolveUDPAddr("udp", dst.String())
+	t.remoteHoleAddr, _ = net.ResolveUDPAddr("udp", dst.String())
 	var tunnelID uint64
 	if len(buff) > openP2PHeaderSize {
 		req := P2PHandshakeReq{}
@@ -123,7 +123,7 @@ func handshakeC2S(t *P2PTunnel) error {
 	}
 	if head.MainType == MsgP2P && head.SubType == MsgPunchHandshake && tunnelID == t.id {
 		gLog.Printf(LvDEBUG, "handshakeC2S read %d handshake ", t.id)
-		UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
+		UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 		for {
 			_, head, buff, _, err = UDPRead(conn, HandshakeTimeout)
 			if err != nil {
@@ -146,8 +146,8 @@ func handshakeC2S(t *P2PTunnel) error {
 		}
 	}
 	if head.MainType == MsgP2P && head.SubType == MsgPunchHandshakeAck {
-		gLog.Printf(LvDEBUG, "handshakeC2S read %d handshake ack %s", t.id, t.ra.String())
-		_, err = UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
+		gLog.Printf(LvDEBUG, "handshakeC2S read %d handshake ack %s", t.id, t.remoteHoleAddr.String())
+		_, err = UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 		return err
 	} else {
 		gLog.Println(LvDEBUG, "handshakeS2C read msg but not MsgPunchHandshakeAck")
@@ -178,7 +178,7 @@ func handshakeS2C(t *P2PTunnel) error {
 				return err
 			}
 			defer conn.Close()
-			UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshake, P2PHandshakeReq{ID: t.id})
+			UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshake, P2PHandshakeReq{ID: t.id})
 			_, head, buff, _, err := UDPRead(conn, HandshakeTimeout)
 			if err != nil {
 				// gLog.Println(LevelDEBUG, "one of the handshake error:", err)
@@ -199,7 +199,7 @@ func handshakeS2C(t *P2PTunnel) error {
 
 			if head.MainType == MsgP2P && head.SubType == MsgPunchHandshake && tunnelID == t.id {
 				gLog.Printf(LvDEBUG, "handshakeS2C read %d handshake ", t.id)
-				UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
+				UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 				// may read several MsgPunchHandshake
 				for {
 					_, head, buff, _, err = UDPRead(conn, HandshakeTimeout)
@@ -224,7 +224,7 @@ func handshakeS2C(t *P2PTunnel) error {
 			}
 			if head.MainType == MsgP2P && head.SubType == MsgPunchHandshakeAck {
 				gLog.Printf(LvDEBUG, "handshakeS2C read %d handshake ack %s", t.id, conn.LocalAddr().String())
-				UDPWrite(conn, t.ra, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
+				UDPWrite(conn, t.remoteHoleAddr, MsgP2P, MsgPunchHandshakeAck, P2PHandshakeReq{ID: t.id})
 				gotIt = true
 				la, _ := net.ResolveUDPAddr("udp", conn.LocalAddr().String())
 				gotCh <- la
@@ -238,14 +238,14 @@ func handshakeS2C(t *P2PTunnel) error {
 	gLog.Printf(LvDEBUG, "send symmetric handshake end")
 	if compareVersion(t.config.peerVersion, SymmetricSimultaneouslySendVersion) < 0 { // compatible with old client
 		gLog.Println(LvDEBUG, "handshakeS2C ready, notify peer connect")
-		t.pn.push(t.config.PeerNode, MsgPushHandshakeStart, TunnelMsg{ID: t.id})
+		GNetwork.push(t.config.PeerNode, MsgPushHandshakeStart, TunnelMsg{ID: t.id})
 	}
 
 	select {
 	case <-time.After(HandshakeTimeout):
 		return fmt.Errorf("wait handshake timeout")
 	case la := <-gotCh:
-		t.la = la
+		t.localHoleAddr = la
 		gLog.Println(LvDEBUG, "symmetric handshake ok", la)
 		gLog.Printf(LvINFO, "handshakeS2C ok. cost %dms", time.Since(startTime)/time.Millisecond)
 	}

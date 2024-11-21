@@ -468,7 +468,7 @@ func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t 
 		}
 	}
 
-	t = &P2PTunnel{pn: pn,
+	t = &P2PTunnel{
 		config:         config,
 		id:             tid,
 		writeData:      make(chan []byte, WriteDataChanSize),
