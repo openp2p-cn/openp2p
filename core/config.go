@@ -239,7 +239,7 @@ func (c *Config) delete(app AppConfig) {
 	defer c.save()
 	for i := 0; i < len(c.Apps); i++ {
 		if (app.SrcPort != 0 && c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort) || // normal app
-			(app.SrcPort == 0 && c.Apps[i].PeerNode == app.PeerNode) { // memapp
+			(app.SrcPort == 0 && c.Apps[i].SrcPort == 0 && c.Apps[i].PeerNode == app.PeerNode) { // memapp
 			if i == len(c.Apps)-1 {
 				c.Apps = c.Apps[:i]
 			} else {

@@ -27,7 +27,7 @@ func DefaultReadBuffer(ul underlay) (*openP2PHeader, []byte, error) {
 		return nil, nil, err
 	}
 	head, err := decodeHeader(headBuf)
-	if err != nil {
+	if err != nil || head.MainType > 16 {
 		return nil, nil, err
 	}
 	dataBuf := make([]byte, head.DataLen)

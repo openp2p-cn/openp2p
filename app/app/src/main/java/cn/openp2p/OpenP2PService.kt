@@ -203,7 +203,8 @@ class OpenP2PService : VpnService() {
                 val network = Network(id, name, gateway, nodeList)
                 println(network)
                 Log.i(OpenP2PService.LOG_TAG, "onBind");
-                builder.addDnsServer("8.8.8.8")
+                builder.addDnsServer("223.5.5.5")
+                builder.addDnsServer("2400:3200::1") // alicloud dns v6 & v4
                 builder.addRoute("10.2.3.0", 24)
 //            builder.addRoute("0.0.0.0", 0);
                 builder.setSession(LOG_TAG!!)

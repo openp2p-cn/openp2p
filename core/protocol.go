@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.21.8"
+const OpenP2PVersion = "3.21.10"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -215,6 +215,12 @@ const (
 const (
 	MsgSDWANInfoReq = iota
 	MsgSDWANInfoRsp
+)
+
+// MsgNATDetect
+const (
+	MsgNAT = iota
+	MsgPublicIP
 )
 
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
