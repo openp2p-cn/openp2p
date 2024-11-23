@@ -13,8 +13,8 @@ type LogLevel int
 var gLog *logger
 
 const (
-	LvDev   LogLevel = -1
-	LvDEBUG LogLevel = iota
+	LvDev LogLevel = iota + -1
+	LvDEBUG
 	LvINFO
 	LvWARN
 	LvERROR
