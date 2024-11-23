@@ -13,8 +13,8 @@ type LogLevel int
 var gLog *logger
 
 const (
-	LvDev   LogLevel = -1
-	LvDEBUG LogLevel = iota
+	LvDev LogLevel = iota + -1
+	LvDEBUG
 	LvINFO
 	LvWARN
 	LvERROR
@@ -105,6 +105,11 @@ func (l *logger) setMode(mode int) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 	l.mode = mode
+}
+func (l *logger) Mode() int {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+	return l.mode
 }
 
 func (l *logger) checkFile() {
