@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.21.10"
+const OpenP2PVersion = "3.21.12"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -167,7 +167,7 @@ const (
 	MaxRetry                   = 10
 	Cone2ConeTCPPunchMaxRetry  = 1
 	Cone2ConeUDPPunchMaxRetry  = 1
-	PublicIPEchoTimeout        = time.Second * 1
+	PublicIPEchoTimeout        = time.Second * 3
 	NatTestTimeout             = time.Second * 5
 	UDPReadTimeout             = time.Second * 5
 	ClientAPITimeout           = time.Second * 10

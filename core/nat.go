@@ -121,18 +121,6 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 		return
 	}
 	defer echoConn.Close()
-	go func() {
-		// close outside for breaking the ReadFromUDP
-		// wait 30s for echo testing
-		buf := make([]byte, 1600)
-		echoConn.SetReadDeadline(time.Now().Add(time.Second * 30))
-		n, addr, err := echoConn.ReadFromUDP(buf)
-		if err != nil {
-			return
-		}
-		echoConn.WriteToUDP(buf[0:n], addr)
-		gLog.Println(LvDEBUG, "echo server end")
-	}()
 	// testing for public ip
 	for i := 0; i < 2; i++ {
 		if i == 1 {
@@ -173,22 +161,22 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 		msg, _ := newMessage(MsgNATDetect, MsgPublicIP, NatDetectReq{EchoPort: echoPort})
 		_, err = conn.WriteTo(msg, dst)
 		if err != nil {
-			return
+			continue
 		}
 		buf := make([]byte, 1600)
 
 		// wait for echo testing
-		conn.SetReadDeadline(time.Now().Add(PublicIPEchoTimeout))
-		nRead, _, err := conn.ReadFromUDP(buf)
+		echoConn.SetReadDeadline(time.Now().Add(PublicIPEchoTimeout))
+		nRead, _, err := echoConn.ReadFromUDP(buf)
 		if err != nil {
-			gLog.Println(LvERROR, "PublicIP detect error:", err)
-			break
+			gLog.Println(LvDEBUG, "PublicIP detect error:", err)
+			continue
 		}
 		natRsp := NatDetectRsp{}
 		err = json.Unmarshal(buf[openP2PHeaderSize:nRead], &natRsp)
 		if err != nil {
-			gLog.Println(LvERROR, "PublicIP detect error:", err)
-			break
+			gLog.Println(LvDEBUG, "PublicIP detect error:", err)
+			continue
 		}
 		if natRsp.Port == echoPort {
 			if i == 1 {

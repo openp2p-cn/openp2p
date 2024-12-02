@@ -60,6 +60,7 @@ func (d *daemon) run() {
 			break
 		}
 	}
+
 	args = append(args, "-nv")
 	for {
 		// start worker
@@ -72,6 +73,7 @@ func (d *daemon) run() {
 		}
 		gLog.Println(LvINFO, "start worker process, args:", args)
 		execSpec := &os.ProcAttr{Env: append(os.Environ(), "GOTRACEBACK=crash"), Files: []*os.File{os.Stdin, os.Stdout, f}}
+		lastRebootTime := time.Now()
 		p, err := os.StartProcess(binPath, args, execSpec)
 		if err != nil {
 			gLog.Printf(LvERROR, "start worker error:%s", err)
@@ -88,8 +90,11 @@ func (d *daemon) run() {
 		if !d.running {
 			return
 		}
-		gLog.Printf(LvERROR, "worker stop, restart it after 10s")
-		time.Sleep(time.Second * 10)
+		if time.Since(lastRebootTime) < time.Second*10 {
+			gLog.Printf(LvERROR, "worker stop, restart it after 10s")
+			time.Sleep(time.Second * 10)
+		}
+
 	}
 }
 
