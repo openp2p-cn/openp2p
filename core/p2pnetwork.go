@@ -115,7 +115,7 @@ func (pn *P2PNetwork) run() {
 			pn.write(MsgHeartbeat, 0, "")
 		case <-pn.restartCh:
 			gLog.Printf(LvDEBUG, "got restart channel")
-			GNetwork.sdwan.reset()
+			pn.sdwan.reset()
 			pn.online = false
 			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
 			delay := ClientAPITimeout + time.Duration(rand.Int()%pn.loginMaxDelaySeconds)*time.Second
