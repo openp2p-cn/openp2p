@@ -162,3 +162,5 @@ Email: openp2p.cn@gmail.com tenderiron@139.com
 ## Disclaimer
 This project is open source for everyone to learn and use for free. It is forbidden to be used for illegal purposes. Any loss caused by improper use of this project or accident, this project and related personnel will not bear any responsibility. 
 
+## Thanks
+[![Powered by DartNode](https://dartnode.com/branding/DN-Open-Source-sm.png)](https://dartnode.com "Powered by DartNode - Free VPS for Open Source")
