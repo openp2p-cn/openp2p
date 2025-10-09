@@ -19,7 +19,7 @@
 
 [查看详细](#安全性)
 ### 4. 轻量
-文件大小2MB+，运行内存2MB+；它可以仅跑在应用层，或者配合wintun驱动使用组网功能
+文件大小不到10MB，cpu占用极低；它可以仅跑在应用层，或者配合kmod-tun/wintun驱动使用组网功能
 ### 5. 跨平台
 因为轻量，所以很容易支持各个平台。支持主流的操作系统：Windows,Linux,MacOS；和主流的cpu架构：386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64、s390x、ppc64le
 ### 6. 高效
@@ -33,11 +33,11 @@ P2P直连可以让你的设备跑满带宽。不论你的设备在任何网络�
 下面是一个远程办公例子：在家里连入办公室Windows电脑。  
 （另外一个快速入门视频 <https://www.bilibili.com/video/BV1Et4y1P7bF/>）
 ### 1.注册
-前往<https://console.openp2p.cn> 注册新用户，暂无需任何认证
+前往<https://console.openp2p.cn> 使用邮箱注册新用户，暂无需任何认证
 
    ![image](/doc/images/register.png)
 ### 2.安装
-分别在本地和远程电脑下载后双击运行，一键安装
+分别在本地和远程电脑下载后双击运行，一键安装(如果是windows用户,在浏览器下载后请勿修改文件名!!!)
 
    ![image](/doc/images/install.png)
    
@@ -46,7 +46,7 @@ Windows默认会阻止没有花钱买它家证书签名过的程序，选择“�
    ![image](/doc/images/win10warn.png)
 
    ![image](/doc/images/stillrun.png)
-### 3.新建P2P应用
+### 3.新建端口转发(P2PApp)
 
 ![image](/doc/images/devices.png)
 
@@ -54,12 +54,12 @@ Windows默认会阻止没有花钱买它家证书签名过的程序，选择“�
 
 ![image](/doc/images/newappedit.png)
 
-### 4.使用P2P应用
-在“MyHomePC”设备上能看到刚才创建的P2P应用，连接下图显示的“本地监听端口”即可。
+### 4.使用端口转发(P2PApp)
+在“MyHomePC2”设备上能看到刚才创建的端口转发(P2PApp)，连接下图显示的“本地监听端口”即可。
 
 ![image](/doc/images/p2pappok.png)
 
-在家里Windows电脑，按Win+R输入mstsc打开远程桌面，输入127.0.0.1:23389 /admin  
+在MyHomePC2电脑上，按Win+R输入mstsc打开远程桌面，输入127.0.0.1:23389 /admin  
 
    ![image](/doc/images/mstscconnect.png)
 
@@ -82,8 +82,8 @@ Windows默认会阻止没有花钱买它家证书签名过的程序，选择“�
 ![image](/doc/images/prototype.png)
 ### 客户端架构
 ![image](/doc/images/architecture.png)
-### P2PApp
-它是项目里最重要的概念，一个P2PApp就是把远程的一个服务（mstsc/ssh等）通过P2P网络映射到本地监听。二次开发或者我们提供的Restful API，主要工作就是管理P2PApp
+### 端口转发(P2PApp)
+它是项目里最重要的概念，一个端口转发(P2PApp)就是把远程的一个服务（mstsc/ssh等）通过P2P网络映射到本地监听。二次开发或者我们提供的Restful API，主要工作就是管理端口转发(P2PApp)
 ![image](/doc/images/appdetail.png)
 ## 安全性
 加入OpenP2P共享网络的节点，只能凭授权访问。共享节点只会中转数据，别人无法访问内网任何资源。
@@ -123,8 +123,8 @@ CGO_ENABLED=0 env GOOS=linux GOARCH=amd64 go build -o openp2p --ldflags '-s -w '
 1. ~~支持IPv6~~(100%)
 2. ~~支持随系统自动启动，安装成系统服务~~(100%)
 3. ~~提供一些免费服务器给特别差的网络，如广电网络~~(100%)
-4. ~~建立网站，用户可以在网站管理所有P2PApp和设备。查看设备在线状态，升级，增删查改重启P2PApp等~~(100%)
-5. 建立公众号，用户可在微信公众号管理所有P2PApp和设备
+4. ~~建立网站，用户可以在网站管理所有端口转发(P2PApp)和设备。查看设备在线状态，升级，增删查改重启端口转发(P2PApp)等~~(100%)
+5. 建立公众号，用户可在微信公众号管理所有端口转发(P2PApp)和设备
 6. 客户端提供WebUI
 7. ~~支持自有服务器，开源服务器程序~~(100%)
 8. 共享节点调度模型优化，对不同的运营商优化
