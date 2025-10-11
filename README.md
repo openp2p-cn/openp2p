@@ -19,7 +19,7 @@ The code is open source, the P2P tunnel uses TLS1.3+AES double encryption, and t
 [details](#Safety)
 
 ### 4. Lightweight
-2MB+ filesize, 2MB+ memory. It could only runs at application layer, or uses wintun driver for SDWAN.
+10MB filesize, Extremely low CPU usage. It could only runs at application layer, or uses kmod-tun/wintun driver for SDWAN.
 
 ### 5. Cross-platform
 Benefit from lightweight, it easily supports most of major OS, like Windows, Linux, MacOS, also most of CPU architecture, like 386、amd64、arm、arm64、mipsle、mipsle64、mips、mips64、s390x、ppc64le.
@@ -35,11 +35,11 @@ Just 4 simple steps to use.
 Here's an example of remote work: connecting to an office Windows computer at home.
 (Another quick started vedio https://www.bilibili.com/video/BV1Et4y1P7bF/)
 ### 1.Register
-Go to <https://console.openp2p.cn> register a new user
+Go to <https://console.openp2p.cn> register a new user using email
 
    ![image](/doc/images/register_en.png)
 ### 2.Install
-Download on local and remote computers and double-click to run, one-click installation
+Download on local and remote computers and double-click to run, one-click installation (Windows user, please do not modify the file name after downloading in the browser!!!)
 
    ![image](/doc/images/install_en.png)
 
@@ -49,7 +49,7 @@ By default, Windows will block programs that have not been signed by the Microso
 
    ![image](/doc/images/stillrun_en.png)
    
-### 3.New P2PApp
+### 3.New Port ForWard (P2PApp)
 
 ![image](/doc/images/devices_en.png)
 
@@ -57,12 +57,12 @@ By default, Windows will block programs that have not been signed by the Microso
 
 ![image](/doc/images/newappedit_en.png)
 
-### 4.Use P2PApp
-You can see the P2P application you just created on the "MyHomePC" device, just connect to the "local listening port" shown in the figure below.
+### 4.Use Port ForWard (P2PApp)
+You can see the P2P application you just created on the "MyHomePC2" device, just connect to the "local listening port" shown in the figure below.
 
 ![image](/doc/images/p2pappok_en.png)
 
-On MyHomePC, press Win+R and enter MSTSC to open the remote desktop, input `127.0.0.1:23389 /admin`
+On MyHomePC2, press Win+R and enter MSTSC to open the remote desktop, input `127.0.0.1:23389 /admin`
 
    ![image](/doc/images/mstscconnect_en.png)
 
@@ -86,8 +86,8 @@ Especially suitable for large traffic intranet access.
 ![image](/doc/images/prototype.png)
 ### Client architecture
 ![image](/doc/images/architecture.png)
-### P2PApp
-P2PAPP is the most import concept in this project, one P2PApp is able to map the remote service(mstsc/ssh) to the local listening. The main job of re-development or restful API we provide is to manage P2PApp.
+### Port ForWard (P2PApp)
+Port ForWard (P2PApp) is the most import concept in this project, one Port ForWard (P2PApp) is able to map the remote service(mstsc/ssh) to the local listening. The main job of re-development or restful API we provide is to manage Port ForWard (P2PApp).
 
 ![image](/doc/images/appdetail.png)
 
@@ -131,8 +131,8 @@ Short-Term:
 1. ~~Support IPv6.~~(100%)
 2. ~~Support auto run when system boot, setup system service.~~(100%)
 3. ~~Provide free servers to some low-performance network.~~(100%)
-4. ~~Build website, users can manage all P2PApp and devices via it. View devices' online status, upgrade, restart or CURD P2PApp .~~(100%)
-5. Provide wechat official account, user can manage P2PApp nodes and deivce as same as website.
+4. ~~Build website, users can manage all Port ForWard (P2PApp) and devices via it. View devices' online status, upgrade, restart or CURD Port ForWard (P2PApp) .~~(100%)
+5. Provide wechat official account, user can manage Port ForWard (P2PApp) nodes and deivce as same as website.
 6. Provide WebUI on client side.
 7. ~~Support private server, open source server program.~~(100%)
 8. Optimize our share scheduling model for different network operators.
