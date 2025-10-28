@@ -281,8 +281,6 @@ func init() {
 	gConf.MaxLogSize = 1024 * 1024
 	gConf.Network.ShareBandwidth = 10
 	gConf.Network.ServerHost = "api.openp2p.cn"
-	gConf.Network.ServerPort = WsPort
-
 }
 
 func (c *Config) load() error {
@@ -394,7 +392,7 @@ type NetworkConfig struct {
 
 func parseParams(subCommand string, cmd string) {
 	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
-	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
+	serverHost := fset.String("serverhost", gConf.Network.ServerHost, "server host ")
 	serverPort := fset.Int("serverport", WsPort, "server port ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
 	token := fset.Uint64("token", 0, "token")
@@ -410,11 +408,11 @@ func parseParams(subCommand string, cmd string) {
 	punchPriority := fset.Int("punch_priority", 0, "bitwise DisableTCP|DisableUDP|UDPFirst  0:tcp and udp both enable, tcp first")
 	appName := fset.String("appname", "", "app name")
 	relayNode := fset.String("relaynode", "", "relaynode")
-	shareBandwidth := fset.Int("sharebandwidth", 10, "N mbps share bandwidth limit, private network no limit")
+	shareBandwidth := fset.Int("sharebandwidth", gConf.Network.ShareBandwidth, "N mbps share bandwidth limit, private network no limit")
 	daemonMode := fset.Bool("d", false, "daemonMode")
 	notVerbose := fset.Bool("nv", false, "not log console")
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
-	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
+	logLevel := fset.Int("loglevel", gConf.LogLevel, "0:debug 1:info 2:warn 3:error")
 	maxLogSize := fset.Int("maxlogsize", 1024*1024, "default 1MB")
 	if cmd == "" {
 		if subCommand == "" { // no subcommand
@@ -507,7 +505,7 @@ func parseParams(subCommand string, cmd string) {
 	gConf.Network.UDPPort2 = UDPPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	if *notVerbose {
-		gLog.setMode(LogFile)
+		gLog.setMode(gLog.Mode() &^ LogConsole)
 	}
 	// gConf.mtx.Unlock()
 	gConf.save()
