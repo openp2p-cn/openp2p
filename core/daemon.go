@@ -1,7 +1,6 @@
 package openp2p
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -15,12 +14,12 @@ type daemon struct {
 }
 
 func (d *daemon) Start(s service.Service) error {
-	gLog.Println(LvINFO, "daemon start")
+	gLog.Println(LvINFO, "system service start")
 	return nil
 }
 
 func (d *daemon) Stop(s service.Service) error {
-	gLog.Println(LvINFO, "service stop")
+	gLog.Println(LvINFO, "system service stop")
 	d.running = false
 	if d.proc != nil {
 		gLog.Println(LvINFO, "stop worker")
@@ -38,11 +37,6 @@ func (d *daemon) run() {
 	defer gLog.Println(LvINFO, "daemon run end")
 	d.running = true
 	binPath, _ := os.Executable()
-	mydir, err := os.Getwd()
-	if err != nil {
-		fmt.Println(err)
-	}
-	gLog.Println(LvINFO, mydir)
 	conf := &service.Config{
 		Name:        ProductName,
 		DisplayName: ProductName,
@@ -68,7 +62,7 @@ func (d *daemon) run() {
 		dumpFile := filepath.Join("log", "dump.log")
 		f, err := os.Create(filepath.Join(tmpDump))
 		if err != nil {
-			gLog.Printf(LvERROR, "start worker error:%s", err)
+			gLog.Printf(LvERROR, "create file %s error:%s", tmpDump, err)
 			return
 		}
 		gLog.Println(LvINFO, "start worker process, args:", args)

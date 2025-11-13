@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
-	"runtime"
 	"strings"
 	"syscall"
 )

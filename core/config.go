@@ -174,7 +174,7 @@ func (c *Config) retryApp(peerNode string) {
 			app.hbMtx.Unlock()
 		}
 		if app.config.RelayNode == peerNode {
-			gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
+			gLog.Println(LvDEBUG, "retry app relay=", app.config.LogPeerNode())
 			app.retryRelayNum = 0
 			app.nextRetryRelayTime = time.Now()
 			app.hbMtx.Lock()
@@ -423,7 +423,6 @@ func parseParams(subCommand string, cmd string) {
 			fset.Parse(os.Args[2:])
 		}
 	} else {
-		gLog.Println(LvINFO, "cmd=", cmd)
 		args := strings.Split(cmd, " ")
 		fset.Parse(args)
 	}

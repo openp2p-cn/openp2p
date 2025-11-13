@@ -41,8 +41,8 @@ type overlayConn struct {
 }
 
 func (oConn *overlayConn) run() {
-	gLog.Printf(LvDEBUG, "%d overlayConn run start", oConn.id)
-	defer gLog.Printf(LvDEBUG, "%d overlayConn run end", oConn.id)
+	gLog.Printf(LvDEBUG, "oid:%d overlayConn run start", oConn.id)
+	defer gLog.Printf(LvDEBUG, "oid:%d overlayConn run end", oConn.id)
 	oConn.lastReadUDPTs = time.Now()
 	buffer := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
 	reuseBuff := buffer[:ReadBuffLen]
@@ -58,7 +58,7 @@ func (oConn *overlayConn) run() {
 				continue
 			}
 			// overlay tcp connection normal close, debug log
-			gLog.Printf(LvDEBUG, "overlayConn %d read error:%s,close it", oConn.id, err)
+			gLog.Printf(LvDEBUG, "oid:%d overlayConn read error:%s,close it", oConn.id, err)
 			break
 		}
 		payload := readBuff[:dataLen]
@@ -69,13 +69,13 @@ func (oConn *overlayConn) run() {
 		// TODO: app.write
 		if oConn.rtid == 0 {
 			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgOverlayData, writeBytes)
-			gLog.Printf(LvDev, "write overlay data to tid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.id, len(writeBytes))
+			gLog.Printf(LvDev, "oid:%d write overlay data to tid:%d bodylen=%d", oConn.id, oConn.tunnel.id, oConn.id, len(writeBytes))
 		} else {
 			// write raley data
 			all := append(relayHead.Bytes(), encodeHeader(MsgP2P, MsgOverlayData, uint32(len(writeBytes)))...)
 			all = append(all, writeBytes...)
 			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, all)
-			gLog.Printf(LvDev, "write relay data to tid:%d,rtid:%d,oid:%d bodylen=%d", oConn.tunnel.id, oConn.rtid, oConn.id, len(writeBytes))
+			gLog.Printf(LvDev, "oid:%d write relay data to tid:%d,rtid:%d bodylen=%d", oConn.id, oConn.tunnel.id, oConn.rtid, len(writeBytes))
 		}
 	}
 	if oConn.connTCP != nil {

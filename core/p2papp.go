@@ -138,7 +138,7 @@ func (app *p2pApp) checkDirectTunnel() error {
 		app.config.retryNum = 1
 	}
 	if app.config.retryNum > 0 { // first time not show reconnect log
-		gLog.Printf(LvINFO, "detect app %s appid:%d disconnect, reconnecting the %d times...", app.config.LogPeerNode(), app.id, app.config.retryNum)
+		gLog.Printf(LvINFO, "appid:%d checkDirectTunnel detect peer %s disconnect, reconnecting the %d times...", app.id, app.config.LogPeerNode(), app.config.retryNum)
 	}
 	app.config.retryNum++
 	app.config.retryTime = time.Now()
@@ -149,7 +149,7 @@ func (app *p2pApp) checkDirectTunnel() error {
 		app.config.errMsg = err.Error()
 		if err == ErrPeerOffline && app.config.retryNum > 2 { // stop retry, waiting for online
 			app.config.retryNum = retryLimit
-			gLog.Printf(LvINFO, " %s offline, it will auto reconnect when peer node online", app.config.LogPeerNode())
+			gLog.Printf(LvINFO, "appid:%d checkDirectTunnel %s offline, it will auto reconnect when peer node online", app.id, app.config.LogPeerNode())
 		}
 		if err == ErrBuildTunnelBusy {
 			app.config.retryNum--
@@ -174,7 +174,7 @@ func (app *p2pApp) buildDirectTunnel() error {
 	pn := GNetwork
 	initErr := pn.requestPeerInfo(&app.config)
 	if initErr != nil {
-		gLog.Printf(LvERROR, "%s requestPeerInfo error:%s", app.config.LogPeerNode(), initErr)
+		gLog.Printf(LvERROR, "appid:%d buildDirectTunnel %s requestPeerInfo error:%s", app.id, app.config.LogPeerNode(), initErr)
 		return initErr
 	}
 	t, err = pn.addDirectTunnel(app.config, 0)
@@ -212,7 +212,7 @@ func (app *p2pApp) buildDirectTunnel() error {
 		AppID:  app.id,
 		AppKey: app.key,
 	}
-	gLog.Printf(LvDEBUG, "sync appkey direct to %s", app.config.LogPeerNode())
+	gLog.Printf(LvDEBUG, "appid:%d buildDirectTunnel sync appkey to %s", app.id, app.config.LogPeerNode())
 	pn.push(app.config.PeerNode, MsgPushAPPKey, &syncKeyReq)
 	app.setDirectTunnel(t)
 
@@ -220,9 +220,9 @@ func (app *p2pApp) buildDirectTunnel() error {
 	if app.config.SrcPort == 0 {
 		req := ServerSideSaveMemApp{From: gConf.Network.Node, Node: gConf.Network.Node, TunnelID: t.id, RelayTunnelID: 0, AppID: app.id}
 		pn.push(app.config.PeerNode, MsgPushServerSideSaveMemApp, &req)
-		gLog.Printf(LvDEBUG, "push %s ServerSideSaveMemApp: %s", app.config.LogPeerNode(), prettyJson(req))
+		gLog.Printf(LvDEBUG, "appid:%d buildDirectTunnel push %s ServerSideSaveMemApp: %s", app.id, app.config.LogPeerNode(), prettyJson(req))
 	}
-	gLog.Printf(LvDEBUG, "%s use tunnel %d", app.config.AppName, t.id)
+	gLog.Printf(LvDEBUG, "appid:%d buildDirectTunnel ok. %s use tid %d", app.id, app.config.AppName, t.id)
 	return nil
 }
 
@@ -244,7 +244,7 @@ func (app *p2pApp) checkRelayTunnel() error {
 		app.retryRelayNum = 1
 	}
 	if app.retryRelayNum > 0 { // first time not show reconnect log
-		gLog.Printf(LvINFO, "detect app %s appid:%d relay disconnect, reconnecting the %d times...", app.config.LogPeerNode(), app.id, app.retryRelayNum)
+		gLog.Printf(LvINFO, "appid:%d checkRelayTunnel detect peer %s relay disconnect, reconnecting the %d times...", app.id, app.config.LogPeerNode(), app.retryRelayNum)
 	}
 	app.setRelayTunnel(nil) // reset relayTunnel
 	app.retryRelayNum++
@@ -256,7 +256,7 @@ func (app *p2pApp) checkRelayTunnel() error {
 		app.errMsg = err.Error()
 		if err == ErrPeerOffline && app.retryRelayNum > 2 { // stop retry, waiting for online
 			app.retryRelayNum = retryLimit
-			gLog.Printf(LvINFO, " %s offline, it will auto reconnect when peer node online", app.config.LogPeerNode())
+			gLog.Printf(LvINFO, "appid:%d checkRelayTunnel %s offline, it will auto reconnect when peer node online", app.id, app.config.LogPeerNode())
 		}
 	}
 	if app.Tunnel() != nil {
@@ -282,7 +282,7 @@ func (app *p2pApp) buildRelayTunnel() error {
 	config := app.config
 	initErr := pn.requestPeerInfo(&config)
 	if initErr != nil {
-		gLog.Printf(LvERROR, "%s init error:%s", config.LogPeerNode(), initErr)
+		gLog.Printf(LvERROR, "appid:%d buildRelayTunnel %s init error:%s", app.id, config.LogPeerNode(), initErr)
 		return initErr
 	}
 
@@ -318,7 +318,7 @@ func (app *p2pApp) buildRelayTunnel() error {
 		AppID:  app.id,
 		AppKey: app.key,
 	}
-	gLog.Printf(LvDEBUG, "sync appkey relay to %s", config.LogPeerNode())
+	gLog.Printf(LvDEBUG, "appid:%d buildRelayTunnel sync appkey relay to %s", app.id, config.LogPeerNode())
 	pn.push(config.PeerNode, MsgPushAPPKey, &syncKeyReq)
 	app.setRelayTunnelID(rtid)
 	app.setRelayTunnel(t)
@@ -330,9 +330,9 @@ func (app *p2pApp) buildRelayTunnel() error {
 	if config.SrcPort == 0 {
 		req := ServerSideSaveMemApp{From: gConf.Network.Node, Node: relayNode, TunnelID: rtid, RelayTunnelID: t.id, AppID: app.id, RelayMode: relayMode}
 		pn.push(config.PeerNode, MsgPushServerSideSaveMemApp, &req)
-		gLog.Printf(LvDEBUG, "push %s relay ServerSideSaveMemApp: %s", config.LogPeerNode(), prettyJson(req))
+		gLog.Printf(LvDEBUG, "appid:%d buildRelayTunnel push %s relay ServerSideSaveMemApp: %s", app.id, config.LogPeerNode(), prettyJson(req))
 	}
-	gLog.Printf(LvDEBUG, "%s use tunnel %d", app.config.AppName, t.id)
+	gLog.Printf(LvDEBUG, "appid:%d buildRelayTunnel %s use tunnel %d", app.id, app.config.AppName, t.id)
 	return nil
 }
 
@@ -380,8 +380,8 @@ func (app *p2pApp) updateHeartbeat() {
 }
 
 func (app *p2pApp) listenTCP() error {
-	gLog.Printf(LvDEBUG, "tcp accept on port %d start", app.config.SrcPort)
-	defer gLog.Printf(LvDEBUG, "tcp accept on port %d end", app.config.SrcPort)
+	gLog.Printf(LvDEBUG, "appid:%d tcp accept on port %d start", app.id, app.config.SrcPort)
+	defer gLog.Printf(LvDEBUG, "appid:%d tcp accept on port %d end", app.id, app.config.SrcPort)
 	var err error
 	listenAddr := ""
 	if IsLocalhost(app.config.Whitelist) { // not expose port
@@ -389,7 +389,7 @@ func (app *p2pApp) listenTCP() error {
 	}
 	app.listener, err = net.Listen("tcp", fmt.Sprintf("%s:%d", listenAddr, app.config.SrcPort))
 	if err != nil {
-		gLog.Printf(LvERROR, "listen error:%s", err)
+		gLog.Printf(LvERROR, "appid:%d listen error:%s", app.id, err)
 		return err
 	}
 	defer app.listener.Close()
@@ -397,12 +397,12 @@ func (app *p2pApp) listenTCP() error {
 		conn, err := app.listener.Accept()
 		if err != nil {
 			if app.running {
-				gLog.Printf(LvERROR, "%d accept error:%s", app.id, err)
+				gLog.Printf(LvERROR, "appid:%d  accept error:%s", app.id, err)
 			}
 			break
 		}
 		if app.Tunnel() == nil {
-			gLog.Printf(LvDEBUG, "srcPort=%d, app.Tunnel()==nil, not ready", app.config.SrcPort)
+			gLog.Printf(LvDEBUG, "appid:%d srcPort=%d, app.Tunnel()==nil, not ready", app.id, app.config.SrcPort)
 			time.Sleep(time.Second)
 			continue
 		}
@@ -411,7 +411,7 @@ func (app *p2pApp) listenTCP() error {
 			remoteIP := conn.RemoteAddr().(*net.TCPAddr).IP.String()
 			if !app.iptree.Contains(remoteIP) && !IsLocalhost(remoteIP) {
 				conn.Close()
-				gLog.Printf(LvERROR, "%s not in whitelist, access denied", remoteIP)
+				gLog.Printf(LvERROR, "appid:%d %s not in whitelist, access denied", app.id, remoteIP)
 				continue
 			}
 		}
@@ -436,7 +436,7 @@ func (app *p2pApp) listenTCP() error {
 			oConn.appKeyBytes = encryptKey
 		}
 		app.Tunnel().overlayConns.Store(oConn.id, &oConn)
-		gLog.Printf(LvDEBUG, "Accept TCP overlayID:%d, %s", oConn.id, oConn.connTCP.RemoteAddr())
+		gLog.Printf(LvDEBUG, "appid:%d Accept TCP overlayID:%d, %s", app.id, oConn.id, oConn.connTCP.RemoteAddr())
 		// tell peer connect
 		req := OverlayConnectReq{ID: oConn.id,
 			Token:    gConf.Network.Token,
@@ -457,12 +457,12 @@ func (app *p2pApp) listenTCP() error {
 }
 
 func (app *p2pApp) listenUDP() error {
-	gLog.Printf(LvDEBUG, "udp accept on port %d start", app.config.SrcPort)
-	defer gLog.Printf(LvDEBUG, "udp accept on port %d end", app.config.SrcPort)
+	gLog.Printf(LvDEBUG, "appid:%d udp accept on port %d start", app.id, app.config.SrcPort)
+	defer gLog.Printf(LvDEBUG, "appid:%d udp accept on port %d end", app.id, app.config.SrcPort)
 	var err error
 	app.listenerUDP, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: app.config.SrcPort})
 	if err != nil {
-		gLog.Printf(LvERROR, "listen error:%s", err)
+		gLog.Printf(LvERROR, "appid:%d listen error:%s", app.id, err)
 		return err
 	}
 	defer app.listenerUDP.Close()
@@ -475,12 +475,12 @@ func (app *p2pApp) listenUDP() error {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			} else {
-				gLog.Printf(LvERROR, "udp read failed:%s", err)
+				gLog.Printf(LvERROR, "appid:%d udp read failed:%s", app.id, err)
 				break
 			}
 		} else {
 			if app.Tunnel() == nil {
-				gLog.Printf(LvDEBUG, "srcPort=%d, app.Tunnel()==nil, not ready", app.config.SrcPort)
+				gLog.Printf(LvDEBUG, "appid:%d srcPort=%d, app.Tunnel()==nil, not ready", app.id, app.config.SrcPort)
 				time.Sleep(time.Second)
 				continue
 			}
@@ -521,7 +521,7 @@ func (app *p2pApp) listenUDP() error {
 					oConn.appKeyBytes = encryptKey
 				}
 				app.Tunnel().overlayConns.Store(oConn.id, &oConn)
-				gLog.Printf(LvDEBUG, "Accept UDP overlayID:%d", oConn.id)
+				gLog.Printf(LvDEBUG, "appid:%d Accept UDP overlayID:%d", app.id, oConn.id)
 				// tell peer connect
 				req := OverlayConnectReq{ID: oConn.id,
 					Token:    gConf.Network.Token,
@@ -555,8 +555,8 @@ func (app *p2pApp) listen() error {
 	if app.config.SrcPort == 0 {
 		return nil
 	}
-	gLog.Printf(LvINFO, "LISTEN ON PORT %s:%d START", app.config.Protocol, app.config.SrcPort)
-	defer gLog.Printf(LvINFO, "LISTEN ON PORT %s:%d END", app.config.Protocol, app.config.SrcPort)
+	gLog.Printf(LvINFO, "appid:%d LISTEN ON PORT %s:%d START", app.id, app.config.Protocol, app.config.SrcPort)
+	defer gLog.Printf(LvINFO, "appid:%d LISTEN ON PORT %s:%d END", app.id, app.config.Protocol, app.config.SrcPort)
 	app.wg.Add(1)
 	defer app.wg.Done()
 	for app.running {
@@ -594,8 +594,8 @@ func (app *p2pApp) close() {
 func (app *p2pApp) relayHeartbeatLoop() {
 	app.wg.Add(1)
 	defer app.wg.Done()
-	gLog.Printf(LvDEBUG, "%s appid:%d relayHeartbeat to rtid:%d start", app.config.LogPeerNode(), app.id, app.rtid)
-	defer gLog.Printf(LvDEBUG, "%s appid:%d relayHeartbeat to rtid%d end", app.config.LogPeerNode(), app.id, app.rtid)
+	gLog.Printf(LvDEBUG, "appid:%d %s relayHeartbeat to rtid:%d start", app.id, app.config.LogPeerNode(), app.rtid)
+	defer gLog.Printf(LvDEBUG, "appid:%d %s relayHeartbeat to rtid%d end", app.id, app.config.LogPeerNode(), app.rtid)
 
 	for app.running {
 		if app.RelayTunnel() == nil || !app.RelayTunnel().isRuning() {
@@ -606,11 +606,11 @@ func (app *p2pApp) relayHeartbeatLoop() {
 			AppID: app.id}
 		err := app.RelayTunnel().WriteMessage(app.rtid, MsgP2P, MsgRelayHeartbeat, &req)
 		if err != nil {
-			gLog.Printf(LvERROR, "%s appid:%d rtid:%d write relay tunnel heartbeat error %s", app.config.LogPeerNode(), app.id, app.rtid, err)
+			gLog.Printf(LvERROR, "appid:%d %s rtid:%d write relay tunnel heartbeat error %s", app.id, app.config.LogPeerNode(), app.rtid, err)
 			return
 		}
 		// TODO: debug relay heartbeat
-		gLog.Printf(LvDEBUG, "%s appid:%d rtid:%d write relay tunnel heartbeat ok", app.config.LogPeerNode(), app.id, app.rtid)
+		gLog.Printf(LvDEBUG, "appid:%d %s rtid:%d write relay tunnel heartbeat ok", app.id, app.config.LogPeerNode(), app.rtid)
 		time.Sleep(TunnelHeartbeatTime)
 	}
 }

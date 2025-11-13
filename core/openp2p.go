@@ -41,7 +41,7 @@ func Run() {
 		return
 	}
 
-	gLog.Println(LvINFO, &gConf)
+	gLog.Printf(LvINFO, "node=%s, serverHost=%s, serverPort=%d", gConf.Network.Node, gConf.Network.ServerHost, gConf.Network.ServerPort)
 	setFirewall()
 	err := setRLimit()
 	if err != nil {
@@ -78,7 +78,7 @@ func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork
 	gConf.setShareBandwidth(bw)
 	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
 	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
-	gLog.Println(LvINFO, &gConf)
+	gLog.Printf(LvINFO, "node=%s, serverHost=%s, serverPort=%d", gConf.Network.Node, gConf.Network.ServerHost, gConf.Network.ServerPort)
 
 	GNetwork = P2PNetworkInstance()
 	if ok := GNetwork.Connect(30000); !ok {

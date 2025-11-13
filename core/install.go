@@ -24,7 +24,7 @@ func install() {
 	}
 	err = os.Chdir(defaultInstallPath)
 	if err != nil {
-		gLog.Println(LvERROR, "cd error:", err)
+		gLog.Println(LvERROR, "Chdir error:", err)
 		return
 	}
 
@@ -38,7 +38,7 @@ func install() {
 	binPath, _ := os.Executable()
 	src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
 	if errFiles != nil {
-		gLog.Printf(LvERROR, "os.OpenFile %s error:%s", os.Args[0], errFiles)
+		gLog.Printf(LvERROR, "os.Open %s error:%s", os.Args[0], errFiles)
 		return
 	}
 
@@ -57,7 +57,6 @@ func install() {
 	dst.Close()
 
 	// install system service
-	gLog.Println(LvINFO, "targetPath:", targetPath)
 	err = d.Control("install", targetPath, []string{"-d"})
 	if err == nil {
 		gLog.Println(LvINFO, "install system service ok.")

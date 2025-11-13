@@ -28,7 +28,7 @@ func handlePush(subType uint16, msg []byte) error {
 	case MsgPushRsp:
 		rsp := PushRsp{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &rsp); err != nil {
-			gLog.Printf(LvERROR, "wrong pushRsp:%s", err)
+			gLog.Printf(LvERROR, "Unmarshal pushRsp:%s", err)
 			return err
 		}
 		if rsp.Error == 0 {
@@ -39,7 +39,7 @@ func handlePush(subType uint16, msg []byte) error {
 	case MsgPushAddRelayTunnelReq:
 		req := AddRelayTunnelReq{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+			gLog.Printf(LvERROR, "Unmarshal %v:%s", reflect.TypeOf(req), err)
 			return err
 		}
 		config := AppConfig{}
@@ -62,7 +62,7 @@ func handlePush(subType uint16, msg []byte) error {
 	case MsgPushServerSideSaveMemApp:
 		req := ServerSideSaveMemApp{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+			gLog.Printf(LvERROR, "Unmarshal %v:%s", reflect.TypeOf(req), err)
 			return err
 		}
 		gLog.Println(LvDEBUG, "handle MsgPushServerSideSaveMemApp:", prettyJson(req))
@@ -91,7 +91,7 @@ func handlePush(subType uint16, msg []byte) error {
 			} else {
 				app.setRelayTunnel(existTunnel)
 			}
-			gLog.Println(LvDEBUG, "find existing memapp, update it")
+			gLog.Println(LvDEBUG, "found existing memapp, update it")
 		} else {
 			appConfig := existTunnel.config
 			appConfig.SrcPort = 0
@@ -121,7 +121,7 @@ func handlePush(subType uint16, msg []byte) error {
 	case MsgPushAPPKey:
 		req := APPKeySync{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+			gLog.Printf(LvERROR, "Unmarshal %v:%s", reflect.TypeOf(req), err)
 			return err
 		}
 		SaveKey(req.AppID, req.AppKey)
@@ -152,7 +152,7 @@ func handlePush(subType uint16, msg []byte) error {
 		gLog.Println(LvINFO, "MsgPushEditNode")
 		req := EditNode{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &req); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
+			gLog.Printf(LvERROR, "Unmarshal %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
 		gConf.setNode(req.NewName)
@@ -162,7 +162,7 @@ func handlePush(subType uint16, msg []byte) error {
 		gLog.Println(LvINFO, "MsgPushSwitchApp")
 		app := AppInfo{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &app); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(app), err, string(msg[openP2PHeaderSize:]))
+			gLog.Printf(LvERROR, "Unmarshal %v:%s  %s", reflect.TypeOf(app), err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
 		config := AppConfig{Enabled: app.Enabled, SrcPort: app.SrcPort, Protocol: app.Protocol}
@@ -173,13 +173,12 @@ func handlePush(subType uint16, msg []byte) error {
 			GNetwork.DeleteApp(config)
 		}
 	case MsgPushDstNodeOnline:
-		gLog.Println(LvINFO, "MsgPushDstNodeOnline")
 		req := PushDstNodeOnline{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &req); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
+			gLog.Printf(LvERROR, "Unmarshal %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
 			return err
 		}
-		gLog.Println(LvINFO, "retry peerNode ", req.Node)
+		gLog.Printf(LvINFO, "%s online, retryApp", req.Node)
 		gConf.retryApp(req.Node)
 	default:
 		i, ok := GNetwork.msgMap.Load(pushHead.From)
@@ -196,7 +195,7 @@ func handleEditApp(msg []byte) (err error) {
 	gLog.Println(LvINFO, "MsgPushEditApp")
 	newApp := AppInfo{}
 	if err = json.Unmarshal(msg[openP2PHeaderSize:], &newApp); err != nil {
-		gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(newApp), err, string(msg[openP2PHeaderSize:]))
+		gLog.Printf(LvERROR, "Unmarshal %v:%s  %s", reflect.TypeOf(newApp), err, string(msg[openP2PHeaderSize:]))
 		return err
 	}
 	oldConf := AppConfig{Enabled: 1}
@@ -228,11 +227,10 @@ func handleEditApp(msg []byte) (err error) {
 func handleConnectReq(msg []byte) (err error) {
 	req := PushConnectReq{}
 	if err = json.Unmarshal(msg[openP2PHeaderSize+PushHeaderSize:], &req); err != nil {
-		gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+		gLog.Printf(LvERROR, "Unmarshal %v:%s", reflect.TypeOf(req), err)
 		return err
 	}
-	gLog.Printf(LvDEBUG, "%s is connecting...", req.From)
-	gLog.Println(LvDEBUG, "push connect response to ", req.From)
+	gLog.Printf(LvDEBUG, "%s is connecting... push connect response", req.From)
 	if compareVersion(req.Version, LeastSupportVersion) < 0 {
 		gLog.Println(LvERROR, ErrVersionNotCompatible.Error(), ":", req.From)
 		rsp := PushConnectRsp{
@@ -247,7 +245,7 @@ func handleConnectReq(msg []byte) (err error) {
 	// verify totp token or token
 	t := totp.TOTP{Step: totp.RelayTOTPStep}
 	if t.Verify(req.Token, gConf.Network.Token, time.Now().Unix()-GNetwork.dt/int64(time.Second)) { // localTs may behind, auto adjust ts
-		gLog.Printf(LvINFO, "Access Granted")
+		gLog.Printf(LvINFO, "handleConnectReq Access Granted")
 		config := AppConfig{}
 		config.peerNatType = req.NatType
 		config.peerConeNatPort = req.ConeNatPort
@@ -272,7 +270,7 @@ func handleConnectReq(msg []byte) (err error) {
 		}()
 		return nil
 	}
-	gLog.Println(LvERROR, "Access Denied:", req.From)
+	gLog.Println(LvERROR, "handleConnectReq Access Denied:", req.From)
 	rsp := PushConnectRsp{
 		Error:  1,
 		Detail: fmt.Sprintf("connect to %s error: Access Denied", gConf.Network.Node),
@@ -412,7 +410,7 @@ func handleLog(msg []byte) (err error) {
 	const maxLen = 1024 * 1024
 	req := ReportLogReq{}
 	if err = json.Unmarshal(msg[openP2PHeaderSize:], &req); err != nil {
-		gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
+		gLog.Printf(LvERROR, "Unmarshal %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
 		return err
 	}
 	if req.FileName == "" {
@@ -467,7 +465,7 @@ func handleCheckRemoteService(msg []byte) (err error) {
 	gLog.Println(LvDEBUG, "handleCheckRemoteService")
 	req := CheckRemoteService{}
 	if err = json.Unmarshal(msg[openP2PHeaderSize:], &req); err != nil {
-		gLog.Printf(LvERROR, "wrong %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
+		gLog.Printf(LvERROR, "Unmarshal %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
 		return err
 	}
 	rsp := PushRsp{Error: 0}

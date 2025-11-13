@@ -2,6 +2,7 @@ package openp2p
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -497,6 +499,12 @@ func (pn *P2PNetwork) init() error {
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
 	var err error
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return net.Dial("udp", "119.29.29.29:53")
+		},
+	}
 	for {
 		// detect nat type
 		gConf.Network.publicIP, gConf.Network.natType, err = getNATType(gConf.Network.ServerHost, gConf.Network.UDPPort1, gConf.Network.UDPPort2)
@@ -523,12 +531,11 @@ func (pn *P2PNetwork) init() error {
 			gLog.Println(LvINFO, "openp2pC2CTest debug")
 		}
 
-		if gConf.Network.hasIPv4 == 1 || gConf.Network.hasUPNPorNATPMP == 1 {
-			onceV4Listener.Do(func() {
-				v4l = &v4Listener{port: gConf.Network.TCPPort}
-				go v4l.start()
-			})
-		}
+		// public ip and intranet connect
+		onceV4Listener.Do(func() {
+			v4l = &v4Listener{port: gConf.Network.TCPPort}
+			go v4l.start()
+		})
 		gLog.Printf(LvINFO, "hasIPv4:%d, UPNP:%d, NAT type:%d, publicIP:%s", gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, gConf.Network.natType, gConf.Network.publicIP)
 		gatewayURL := fmt.Sprintf("%s:%d", gConf.Network.ServerHost, gConf.Network.ServerPort)
 		uri := "/api/v1/login"
