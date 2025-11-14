@@ -11,9 +11,12 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-const (
+var (
 	defaultInstallPath = "C:\\Program Files\\OpenP2P"
-	defaultBinName     = "openp2p.exe"
+)
+
+const (
+	defaultBinName = "openp2p.exe"
 )
 
 func getOsName() (osName string) {
@@ -47,7 +50,7 @@ func setRLimit() error {
 func setFirewall() {
 	fullPath, err := filepath.Abs(os.Args[0])
 	if err != nil {
-		gLog.Println(LvERROR, "add firewall error:", err)
+		gLog.e("add firewall error:%s", err)
 		return
 	}
 	isXP := false

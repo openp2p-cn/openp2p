@@ -9,9 +9,12 @@ import (
 	"syscall"
 )
 
-const (
+var (
 	defaultInstallPath = "/usr/local/openp2p"
-	defaultBinName     = "openp2p"
+)
+
+const (
+	defaultBinName = "openp2p"
 )
 
 func getOsName() (osName string) {

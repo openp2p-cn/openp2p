@@ -5,12 +5,14 @@
 package openp2p
 
 import (
-	"net"
+	"time"
 )
 
 const (
-	tunIfaceName = "optun"
-	PIHeaderSize = 0
+	tunIfaceName    = "optun"
+	PIHeaderSize    = 0
+	ReadTunBuffSize = 2048
+	ReadTunBuffNum  = 16
 )
 
 var AndroidReadTun chan []byte // TODO: multi channel
@@ -35,27 +37,35 @@ func (t *optun) Write(bufs [][]byte, offset int) (int, error) {
 func AndroidRead(data []byte, len int) {
 	head := PacketHeader{}
 	parseHeader(data, &head)
-	gLog.Printf(LvDev, "AndroidRead tun dst ip=%s,len=%d", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String(), len)
+	// gLog.dev("AndroidRead tun dst ip=%s,len=%d", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String(), len)
 	buf := make([]byte, len)
 	copy(buf, data)
 	AndroidReadTun <- buf
 }
 
-func AndroidWrite(buf []byte) int {
-	p := <-AndroidWriteTun
-	copy(buf, p)
-	return len(p)
+func AndroidWrite(buf []byte, timeoutMs int) int {
+	timeout := time.Duration(timeoutMs) * time.Millisecond
+	select {
+	case p := <-AndroidWriteTun:
+		if len(p) > int(gConf.sdwan.Mtu) {
+			gLog.e("AndroidWrite packet too large %d", len(p))
+		}
+		copy(buf, p)
+		return len(p)
+	case <-time.After(timeout):
+		return 0
+	}
 }
 
 func GetAndroidSDWANConfig(buf []byte) int {
 	p := <-AndroidSDWANConfig
 	copy(buf, p)
-	gLog.Printf(LvINFO, "AndroidSDWANConfig=%s", p)
+	gLog.i("AndroidSDWANConfig=%s", p)
 	return len(p)
 }
 
 func GetAndroidNodeName() string {
-	gLog.Printf(LvINFO, "GetAndroidNodeName=%s", gConf.Network.Node)
+	gLog.i("GetAndroidNodeName=%s", gConf.Network.Node)
 	return gConf.Network.Node
 }
 

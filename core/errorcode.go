@@ -30,4 +30,7 @@ var (
 	ErrBuildTunnelBusy       = errors.New("build tunnel busy")
 	ErrMemAppTunnelNotFound  = errors.New("memapp tunnel not found")
 	ErrRemoteServiceUnable   = errors.New("remote service unable")
+	ErrAppWithoutTunnel      = errors.New("p2papp has no available tunnel")
+	ErrWriteWindowFull       = errors.New("writeWindow full")
+	ErrHeaderDataLen         = errors.New("header datalen error")
 )

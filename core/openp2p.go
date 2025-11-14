@@ -25,7 +25,7 @@ func Run() {
 			install()
 			return
 		case "uninstall":
-			uninstall()
+			uninstall(true)
 			return
 		}
 	} else {

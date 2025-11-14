@@ -63,13 +63,15 @@ func Discover() (nat NAT, err error) {
 			return
 		}
 		var n int
+		socket.SetDeadline(time.Now().Add(3 * time.Second))
 		_, _, err = socket.ReadFromUDP(answerBytes)
 		if err != nil {
-			gLog.Println(LvDEBUG, "UPNP discover error:", err)
+			gLog.d("UPNP discover error:%s", err)
 			return
 		}
 
 		for {
+			socket.SetDeadline(time.Now().Add(3 * time.Second))
 			n, _, err = socket.ReadFromUDP(answerBytes)
 			if err != nil {
 				break
@@ -266,7 +268,11 @@ func soapRequest(url, function, message, domain string) (r *http.Response, err e
 
 	// log.Stderr("soapRequest ", req)
 
-	r, err = http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+	}
+
+	r, err = client.Do(req)
 	if err != nil {
 		return nil, err
 	}

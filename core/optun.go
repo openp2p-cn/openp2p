@@ -4,7 +4,10 @@ import (
 	"github.com/openp2p-cn/wireguard-go/tun"
 )
 
+const optunMTU = 1420
+
 var AndroidSDWANConfig chan []byte
+var preAndroidSDWANConfig string
 
 type optun struct {
 	tunName string

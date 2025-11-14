@@ -11,26 +11,14 @@ import (
 )
 
 func install() {
-	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
-	gLog.Println(LvINFO, "install start")
-	defer gLog.Println(LvINFO, "install end")
-	// auto uninstall
-	err := os.MkdirAll(defaultInstallPath, 0775)
-
-	if err != nil {
-		gLog.Printf(LvERROR, "MkdirAll %s error:%s", defaultInstallPath, err)
-		return
-	}
-	err = os.Chdir(defaultInstallPath)
-	if err != nil {
-		gLog.Println(LvERROR, "Chdir error:", err)
-		return
-	}
-
-	uninstall()
-	// save config file
+	gLog.i("openp2p start. version: %s", OpenP2PVersion)
+	gLog.i("Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
+	gLog.i("install start")
+	defer gLog.i("install end")
 	parseParams("install", "")
+	// auto uninstall
+	uninstall(false)
+	gLog.i("install path: %s", defaultInstallPath)
 	targetPath := filepath.Join(defaultInstallPath, defaultBinName)
 	d := daemon{}
 	// copy files
@@ -38,37 +26,42 @@ func install() {
 	binPath, _ := os.Executable()
 	src, errFiles := os.Open(binPath) // can not use args[0], on Windows call openp2p is ok(=openp2p.exe)
 	if errFiles != nil {
-		gLog.Printf(LvERROR, "os.Open %s error:%s", os.Args[0], errFiles)
+		gLog.e("os.Open %s error:%s", os.Args[0], errFiles)
 		return
 	}
 
 	dst, errFiles := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
 	if errFiles != nil {
-		gLog.Printf(LvERROR, "os.OpenFile %s error:%s", targetPath, errFiles)
-		return
+		time.Sleep(time.Second * 5) // maybe windows defender occupied the file, retry
+		dst, errFiles = os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0775)
+		if errFiles != nil {
+			gLog.e("os.OpenFile %s error:%s", targetPath, errFiles)
+			return
+		}
 	}
 
 	_, errFiles = io.Copy(dst, src)
 	if errFiles != nil {
-		gLog.Printf(LvERROR, "io.Copy error:%s", errFiles)
+		gLog.e("io.Copy error:%s", errFiles)
 		return
 	}
 	src.Close()
 	dst.Close()
 
 	// install system service
-	err = d.Control("install", targetPath, []string{"-d"})
+	err := d.Control("install", targetPath, []string{"-d"})
 	if err == nil {
-		gLog.Println(LvINFO, "install system service ok.")
+		gLog.i("install system service ok.")
 	}
 	time.Sleep(time.Second * 2)
 	err = d.Control("start", targetPath, []string{"-d"})
 	if err != nil {
-		gLog.Println(LvERROR, "start openp2p service error:", err)
+		gLog.e("start openp2p service error:%s", err)
 	} else {
-		gLog.Println(LvINFO, "start openp2p service ok.")
+		gLog.i("start openp2p service ok.")
 	}
-	gLog.Println(LvINFO, "Visit WebUI on https://console.openp2p.cn")
+	gConf.save()
+	gLog.i("Visit WebUI on https://console.openp2p.cn")
 }
 
 func installByFilename() {
@@ -78,7 +71,7 @@ func installByFilename() {
 	}
 	serverHost := params[1]
 	token := params[2]
-	gLog.Println(LvINFO, "install start")
+	gLog.i("install start")
 	targetPath := os.Args[0]
 	args := []string{"install"}
 	args = append(args, "-serverhost")
@@ -93,31 +86,38 @@ func installByFilename() {
 	cmd.Env = env
 	err := cmd.Run()
 	if err != nil {
-		gLog.Println(LvERROR, "install by filename, start process error:", err)
+		gLog.e("install by filename, start process error:%s", err)
 		return
 	}
-	gLog.Println(LvINFO, "install end")
-	gLog.Println(LvINFO, "Visit WebUI on https://console.openp2p.cn")
+	gLog.i("install end")
+	gLog.i("Visit WebUI on https://console.openp2p.cn")
 	fmt.Println("Press the Any Key to exit")
 	fmt.Scanln()
 	os.Exit(0)
 }
-func uninstall() {
-	gLog.Println(LvINFO, "uninstall start")
-	defer gLog.Println(LvINFO, "uninstall end")
+
+func uninstall(rmFiles bool) {
+	gLog.i("uninstall start")
+	defer gLog.i("uninstall end")
 	d := daemon{}
 	err := d.Control("stop", "", nil)
 	if err != nil { // service maybe not install
-		return
+		gLog.d("stop service error:%s", err)
 	}
 	err = d.Control("uninstall", "", nil)
 	if err != nil {
-		gLog.Println(LvERROR, "uninstall system service error:", err)
+		gLog.d("uninstall system service error:%s", err)
 	} else {
-		gLog.Println(LvINFO, "uninstall system service ok.")
+		gLog.i("uninstall system service ok.")
 	}
+	time.Sleep(time.Second * 3)
 	binPath := filepath.Join(defaultInstallPath, defaultBinName)
 	os.Remove(binPath + "0")
 	os.Remove(binPath)
-	// os.RemoveAll(defaultInstallPath)  // reserve config.json
+	if rmFiles {
+		if err := os.RemoveAll(defaultInstallPath); err != nil {
+			gLog.e("RemoveAll %s error:%s", defaultInstallPath, err)
+		}
+	}
+
 }
