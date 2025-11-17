@@ -2,18 +2,22 @@ package openp2p
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
 	"math/big"
 	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -128,19 +132,19 @@ func netInfo() *NetInfo {
 		client := &http.Client{Transport: tr, Timeout: time.Second * 10}
 		r, err := client.Get("https://ifconfig.co/json")
 		if err != nil {
-			gLog.Println(LvDEBUG, "netInfo error:", err)
+			gLog.d("netInfo error:%s", err)
 			continue
 		}
 		defer r.Body.Close()
 		buf := make([]byte, 1024*64)
 		n, err := r.Body.Read(buf)
 		if err != nil {
-			gLog.Println(LvDEBUG, "netInfo error:", err)
+			gLog.d("netInfo error:%s", err)
 			continue
 		}
 		rsp := NetInfo{}
 		if err = json.Unmarshal(buf[:n], &rsp); err != nil {
-			gLog.Printf(LvERROR, "wrong NetInfo:%s", err)
+			gLog.e("wrong NetInfo:%s", err)
 			continue
 		}
 		return &rsp
@@ -279,4 +283,111 @@ func calculateChecksum(data []byte) uint16 {
 	sum += (sum >> 16)
 
 	return uint16(^sum)
+}
+
+func min(nums ...int32) int32 {
+	if len(nums) == 0 {
+		return 0 // 如果没有输入，返回最大值
+	}
+
+	minVal := nums[0]
+	for _, num := range nums[1:] {
+		if num < minVal {
+			minVal = num
+		}
+	}
+	return minVal
+}
+
+func calcRetryTimeRelay(x float64) float64 {
+	return 10 + math.Exp(0.8*(x-3.6))
+}
+func calcRetryTimeDirect(x float64) float64 {
+	return 10 + math.Exp(2.8*(x-4))
+}
+
+func isAndroid() bool {
+	if runtime.GOOS == "android" {
+		return true
+	}
+	data, err := os.ReadFile("/proc/version")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "Android")
+}
+
+func moveFile(src, dst string) error {
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+	// windows could not rename running executable, so copy then delete
+	if runtime.GOOS == "windows" {
+		err = copyFile(src, dst)
+		if err != nil {
+			return err
+		}
+
+		os.Remove(src)
+	}
+	return nil
+}
+
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
+
+	return destFile.Sync()
+}
+
+func resolveServerIP(host string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 先系统 DNS
+	ips, err := net.DefaultResolver.LookupHost(ctx, host)
+	if err == nil && len(ips) > 0 {
+		gLog.i("system dns resolved %s -> %v", host, ips)
+		return ips, nil
+	}
+
+	gLog.e("system dns resolve failed for %s: %v", host, err)
+	gLog.i("retry with fallback dns...")
+
+	// 再 fallback dns
+	return lookupWithCustomDNS(ctx, host)
+}
+func lookupWithCustomDNS(ctx context.Context, domain string) ([]string, error) {
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dialer := &net.Dialer{Timeout: 5 * time.Second}
+
+			// 先 119.29.29.29
+			conn, err := dialer.DialContext(ctx, network, "119.29.29.29:53")
+			if err == nil {
+				return conn, nil
+			}
+
+			// 再 8.8.8.8
+			return dialer.DialContext(ctx, network, "8.8.8.8:53")
+		},
+	}
+
+	return resolver.LookupHost(ctx, domain)
 }

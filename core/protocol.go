@@ -74,7 +74,7 @@ func encodeHeader(mainType uint16, subType uint16, len uint32) []byte {
 	return headBuf.Bytes()
 }
 
-// Message type
+// Message main type
 const (
 	MsgLogin     = 0
 	MsgHeartbeat = 1
@@ -109,6 +109,8 @@ const (
 	MsgPushReportMemApps        = 17
 	MsgPushServerSideSaveMemApp = 18
 	MsgPushCheckRemoteService   = 19
+	MsgPushSpecTunnel           = 20
+	MsgPushReportHeap           = 21
 )
 
 // MsgP2P sub type message
@@ -128,6 +130,9 @@ const (
 	MsgRelayHeartbeatAck
 	MsgNodeData
 	MsgRelayNodeData
+	MsgNodeDataMP
+	MsgNodeDataMPAck
+	MsgRelayHeartbeatAck2
 )
 
 // MsgRelay sub type message
@@ -243,6 +248,21 @@ func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, er
 	return writeBytes, nil
 }
 
+func newMessageWithBuff(mainType uint16, subType uint16, data []byte) ([]byte, error) {
+	head := openP2PHeader{
+		uint32(len(data)),
+		mainType,
+		subType,
+	}
+	headBuf := new(bytes.Buffer)
+	err := binary.Write(headBuf, binary.LittleEndian, head)
+	if err != nil {
+		return nil, err
+	}
+	writeBytes := append(headBuf.Bytes(), data...)
+	return writeBytes, nil
+}
+
 func NodeNameToID(name string) uint64 {
 	return crc64.Checksum([]byte(name), crc64.MakeTable(crc64.ISO))
 }
@@ -339,13 +359,15 @@ type RelayNodeRsp struct {
 }
 
 type AddRelayTunnelReq struct {
-	From          string `json:"from,omitempty"`
-	RelayName     string `json:"relayName,omitempty"`
-	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"`
-	RelayToken    uint64 `json:"relayToken,omitempty"`
-	RelayMode     string `json:"relayMode,omitempty"`
-	AppID         uint64 `json:"appID,omitempty"`  // deprecated
-	AppKey        uint64 `json:"appKey,omitempty"` // deprecated
+	From             string `json:"from,omitempty"`
+	RelayName        string `json:"relayName,omitempty"`
+	RelayTunnelID    uint64 `json:"relayTunnelID,omitempty"`
+	RelayToken       uint64 `json:"relayToken,omitempty"`
+	RelayMode        string `json:"relayMode,omitempty"`
+	AppID            uint64 `json:"appID,omitempty"`            // deprecated
+	AppKey           uint64 `json:"appKey,omitempty"`           // deprecated
+	UnderlayProtocol string `json:"underlayProtocol,omitempty"` // quic or kcp, default quic
+	PunchPriority    int    `json:"punchPriority,omitempty"`
 }
 
 type APPKeySync struct {
@@ -354,9 +376,10 @@ type APPKeySync struct {
 }
 
 type RelayHeartbeat struct {
-	From          string `json:"from,omitempty"`
-	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"`
-	AppID         uint64 `json:"appID,omitempty"`
+	From           string `json:"from,omitempty"`
+	RelayTunnelID  uint64 `json:"relayTunnelID,omitempty"`
+	RelayTunnelID2 uint64 `json:"relayTunnelID2,omitempty"`
+	AppID          uint64 `json:"appID,omitempty"`
 }
 
 type ReportBasic struct {
@@ -415,13 +438,16 @@ type AppInfo struct {
 }
 
 type ReportApps struct {
-	Apps []AppInfo
+	Apps     []AppInfo
+	TunError string `json:"tunError,omitempty"`
 }
 
 type ReportLogReq struct {
-	FileName string `json:"fileName,omitempty"`
-	Offset   int64  `json:"offset,omitempty"`
-	Len      int64  `json:"len,omitempty"`
+	FileName      string `json:"fileName,omitempty"`
+	Offset        int64  `json:"offset,omitempty"`
+	Len           int64  `json:"len,omitempty"`
+	IsSetLogLevel int64  `json:"isSetLogLevel,omitempty"`
+	LogLevel      int64  `json:"loglevel,omitempty"`
 }
 type ReportLogRsp struct {
 	FileName string `json:"fileName,omitempty"`
@@ -434,6 +460,7 @@ type UpdateInfo struct {
 	Error       int    `json:"error,omitempty"`
 	ErrorDetail string `json:"errorDetail,omitempty"`
 	Url         string `json:"url,omitempty"`
+	Url2        string `json:"url2,omitempty"`
 }
 
 type NetInfo struct {
@@ -467,6 +494,7 @@ type ProfileInfo struct {
 type EditNode struct {
 	NewName   string `json:"newName,omitempty"`
 	Bandwidth int    `json:"bandwidth,omitempty"`
+	Forcev6   int    `json:"forcev6,omitempty"`
 }
 
 type QueryPeerInfoReq struct {
@@ -501,6 +529,8 @@ type SDWANInfo struct {
 	ForceRelay    int32  `json:"forceRelay,omitempty"`
 	PunchPriority int32  `json:"punchPriority,omitempty"`
 	Enable        int32  `json:"enable,omitempty"`
+	TunnelNum     int32  `json:"tunnelNum,omitempty"`
+	Mtu           int32  `json:"mtu,omitempty"`
 	Nodes         []*SDWANNode
 }
 
@@ -516,11 +546,19 @@ type ServerSideSaveMemApp struct {
 	RelayTunnelID uint64 `json:"relayTunnelID,omitempty"` // rtid, if not 0 relay
 	RelayMode     string `json:"relayMode,omitempty"`
 	AppID         uint64 `json:"appID,omitempty"`
+	AppKey        uint64 `json:"appKey,omitempty"`
+	RelayIndex    uint32 `json:"relayIndex,omitempty"`
+	TunnelNum     uint32 `json:"tunnelNum,omitempty"`
+	SrcPort       uint32 `json:"srcPort,omitempty"`
 }
 
 type CheckRemoteService struct {
 	Host string `json:"host,omitempty"`
 	Port uint32 `json:"port,omitempty"`
+}
+
+type SpecTunnel struct {
+	TunnelIndex uint32 `json:"tunnelIndex,omitempty"`
 }
 
 const rootCA = `-----BEGIN CERTIFICATE-----
@@ -543,6 +581,31 @@ XuEiW0Z6R8np1Khh3alCOfD15tKcjok//Wxisbz+YItlbDus/eWRbLGB3HGrzn4l
 GB18jw+G7o4U3rGX8agHqVGQEd06gk1ZaprASpTGwSsv4A5ehosjT1d7re8Z5eD4
 RVtXS+DplMClQ5QSlv3StwcWOsjyiAimNfLEU5xoEfq17yOJUTU1OTL4YOt16QUc
 C1tnzFr3k/ioqFR7cnyzNrbjlfPOmO9l2WReEbMP3bvaSHm6EcpJKS8=
+-----END CERTIFICATE-----`
+
+const rootEdgeCA = `-----BEGIN CERTIFICATE-----
+MIID/zCCAuegAwIBAgIUI53UqyuJSa74NFIKherg5WTjtl4wDQYJKoZIhvcNAQEL
+BQAwgYYxCzAJBgNVBAYTAkNOMQswCQYDVQQIDAJHRDETMBEGA1UECgwKb3BlbnAy
+cC5jbjETMBEGA1UECwwKb3BlbnAycC5jbjEbMBkGA1UEAwwSb3BlbnAycC5jbiBS
+b290IENBMSMwIQYJKoZIhvcNAQkBFhRvcGVucDJwLmNuQGdtYWlsLmNvbTAeFw0y
+NTA5MDMwNTExMTBaFw0zNTA5MDEwNTExMTBaMIGGMQswCQYDVQQGEwJDTjELMAkG
+A1UECAwCR0QxEzARBgNVBAoMCm9wZW5wMnAuY24xEzARBgNVBAsMCm9wZW5wMnAu
+Y24xGzAZBgNVBAMMEm9wZW5wMnAuY24gUm9vdCBDQTEjMCEGCSqGSIb3DQEJARYU
+b3BlbnAycC5jbkBnbWFpbC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEK
+AoIBAQC/aHC0opWx1MFkXYI+Mm0CkMi7nB5XaD3K/DGGtA/kadhayFSWb6Y2+UWW
+s6OYBy7NmQRJgTedS4siQA6JEG4H3FBbz8URLt4TH/EP9+6QB0Z+P0arvUXNkl4k
+7cALmblaiqjq2M199+FWKhDWH2vMr1htY9Y3ldivLRMeH76diKgf8NvsX+wGR8bZ
+4MlJMFln0UeUYKIbekK7DmA5/9f2A/2Nrmi84PKGHU+0ZjB7gik/slW5zH0k7e+S
+wNtTuf8+6+t/LcJK9dWsS6f5+DOWmLcIWs6s/VMP9ODEzlY/hKMFk53+H+AjAZY/
+J/qhOxLXMNlNjdjwSEFPBY/vwVEnAgMBAAGjYzBhMB0GA1UdDgQWBBTXSSeIvz/R
+6A1pz0H4xBlV1Vu9kTAfBgNVHSMEGDAWgBTXSSeIvz/R6A1pz0H4xBlV1Vu9kTAP
+BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjANBgkqhkiG9w0BAQsFAAOC
+AQEABqvvKwM+k2NfIFf9tzo1EsD4rQunyn6K5Zhf/kspb9++2Onw/lDlOErxSLLz
+C5aXn+B48honQeYEL/cYhH4duVQb0Zk71iF/PKDxYvF79Xbx9k7Kzg6RryaH8ZfQ
+pyEao+Uc6O895F+SLBog5aHIbz8gFNCRVaSAv3xpUIyQ/haxyHHapaLqt/ueNFVP
+qEG+9R41q55rEYb2ltINhumS3gb4qOcKI5pHuAw42pF8SShqaBIfFXSZ4u9ib7/k
+CvHN0kDYavV6NRiCSRF6wMxmaF70WpfqQhGdw0WyIzJfMOtSdvctjfNCoaWy2V2s
+nLaJXgiPehxIVGNC9dk/ZZzI2g==
 -----END CERTIFICATE-----`
 
 const ISRGRootX1 = `-----BEGIN CERTIFICATE-----

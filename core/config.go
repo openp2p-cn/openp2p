@@ -77,14 +77,17 @@ type Config struct {
 	Network NetworkConfig `json:"network"`
 	Apps    []*AppConfig  `json:"apps"`
 
-	LogLevel   int
-	MaxLogSize int
-	daemonMode bool
-	mtx        sync.Mutex
-	sdwanMtx   sync.Mutex
-	sdwan      SDWANInfo
-	delNodes   []*SDWANNode
-	addNodes   []*SDWANNode
+	LogLevel              int
+	MaxLogSize            int
+	TLSInsecureSkipVerify bool
+	Forcev6               bool
+	daemonMode            bool
+	mtx                   sync.RWMutex
+	fileMtx               sync.Mutex
+	sdwanMtx              sync.Mutex
+	sdwan                 SDWANInfo
+	delNodes              []*SDWANNode
+	addNodes              []*SDWANNode
 }
 
 func (c *Config) getSDWAN() SDWANInfo {
@@ -251,31 +254,42 @@ func (c *Config) delete(app AppConfig) {
 }
 
 func (c *Config) save() {
-	// c.mtx.Lock()
-	// defer c.mtx.Unlock()  // internal call
+	c.fileMtx.Lock()
+	defer c.fileMtx.Unlock()
 	if c.Network.Token == 0 {
+		gLog.e("c.Network.Token == 0 skip save")
 		return
 	}
-	data, _ := json.MarshalIndent(c, "", "  ")
-	err := os.WriteFile("config.json", data, 0644)
-	if err != nil {
-		gLog.Println(LvERROR, "save config.json error:", err)
-	}
-}
-
-func (c *Config) saveCache() {
-	// c.mtx.Lock()
-	// defer c.mtx.Unlock()  // internal call
-	if c.Network.Token == 0 {
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil || len(data) < 16 {
+		gLog.e("MarshalIndent config.json error:%v,  len=%d", err, len(data))
 		return
 	}
-	data, _ := json.MarshalIndent(c, "", "  ")
-	err := os.WriteFile("config.json0", data, 0644)
+	err = os.WriteFile("config.json0", data, 0644)
 	if err != nil {
-		gLog.Println(LvERROR, "save config.json0 error:", err)
+		gLog.e("save config.json error:%v", err)
 	}
+
+	// verify if the file is written correctly
+	data, err = os.ReadFile("config.json0")
+	if err != nil {
+		return
+	}
+	var tmpConfig Config
+	err = json.Unmarshal(data, &tmpConfig)
+	if err != nil {
+		gLog.e("parse config.json error:", err)
+		return
+	}
+	err = os.Rename("config.json0", "config.json")
+	if err != nil {
+		gLog.e("rename config file error:%v", err)
+	}
+
 }
 
+// -d run, then worker serverport always WsPort.
+// func init() {
 func init() {
 	gConf.LogLevel = int(LvINFO)
 	gConf.MaxLogSize = 1024 * 1024
@@ -286,19 +300,19 @@ func init() {
 }
 
 func (c *Config) load() error {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+	c.fileMtx.Lock()
+	defer c.fileMtx.Unlock()
 	data, err := os.ReadFile("config.json")
 	if err != nil {
-		return c.loadCache()
+		return err
 	}
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 	err = json.Unmarshal(data, &c)
 	if err != nil {
-		gLog.Println(LvERROR, "parse config.json error:", err)
-		// try cache
-		return c.loadCache()
+		gLog.e("parse config.json error:", err)
+		return err
 	}
-	// load ok. cache it
 	var filteredApps []*AppConfig // filter memapp
 	for _, app := range c.Apps {
 		if app.SrcPort != 0 {
@@ -306,19 +320,7 @@ func (c *Config) load() error {
 		}
 	}
 	c.Apps = filteredApps
-	c.saveCache()
-	return err
-}
-
-func (c *Config) loadCache() error {
-	data, err := os.ReadFile("config.json0")
-	if err != nil {
-		return err
-	}
-	err = json.Unmarshal(data, &c)
-	if err != nil {
-		gLog.Println(LvERROR, "parse config.json0 error:", err)
-	}
+	c.Network.natType = NATUnknown
 	return err
 }
 
@@ -326,7 +328,6 @@ func (c *Config) loadCache() error {
 func (c *Config) setToken(token uint64) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	defer c.save()
 	if token != 0 {
 		c.Network.Token = token
 	}
@@ -334,13 +335,11 @@ func (c *Config) setToken(token uint64) {
 func (c *Config) setUser(user string) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	defer c.save()
 	c.Network.User = user
 }
 func (c *Config) setNode(node string) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	defer c.save()
 	c.Network.Node = node
 	c.Network.nodeID = NodeNameToID(c.Network.Node)
 }
@@ -379,6 +378,7 @@ type NetworkConfig struct {
 	mac             string
 	os              string
 	publicIP        string
+	previousIP      string // for publicIP change detect
 	natType         int
 	hasIPv4         int
 	publicIPv6      string // must lowwer-case not save json
@@ -505,9 +505,9 @@ func parseParams(subCommand string, cmd string) {
 	gConf.Network.UDPPort1 = UDPPort1
 	gConf.Network.UDPPort2 = UDPPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
+	gLog.setMaxSize(int64(gConf.MaxLogSize))
 	if *notVerbose {
 		gLog.setMode(LogFile)
 	}
-	// gConf.mtx.Unlock()
 	gConf.save()
 }

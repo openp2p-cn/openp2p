@@ -19,21 +19,21 @@ import (
 )
 
 func update(host string, port int) error {
-	gLog.Println(LvINFO, "update start")
-	defer gLog.Println(LvINFO, "update end")
+	gLog.i("update start")
+	defer gLog.i("update end")
 	caCertPool, err := x509.SystemCertPool()
 	if err != nil {
-		gLog.Println(LvERROR, "Failed to load system root CAs:", err)
-	} else {
+		gLog.e("Failed to load system root CAs:%s", err)
 		caCertPool = x509.NewCertPool()
 	}
 	caCertPool.AppendCertsFromPEM([]byte(rootCA))
+	caCertPool.AppendCertsFromPEM([]byte(rootEdgeCA))
 	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 
 	c := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{RootCAs: caCertPool,
-				InsecureSkipVerify: false},
+				InsecureSkipVerify: gConf.TLSInsecureSkipVerify},
 		},
 		Timeout: time.Second * 30,
 	}
@@ -41,32 +41,36 @@ func update(host string, port int) error {
 	goarch := runtime.GOARCH
 	rsp, err := c.Get(fmt.Sprintf("https://%s:%d/api/v1/update?fromver=%s&os=%s&arch=%s&user=%s&node=%s", host, port, OpenP2PVersion, goos, goarch, url.QueryEscape(gConf.Network.User), url.QueryEscape(gConf.Network.Node)))
 	if err != nil {
-		gLog.Println(LvERROR, "update:query update list failed:", err)
+		gLog.e("update:query update list failed:%s", err)
 		return err
 	}
 	defer rsp.Body.Close()
 	if rsp.StatusCode != http.StatusOK {
-		gLog.Println(LvERROR, "get update info error:", rsp.Status)
+		gLog.e("get update info error:%s", rsp.Status)
 		return err
 	}
 	rspBuf, err := ioutil.ReadAll(rsp.Body)
 	if err != nil {
-		gLog.Println(LvERROR, "update:read update list failed:", err)
+		gLog.e("update:read update list failed:%s", err)
 		return err
 	}
 	updateInfo := UpdateInfo{}
 	if err = json.Unmarshal(rspBuf, &updateInfo); err != nil {
-		gLog.Println(LvERROR, rspBuf, " update info decode error:", err)
+		gLog.e("%s update info decode error:%s", string(rspBuf), err)
 		return err
 	}
 	if updateInfo.Error != 0 {
-		gLog.Println(LvERROR, "update error:", updateInfo.Error, updateInfo.ErrorDetail)
+		gLog.e("update error:%d,%s", updateInfo.Error, updateInfo.ErrorDetail)
 		return err
 	}
 	err = updateFile(updateInfo.Url, "", "openp2p")
 	if err != nil {
-		gLog.Println(LvERROR, "update: download failed:", err)
-		return err
+		gLog.e("update: download failed:%s, retry...", err)
+		err = updateFile(updateInfo.Url2, "", "openp2p")
+		if err != nil {
+			gLog.e("update: download failed:%s", err)
+			return err
+		}
 	}
 	return nil
 }
@@ -74,66 +78,79 @@ func update(host string, port int) error {
 func downloadFile(url string, checksum string, dstFile string) error {
 	output, err := os.OpenFile(dstFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0776)
 	if err != nil {
-		gLog.Printf(LvERROR, "OpenFile %s error:%s", dstFile, err)
+		gLog.e("OpenFile %s error:%s", dstFile, err)
 		return err
 	}
 	caCertPool, err := x509.SystemCertPool()
 	if err != nil {
-		gLog.Println(LvERROR, "Failed to load system root CAs:", err)
-	} else {
+		gLog.e("Failed to load system root CAs:%s", err)
 		caCertPool = x509.NewCertPool()
 	}
 	caCertPool.AppendCertsFromPEM([]byte(rootCA))
+	caCertPool.AppendCertsFromPEM([]byte(rootEdgeCA))
 	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:            caCertPool,
-			InsecureSkipVerify: false},
+			InsecureSkipVerify: gConf.TLSInsecureSkipVerify},
 	}
 	client := &http.Client{Transport: tr}
 	response, err := client.Get(url)
 	if err != nil {
-		gLog.Printf(LvERROR, "download url %s error:%s", url, err)
+		gLog.e("download url %s error:%s", url, err)
 		output.Close()
 		return err
 	}
 	defer response.Body.Close()
 	n, err := io.Copy(output, response.Body)
 	if err != nil {
-		gLog.Printf(LvERROR, "io.Copy error:%s", err)
+		gLog.e("io.Copy error:%s", err)
 		output.Close()
 		return err
 	}
 	output.Sync()
 	output.Close()
-	gLog.Println(LvINFO, "download ", url, " ok")
-	gLog.Printf(LvINFO, "size: %d bytes", n)
+	gLog.i("download %s ok", url)
+	gLog.i("size: %d bytes", n)
 	return nil
 }
 
 func updateFile(url string, checksum string, dst string) error {
-	gLog.Println(LvINFO, "download ", url)
-	tmpFile := filepath.Dir(os.Args[0]) + "/openp2p.tmp"
+	gLog.i("download %s", url)
+	tempDir := os.TempDir()
+	tmpFile := filepath.Join(tempDir, "openp2p.tmp")
 	err := downloadFile(url, checksum, tmpFile)
 	if err != nil {
 		return err
 	}
-	backupFile := os.Args[0] + "0"
-	err = os.Rename(os.Args[0], backupFile) // the old daemon process was using the 0 file, so it will prevent override it
+	backupBase := filepath.Base(os.Args[0])
+	var backupFile string
+	if runtime.GOOS == "windows" {
+		backupFile = filepath.Join(tempDir, backupBase+"0")
+	} else {
+		backupFile = os.Args[0] + "0" // linux can not mv running executable to /tmp, because they are different volumns
+	}
+	gLog.i("backup file %s --> %s", os.Args[0], backupFile)
+	err = moveFile(os.Args[0], backupFile)
 	if err != nil {
-		gLog.Printf(LvINFO, " rename %s error:%s, retry 1", os.Args[0], err)
-		backupFile = os.Args[0] + "1"
-		err = os.Rename(os.Args[0], backupFile)
+		if runtime.GOOS == "windows" {
+			backupFile = filepath.Join(tempDir, backupBase+"1")
+		} else {
+			backupFile = os.Args[0] + "1" // 1st update will mv deamon process to 0, 2nd update mv to 0 will failed, mv to 1
+		}
+		gLog.i("backup file %s --> %s", os.Args[0], backupFile)
+		err = moveFile(os.Args[0], backupFile)
 		if err != nil {
-			gLog.Printf(LvINFO, " rename %s error:%s", os.Args[0], err)
+			gLog.e(" rename %s error:%s", os.Args[0], err)
+			return err
 		}
 	}
 	// extract
-	gLog.Println(LvINFO, "extract files")
+	gLog.i("extract files")
 	err = extract(filepath.Dir(os.Args[0]), tmpFile)
 	if err != nil {
-		gLog.Printf(LvERROR, "extract error:%s. revert rename", err)
-		os.Rename(backupFile, os.Args[0])
+		gLog.e("extract error:%s. revert rename", err)
+		moveFile(backupFile, os.Args[0])
 		return err
 	}
 	os.Remove(tmpFile)
@@ -224,16 +241,20 @@ func extractTgz(dst, src string) error {
 }
 
 func cleanTempFiles() {
-	tmpFile := os.Args[0] + "0"
-	if _, err := os.Stat(tmpFile); err == nil {
-		if err := os.Remove(tmpFile); err != nil {
-			gLog.Printf(LvDEBUG, " remove %s error:%s", tmpFile, err)
+	tempDir := os.TempDir()
+	backupBase := filepath.Base(os.Args[0])
+	for i := 0; i < 2; i++ {
+		tmpFile := fmt.Sprintf("%s%d", os.Args[0], i)
+		if _, err := os.Stat(tmpFile); err == nil {
+			if err := os.Remove(tmpFile); err != nil {
+				gLog.d(" remove %s error:%s", tmpFile, err)
+			}
 		}
-	}
-	tmpFile = os.Args[0] + "1"
-	if _, err := os.Stat(tmpFile); err == nil {
-		if err := os.Remove(tmpFile); err != nil {
-			gLog.Printf(LvDEBUG, " remove %s error:%s", tmpFile, err)
+		tmpFile = fmt.Sprintf("%s%s%d", tempDir, backupBase, i)
+		if _, err := os.Stat(tmpFile); err == nil {
+			if err := os.Remove(tmpFile); err != nil {
+				gLog.d(" remove %s error:%s", tmpFile, err)
+			}
 		}
 	}
 }
