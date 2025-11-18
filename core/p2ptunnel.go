@@ -331,7 +331,7 @@ func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
 func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 	gLog.Printf(LvDEBUG, "connectUnderlayTCP %s start ", t.config.LogPeerNode())
 	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP %s end ", t.config.LogPeerNode())
-	var ul *underlayTCP
+	var ul underlay
 	peerIP := t.config.peerIP
 	if t.config.linkMode == LinkModeIntranet {
 		peerIP = t.config.peerLanIP

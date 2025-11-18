@@ -2,6 +2,7 @@ package openp2p
 
 import (
 	"io"
+	"net"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type underlay interface {
 	SetReadDeadline(t time.Time) error
 	SetWriteDeadline(t time.Time) error
 	Protocol() string
+	RemoteAddr() net.Addr
 }
 
 func DefaultReadBuffer(ul underlay) (*openP2PHeader, []byte, error) {
@@ -28,6 +30,7 @@ func DefaultReadBuffer(ul underlay) (*openP2PHeader, []byte, error) {
 	}
 	head, err := decodeHeader(headBuf)
 	if err != nil || head.MainType > 16 {
+		gLog.d("DefaultReadBuffer error:%v, %d", err, head.MainType)
 		return nil, nil, err
 	}
 	dataBuf := make([]byte, head.DataLen)
