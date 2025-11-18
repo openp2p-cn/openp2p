@@ -81,7 +81,7 @@ func (conn *underlayQUIC) Accept() error {
 }
 
 func listenQuic(addr string, idleTimeout time.Duration) (*underlayQUIC, error) {
-	gLog.Println(LvDEBUG, "quic listen on ", addr)
+	gLog.d("quic listen on %s", addr)
 	listener, err := quic.ListenAddr(addr, generateTLSConfig(),
 		&quic.Config{Versions: quicVersion, MaxIdleTimeout: idleTimeout, DisablePathMTUDiscovery: true})
 	if err != nil {
@@ -96,13 +96,15 @@ func listenQuic(addr string, idleTimeout time.Duration) (*underlayQUIC, error) {
 	return ul, nil
 }
 
-func dialQuic(conn *net.UDPConn, remoteAddr *net.UDPAddr, idleTimeout time.Duration) (*underlayQUIC, error) {
+func dialQuic(conn *net.UDPConn, remoteAddr *net.UDPAddr, timeout time.Duration) (*underlayQUIC, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"openp2pv1"},
 	}
-	Connection, err := quic.DialContext(context.Background(), conn, remoteAddr, conn.LocalAddr().String(), tlsConf,
-		&quic.Config{Versions: quicVersion, MaxIdleTimeout: idleTimeout, DisablePathMTUDiscovery: true})
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	Connection, err := quic.DialContext(ctx, conn, remoteAddr, conn.LocalAddr().String(), tlsConf,
+		&quic.Config{Versions: quicVersion, MaxIdleTimeout: TunnelIdleTimeout, DisablePathMTUDiscovery: true})
 	if err != nil {
 		return nil, fmt.Errorf("quic.DialContext error:%s", err)
 	}

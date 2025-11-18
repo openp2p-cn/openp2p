@@ -127,3 +127,59 @@ func TestNodeID(t *testing.T) {
 		fmt.Printf("%s >= %s\n", node1, node2)
 	}
 }
+
+func TestCalcRetryTime(t *testing.T) {
+	// 0-2 < 13s
+	// 3-5:300
+	// 6-10:600
+	tests := []struct {
+		retryNum float64
+		want     float64
+	}{
+		{1.0, 10},
+		{5.0, 13},
+		{10.0, 180},
+		{15.0, 9000},
+		{18.0, 90000},
+		// 可以添加更多测试用例
+	}
+
+	for _, tt := range tests {
+		got := calcRetryTimeRelay(tt.retryNum)
+		if got < tt.want*0.85 || got > tt.want*1.15 {
+			t.Errorf("calcRetryTime(%f) = %f, want %f", tt.retryNum, got, tt.want)
+		}
+	}
+
+	for i := 0; i < 20; i++ {
+		log.Printf("%d retryTime=%fs", i, calcRetryTimeRelay(float64(i)))
+	}
+}
+
+func TestCalcRetryTimeDirect(t *testing.T) {
+	// 0-2 < 13s
+	// 3-5:300
+	// 6-10:600
+	tests := []struct {
+		retryNum float64
+		want     float64
+	}{
+		{1.0, 10},
+		{5.0, 13},
+		{10.0, 180},
+		{15.0, 9000},
+		{18.0, 90000},
+		// 可以添加更多测试用例
+	}
+
+	for _, tt := range tests {
+		got := calcRetryTimeRelay(tt.retryNum)
+		if got < tt.want*0.85 || got > tt.want*1.15 {
+			t.Errorf("calcRetryTime(%f) = %f, want %f", tt.retryNum, got, tt.want)
+		}
+	}
+
+	for i := 0; i < 20; i++ {
+		log.Printf("%d retryTime=%fs", i, calcRetryTimeDirect(float64(i)))
+	}
+}

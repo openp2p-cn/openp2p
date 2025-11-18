@@ -66,7 +66,7 @@ func (conn *underlayKCP) Accept() error {
 }
 
 func listenKCP(addr string, idleTimeout time.Duration) (*underlayKCP, error) {
-	gLog.Println(LvDEBUG, "kcp listen on ", addr)
+	gLog.d("kcp listen on %s", addr)
 	listener, err := kcp.ListenWithOptions(addr, nil, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("quic.ListenAddr error:%s", err)
@@ -81,6 +81,7 @@ func listenKCP(addr string, idleTimeout time.Duration) (*underlayKCP, error) {
 }
 
 func dialKCP(conn *net.UDPConn, remoteAddr *net.UDPAddr, idleTimeout time.Duration) (*underlayKCP, error) {
+	conn.SetDeadline(time.Now().Add(idleTimeout))
 	kConn, err := kcp.NewConn(remoteAddr.String(), nil, 0, 0, conn)
 	if err != nil {
 		return nil, fmt.Errorf("quic.DialContext error:%s", err)

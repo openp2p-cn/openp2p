@@ -1,7 +1,7 @@
 #!/bin/sh
 
 
-echo "Building version:${DOCKER_VER}"
+echo "Building version:${VERSION}"
 echo "Running on platform: $TARGETPLATFORM"
 # TARGETPLATFORM=$(echo $TARGETPLATFORM | tr ',' '/')
 echo "Running on platform: $TARGETPLATFORM"
@@ -25,7 +25,7 @@ sysType="linux-amd64"
 				sysType="linux-mipsbe"
 			fi
 		fi
-url="https://openp2p.cn/download/v1/${DOCKER_VER}/openp2p-latest.$sysType.tar.gz"
+url="https://console.openpxp.com/download/v1/${VERSION}/openp2p-${VERSION}.$sysType.tar.gz"
 echo "download $url start"
 
 if [ -f /usr/bin/curl ]; then
@@ -38,8 +38,9 @@ if [ $? -ne 0 ]; then
     exit 9
 fi
 echo "download ok"
-tar -xzvf openp2p.tar.gz
-chmod +x openp2p
+mkdir -p /usr/local/openp2p/
+tar -xzvf openp2p.tar.gz -C /usr/local/openp2p/
+chmod +x /usr/local/openp2p/openp2p
 pwd
 ls -l
 exit 0

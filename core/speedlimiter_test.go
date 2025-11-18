@@ -1,6 +1,7 @@
 package openp2p
 
 import (
+	"log"
 	"testing"
 	"time"
 )
@@ -15,7 +16,7 @@ func TestBandwidth(t *testing.T) {
 	for i := 0; i < writeNum; i++ {
 		speedl.Add(oneBuffSize, true)
 	}
-	t.Logf("cost %ds, expect %ds", time.Since(startTs)/time.Second, expectTime)
+	log.Printf("cost %ds, expect %ds", time.Since(startTs)/time.Second, expectTime)
 	if time.Since(startTs) > time.Duration(expectTime+1)*time.Second || time.Since(startTs) < time.Duration(expectTime-1)*time.Second {
 		t.Error("error")
 	}
@@ -27,12 +28,12 @@ func TestSymmetric(t *testing.T) {
 	oneBuffSize := 300
 	writeNum := 70
 	expectTime := (oneBuffSize*writeNum - 20000) / speed
-	t.Logf("expect %ds", expectTime)
+	log.Printf("expect %ds", expectTime)
 	startTs := time.Now()
 	for i := 0; i < writeNum; i++ {
 		speedl.Add(oneBuffSize, true)
 	}
-	t.Logf("cost %ds, expect %ds", time.Since(startTs)/time.Second, expectTime)
+	log.Printf("cost %ds, expect %ds", time.Since(startTs)/time.Second, expectTime)
 	if time.Since(startTs) > time.Duration(expectTime+1)*time.Second || time.Since(startTs) < time.Duration(expectTime-1)*time.Second {
 		t.Error("error")
 	}
@@ -44,6 +45,7 @@ func TestSymmetric2(t *testing.T) {
 	oneBuffSize := 800
 	writeNum := 40
 	expectTime := (oneBuffSize*writeNum - 30000) / speed
+	log.Printf("expect %ds", expectTime)
 	startTs := time.Now()
 	for i := 0; i < writeNum; {
 		if speedl.Add(oneBuffSize, true) {
@@ -52,7 +54,7 @@ func TestSymmetric2(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	t.Logf("cost %ds, expect %ds", time.Since(startTs)/time.Second, expectTime)
+	log.Printf("cost %ds, expect %ds", time.Since(startTs)/time.Second, expectTime)
 	if time.Since(startTs) > time.Duration(expectTime+1)*time.Second || time.Since(startTs) < time.Duration(expectTime-1)*time.Second {
 		t.Error("error")
 	}
