@@ -42,18 +42,18 @@ func (t *P2PTunnel) initPort() {
 	t.running = true
 	localPort := int(rand.Uint32()%15000 + 50000) // if the process has bug, will add many upnp port. use specify p2p port by param
 	if t.config.linkMode == LinkModeTCP6 || t.config.linkMode == LinkModeTCP4 || t.config.linkMode == LinkModeIntranet {
-		t.coneLocalPort = gConf.Network.TCPPort
-		t.coneNatPort = gConf.Network.TCPPort // symmetric doesn't need coneNatPort
+		t.coneLocalPort = gConf.Network.PublicIPPort
+		t.coneNatPort = gConf.Network.PublicIPPort // symmetric doesn't need coneNatPort
 	}
 	if t.config.linkMode == LinkModeUDPPunch {
 		// prepare one random cone hole manually
-		_, natPort, _ := natTest(gConf.Network.ServerHost, gConf.Network.UDPPort1, localPort)
+		_, natPort, _ := natDetectUDP(gConf.Network.ServerHost, NATDetectPort1, localPort)
 		t.coneLocalPort = localPort
 		t.coneNatPort = natPort
 	}
 	if t.config.linkMode == LinkModeTCPPunch {
 		// prepare one random cone hole by system automatically
-		_, natPort, localPort2 := natTCP(gConf.Network.ServerHost, IfconfigPort1)
+		_, natPort, localPort2, _ := natDetectTCP(gConf.Network.ServerHost, NATDetectPort1, 0)
 		t.coneLocalPort = localPort2
 		t.coneNatPort = natPort
 	}

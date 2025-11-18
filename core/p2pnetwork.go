@@ -507,13 +507,13 @@ func (pn *P2PNetwork) init() error {
 	}
 	for {
 		// detect nat type
-		gConf.Network.publicIP, gConf.Network.natType, err = getNATType(gConf.Network.ServerHost, gConf.Network.UDPPort1, gConf.Network.UDPPort2)
+		gConf.Network.publicIP, gConf.Network.natType, err = getNATType(gConf.Network.ServerHost, gConf.Network.NATDetectPort1, gConf.Network.NATDetectPort2)
 		if err != nil {
 			gLog.Println(LvDEBUG, "detect NAT type error:", err)
 			break
 		}
 		if gConf.Network.hasIPv4 == 0 && gConf.Network.hasUPNPorNATPMP == 0 { // if already has ipv4 or upnp no need test again
-			gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP = publicIPTest(gConf.Network.publicIP, gConf.Network.TCPPort)
+			gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP = publicIPTest(gConf.Network.publicIP, gConf.Network.PublicIPPort)
 		}
 
 		// for testcase
@@ -533,7 +533,7 @@ func (pn *P2PNetwork) init() error {
 
 		// public ip and intranet connect
 		onceV4Listener.Do(func() {
-			v4l = &v4Listener{port: gConf.Network.TCPPort}
+			v4l = &v4Listener{port: gConf.Network.PublicIPPort}
 			go v4l.start()
 		})
 		gLog.Printf(LvINFO, "hasIPv4:%d, UPNP:%d, NAT type:%d, publicIP:%s", gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, gConf.Network.natType, gConf.Network.publicIP)

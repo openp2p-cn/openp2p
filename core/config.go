@@ -385,11 +385,11 @@ type NetworkConfig struct {
 	hasUPNPorNATPMP int
 	ShareBandwidth  int
 	// server info
-	ServerHost string
-	ServerPort int
-	UDPPort1   int
-	UDPPort2   int
-	TCPPort    int
+	ServerHost     string
+	ServerPort     int
+	NATDetectPort1 int
+	NATDetectPort2 int
+	PublicIPPort   int
 }
 
 func parseParams(subCommand string, cmd string) {
@@ -404,7 +404,7 @@ func parseParams(subCommand string, cmd string) {
 	whiteList := fset.String("whitelist", "", "whitelist for p2pApp ")
 	dstPort := fset.Int("dstport", 0, "destination port ")
 	srcPort := fset.Int("srcport", 0, "source port ")
-	tcpPort := fset.Int("tcpport", 0, "tcp port for upnp or publicip")
+	publicIPPort := fset.Int("publicipport", 0, "public ip port for upnp or publicip")
 	protocol := fset.String("protocol", "tcp", "tcp or udp")
 	underlayProtocol := fset.String("underlay_protocol", "quic", "quic or kcp")
 	punchPriority := fset.Int("punch_priority", 0, "bitwise DisableTCP|DisableUDP|UDPFirst  0:tcp and udp both enable, tcp first")
@@ -464,8 +464,8 @@ func parseParams(subCommand string, cmd string) {
 		if f.Name == "maxlogsize" {
 			gConf.MaxLogSize = *maxLogSize
 		}
-		if f.Name == "tcpport" {
-			gConf.Network.TCPPort = *tcpPort
+		if f.Name == "publicipport" {
+			gConf.Network.PublicIPPort = *publicIPPort
 		}
 		if f.Name == "token" {
 			gConf.setToken(*token)
@@ -486,12 +486,12 @@ func parseParams(subCommand string, cmd string) {
 			gConf.setNode(defaultNodeName())
 		}
 	}
-	if gConf.Network.TCPPort == 0 {
-		if *tcpPort == 0 {
+	if gConf.Network.PublicIPPort == 0 {
+		if *publicIPPort == 0 {
 			p := int(gConf.nodeID()%15000 + 50000)
-			tcpPort = &p
+			publicIPPort = &p
 		}
-		gConf.Network.TCPPort = *tcpPort
+		gConf.Network.PublicIPPort = *publicIPPort
 	}
 	if *token == 0 {
 		envToken := os.Getenv("OPENP2P_TOKEN")
@@ -502,8 +502,8 @@ func parseParams(subCommand string, cmd string) {
 		}
 	}
 	gConf.Network.ServerPort = *serverPort
-	gConf.Network.UDPPort1 = UDPPort1
-	gConf.Network.UDPPort2 = UDPPort2
+	gConf.Network.NATDetectPort1 = NATDetectPort1
+	gConf.Network.NATDetectPort2 = NATDetectPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	gLog.setMaxSize(int64(gConf.MaxLogSize))
 	if *notVerbose {
