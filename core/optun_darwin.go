@@ -10,14 +10,16 @@ import (
 )
 
 const (
-	tunIfaceName = "utun"
-	PIHeaderSize = 4 // utun has no IFF_NO_PI
+	tunIfaceName    = "utun"
+	PIHeaderSize    = 4 // utun has no IFF_NO_PI
+	ReadTunBuffSize = 2048
+	ReadTunBuffNum  = 16
 )
 
 func (t *optun) Start(localAddr string, detail *SDWANInfo) error {
 	var err error
 	t.tunName = tunIfaceName
-	t.dev, err = tun.CreateTUN(t.tunName, 1420)
+	t.dev, err = tun.CreateTUN(t.tunName, int(detail.Mtu))
 	if err != nil {
 		return err
 	}
@@ -72,10 +74,10 @@ func delRoutesByGateway(gateway string) error {
 			cmd := exec.Command("route", "delete", fields[0], gateway)
 			err := cmd.Run()
 			if err != nil {
-				gLog.Printf(LvERROR, "Delete route %s error:%s", fields[0], err)
+				gLog.e("Delete route %s error:%s", fields[0], err)
 				continue
 			}
-			gLog.Printf(LvINFO, "Delete route ok: %s %s\n", fields[0], gateway)
+			gLog.i("Delete route ok: %s %s\n", fields[0], gateway)
 		}
 	}
 	return nil

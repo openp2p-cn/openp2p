@@ -14,8 +14,10 @@ import (
 )
 
 const (
-	tunIfaceName = "optun"
-	PIHeaderSize = 0
+	tunIfaceName    = "optun"
+	PIHeaderSize    = 0
+	ReadTunBuffSize = 2048
+	ReadTunBuffNum  = 16
 )
 
 var previousIP = ""
@@ -23,7 +25,7 @@ var previousIP = ""
 func (t *optun) Start(localAddr string, detail *SDWANInfo) error {
 	var err error
 	t.tunName = tunIfaceName
-	t.dev, err = tun.CreateTUN(t.tunName, 1420)
+	t.dev, err = tun.CreateTUN(t.tunName, int(detail.Mtu))
 	if err != nil {
 		return err
 	}
@@ -43,8 +45,8 @@ func setTunAddr(ifname, localAddr, remoteAddr string, wintun interface{}) error 
 	if err != nil {
 		return err
 	}
-	netlink.LinkSetMTU(ifce, 1375)
-	netlink.LinkSetTxQLen(ifce, 100)
+	netlink.LinkSetMTU(ifce, int(gConf.getSDWAN().Mtu))
+	netlink.LinkSetTxQLen(ifce, 1000)
 	netlink.LinkSetUp(ifce)
 
 	ln, err := netlink.ParseIPNet(localAddr)
@@ -123,10 +125,10 @@ func delRoutesByGateway(gateway string) error {
 			delCmd := exec.Command("route", "del", "-net", fields[0], "gw", gateway)
 			err := delCmd.Run()
 			if err != nil {
-				gLog.Printf(LvERROR, "Delete route %s error:%s", fields[0], err)
+				gLog.e("Delete route %s error:%s", fields[0], err)
 				continue
 			}
-			gLog.Printf(LvINFO, "Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
+			gLog.i("Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
 		}
 	}
 	return nil

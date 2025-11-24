@@ -2,6 +2,7 @@ package openp2p
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -14,22 +15,27 @@ import (
 	"time"
 )
 
-const WriteDataChanSize int = 3000
+const WriteDataChanSize int = 8192
 
 var buildTunnelMtx sync.Mutex
+
+const (
+	StatusIdle    = 0
+	StatusWriting = 1
+)
 
 type P2PTunnel struct {
 	conn           underlay
 	hbTime         time.Time
 	hbMtx          sync.Mutex
+	whbTime        time.Time
 	config         AppConfig
 	localHoleAddr  *net.UDPAddr // local hole address
 	remoteHoleAddr *net.UDPAddr // remote hole address
-	overlayConns   sync.Map     // both TCP and UDP
 	id             uint64       // client side alloc rand.uint64 = server side
+
 	running        bool
 	runMtx         sync.Mutex
-	tunnelServer   bool // different from underlayServer
 	coneLocalPort  int
 	coneNatPort    int
 	linkModeWeb    string // use config.linkmode
@@ -40,30 +46,33 @@ type P2PTunnel struct {
 
 func (t *P2PTunnel) initPort() {
 	t.running = true
-	localPort := int(rand.Uint32()%15000 + 50000) // if the process has bug, will add many upnp port. use specify p2p port by param
-	if t.config.linkMode == LinkModeTCP6 || t.config.linkMode == LinkModeTCP4 || t.config.linkMode == LinkModeIntranet {
+	localPort := int(rand.Uint32()%8192 + 1025) // if the process has bug, will add many upnp port. use specify p2p port by param
+	if t.config.linkMode == LinkModeTCP6 || t.config.linkMode == LinkModeTCP4 || t.config.linkMode == LinkModeUDP4 || t.config.linkMode == LinkModeIntranet {
 		t.coneLocalPort = gConf.Network.PublicIPPort
 		t.coneNatPort = gConf.Network.PublicIPPort // symmetric doesn't need coneNatPort
 	}
 	if t.config.linkMode == LinkModeUDPPunch {
 		// prepare one random cone hole manually
-		_, natPort, _ := natDetectUDP(gConf.Network.ServerHost, NATDetectPort1, localPort)
+		_, natPort, _ := natDetectUDP(gConf.Network.ServerIP, NATDetectPort1, localPort)
 		t.coneLocalPort = localPort
 		t.coneNatPort = natPort
 	}
 	if t.config.linkMode == LinkModeTCPPunch {
 		// prepare one random cone hole by system automatically
-		_, natPort, localPort2, _ := natDetectTCP(gConf.Network.ServerHost, NATDetectPort1, 0)
+		_, natPort, localPort2, _ := natDetectTCP(gConf.Network.ServerIP, NATDetectPort1, 0)
 		t.coneLocalPort = localPort2
 		t.coneNatPort = natPort
 	}
+	if t.config.linkMode == LinkModeTCP6 && compareVersion(t.config.peerVersion, IPv6PunchVersion) >= 0 {
+		t.coneLocalPort = localPort
+		t.coneNatPort = localPort
+	}
 	t.localHoleAddr = &net.UDPAddr{IP: net.ParseIP(gConf.Network.localIP), Port: t.coneLocalPort}
-	gLog.Printf(LvDEBUG, "prepare punching port %d:%d", t.coneLocalPort, t.coneNatPort)
+	gLog.d("prepare punching port %d:%d", t.coneLocalPort, t.coneNatPort)
 }
 
 func (t *P2PTunnel) connect() error {
-	gLog.Printf(LvDEBUG, "start p2pTunnel to %s ", t.config.LogPeerNode())
-	t.tunnelServer = false
+	gLog.d("start p2pTunnel to %s ", t.config.LogPeerNode())
 	appKey := uint64(0)
 	req := PushConnectReq{
 		Token:            t.config.peerToken,
@@ -91,7 +100,7 @@ func (t *P2PTunnel) connect() error {
 	}
 	rsp := PushConnectRsp{}
 	if err := json.Unmarshal(body, &rsp); err != nil {
-		gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(rsp), err)
+		gLog.e("wrong %v:%s", reflect.TypeOf(rsp), err)
 		return err
 	}
 	// gLog.Println(LevelINFO, rsp)
@@ -108,7 +117,7 @@ func (t *P2PTunnel) connect() error {
 	t.punchTs = rsp.PunchTs
 	err := t.start()
 	if err != nil {
-		gLog.Println(LvERROR, "handshake error:", err)
+		gLog.d("handshake error:%s", err)
 	}
 	return err
 }
@@ -133,7 +142,7 @@ func (t *P2PTunnel) isActive() bool {
 	defer t.hbMtx.Unlock()
 	res := time.Now().Before(t.hbTime.Add(TunnelHeartbeatTime * 2))
 	if !res {
-		gLog.Printf(LvDEBUG, "%d tunnel isActive false", t.id)
+		gLog.d("%d tunnel isActive false", t.id)
 	}
 	return res
 }
@@ -154,7 +163,7 @@ func (t *P2PTunnel) checkActive() bool {
 		t.hbMtx.Unlock()
 		time.Sleep(time.Millisecond * 100)
 	}
-	gLog.Printf(LvINFO, "checkActive %t. hbtime=%d", isActive, t.hbTime)
+	gLog.d("checkActive %t. hbtime=%d", isActive, t.hbTime)
 	return isActive
 }
 
@@ -169,7 +178,7 @@ func (t *P2PTunnel) close() {
 		t.conn.Close()
 	}
 	GNetwork.allTunnels.Delete(t.id)
-	gLog.Printf(LvINFO, "%d p2ptunnel close %s ", t.id, t.config.LogPeerNode())
+	gLog.i("%d p2ptunnel close %s ", t.id, t.config.LogPeerNode())
 }
 
 func (t *P2PTunnel) start() error {
@@ -180,7 +189,7 @@ func (t *P2PTunnel) start() error {
 	}
 	err := t.connectUnderlay()
 	if err != nil {
-		gLog.Println(LvERROR, err)
+		gLog.d("connectUnderlay error:%s", err)
 		return err
 	}
 	return nil
@@ -195,16 +204,16 @@ func (t *P2PTunnel) handshake() error {
 		}
 	}
 	if compareVersion(t.config.peerVersion, SyncServerTimeVersion) < 0 {
-		gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
+		gLog.d("peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 	} else {
 		ts := time.Duration(int64(t.punchTs) + GNetwork.dt + GNetwork.ddtma*int64(time.Since(GNetwork.hbTime)+PunchTsDelay)/int64(NetworkHeartbeatTime) - time.Now().UnixNano())
 		if ts > PunchTsDelay || ts < 0 {
 			ts = PunchTsDelay
 		}
-		gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
+		gLog.d("sleep %d ms", ts/time.Millisecond)
 		time.Sleep(ts)
 	}
-	gLog.Println(LvDEBUG, "handshake to ", t.config.LogPeerNode())
+	gLog.d("handshake to %s", t.config.LogPeerNode())
 	var err error
 	if gConf.Network.natType == NATCone && t.config.peerNatType == NATCone {
 		err = handshakeC2C(t)
@@ -219,19 +228,25 @@ func (t *P2PTunnel) handshake() error {
 		return errors.New("unknown error")
 	}
 	if err != nil {
-		gLog.Println(LvERROR, "punch handshake error:", err)
+		gLog.d("punch handshake error:%s", err)
 		return err
 	}
-	gLog.Printf(LvDEBUG, "handshake to %s ok", t.config.LogPeerNode())
+	gLog.d("handshake to %s ok", t.config.LogPeerNode())
 	return nil
 }
 
 func (t *P2PTunnel) connectUnderlay() (err error) {
 	switch t.config.linkMode {
 	case LinkModeTCP6:
-		t.conn, err = t.connectUnderlayTCP6()
+		if compareVersion(t.config.peerVersion, IPv6PunchVersion) >= 0 {
+			t.conn, err = t.connectUnderlayTCP()
+		} else {
+			t.conn, err = t.connectUnderlayTCP6()
+		}
 	case LinkModeTCP4:
 		t.conn, err = t.connectUnderlayTCP()
+	case LinkModeUDP4:
+		t.conn, err = t.connectUnderlayUDP()
 	case LinkModeTCPPunch:
 		if gConf.Network.natType == NATSymmetric || t.config.peerNatType == NATSymmetric {
 			t.conn, err = t.connectUnderlayTCPSymmetric()
@@ -257,24 +272,35 @@ func (t *P2PTunnel) connectUnderlay() (err error) {
 }
 
 func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayUDP %s start ", t.config.LogPeerNode())
-	defer gLog.Printf(LvDEBUG, "connectUnderlayUDP %s end ", t.config.LogPeerNode())
+	gLog.d("connectUnderlayUDP %s start ", t.config.LogPeerNode())
+	defer gLog.d("connectUnderlayUDP %s end ", t.config.LogPeerNode())
 	var ul underlay
 	underlayProtocol := t.config.UnderlayProtocol
 	if underlayProtocol == "" {
 		underlayProtocol = "quic"
 	}
 	if t.config.isUnderlayServer == 1 {
+		// TODO: move to a func
 		time.Sleep(time.Millisecond * 10) // punching udp port will need some times in some env
 		go GNetwork.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
-		if t.config.UnderlayProtocol == "kcp" {
-			ul, err = listenKCP(t.localHoleAddr.String(), TunnelIdleTimeout)
+		if t.config.linkMode == LinkModeUDP4 {
+			if v4l != nil {
+				ul = v4l.getUnderlay(t.id)
+			}
+			if ul == nil {
+				return nil, fmt.Errorf("listen UDP4 error")
+			}
+			gLog.d("UDP4 connection ok")
 		} else {
-			ul, err = listenQuic(t.localHoleAddr.String(), TunnelIdleTimeout)
+			if t.config.UnderlayProtocol == "kcp" {
+				ul, err = listenKCP(t.localHoleAddr.String(), TunnelIdleTimeout)
+			} else {
+				ul, err = listenQuic(t.localHoleAddr.String(), TunnelIdleTimeout)
+			}
 		}
 
 		if err != nil {
-			gLog.Printf(LvINFO, "listen %s error:%s", underlayProtocol, err)
+			gLog.i("listen %s error:%s", underlayProtocol, err)
 			return nil, err
 		}
 
@@ -284,53 +310,63 @@ func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
 			return nil, fmt.Errorf("read start msg error:%s", err)
 		}
 		if buff != nil {
-			gLog.Println(LvDEBUG, string(buff))
+			gLog.d("handshake flag:%s", string(buff))
 		}
 		ul.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, []byte("OpenP2P,hello2"))
-		gLog.Printf(LvDEBUG, "%s connection ok", underlayProtocol)
+		gLog.d("%s connection ok", underlayProtocol)
 		return ul, nil
 	}
 
-	//else
-	conn, errL := net.ListenUDP("udp", t.localHoleAddr)
+	//client side
+	listenAddr := t.localHoleAddr
+	if t.config.linkMode == LinkModeUDP4 {
+		listenAddr = &net.UDPAddr{IP: net.ParseIP(gConf.Network.localIP), Port: 0}
+		t.remoteHoleAddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", t.config.peerIP, t.config.peerConeNatPort))
+		if err != nil {
+			return nil, err
+		}
+	}
+	conn, errL := net.ListenUDP("udp", listenAddr)
 	if errL != nil {
 		time.Sleep(time.Millisecond * 10)
-		conn, errL = net.ListenUDP("udp", t.localHoleAddr)
+		conn, errL = net.ListenUDP("udp", listenAddr)
 		if errL != nil {
 			return nil, fmt.Errorf("%s listen error:%s", underlayProtocol, errL)
 		}
 	}
 	GNetwork.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, ReadMsgTimeout)
-	gLog.Printf(LvDEBUG, "%s dial to %s", underlayProtocol, t.remoteHoleAddr.String())
+	gLog.d("%s dial to %s", underlayProtocol, t.remoteHoleAddr.String())
 	if t.config.UnderlayProtocol == "kcp" {
-		ul, errL = dialKCP(conn, t.remoteHoleAddr, TunnelIdleTimeout)
+		ul, errL = dialKCP(conn, t.remoteHoleAddr, UnderlayConnectTimeout)
 	} else {
-		ul, errL = dialQuic(conn, t.remoteHoleAddr, TunnelIdleTimeout)
+		ul, errL = dialQuic(conn, t.remoteHoleAddr, UnderlayConnectTimeout)
 	}
 
 	if errL != nil {
 		return nil, fmt.Errorf("%s dial to %s error:%s", underlayProtocol, t.remoteHoleAddr.String(), errL)
 	}
 	handshakeBegin := time.Now()
-	ul.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
+	tidBuff := new(bytes.Buffer)
+	binary.Write(tidBuff, binary.LittleEndian, t.id)
+	ul.WriteBytes(MsgP2P, MsgTunnelHandshake, tidBuff.Bytes())
 	_, buff, err := ul.ReadBuffer() // TODO: kcp need timeout
 	if err != nil {
 		ul.Close()
 		return nil, fmt.Errorf("read MsgTunnelHandshake error:%s", err)
 	}
 	if buff != nil {
-		gLog.Println(LvDEBUG, string(buff))
+		gLog.d("handshake flag:%s", string(buff))
 	}
 
-	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
-	gLog.Printf(LvINFO, "%s connection ok", underlayProtocol)
+	gLog.i("rtt=%dms", time.Since(handshakeBegin)/time.Millisecond)
+	gLog.i("%s connection ok", underlayProtocol)
 	t.linkModeWeb = LinkModeUDPPunch
 	return ul, nil
 }
 
 func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayTCP %s start ", t.config.LogPeerNode())
-	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP %s end ", t.config.LogPeerNode())
+	gLog.d("connectUnderlayTCP %s start ", t.config.LogPeerNode())
+	defer gLog.d("connectUnderlayTCP %s end ", t.config.LogPeerNode())
 	var ul underlay
 	peerIP := t.config.peerIP
 	if t.config.linkMode == LinkModeIntranet {
@@ -342,11 +378,15 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 		if err != nil {
 			return nil, fmt.Errorf("listen TCP error:%s", err)
 		}
-		gLog.Println(LvINFO, "TCP connection ok")
+
 		t.linkModeWeb = LinkModeIPv4
 		if t.config.linkMode == LinkModeIntranet {
 			t.linkModeWeb = LinkModeIntranet
 		}
+		if t.config.linkMode == LinkModeTCP6 {
+			t.linkModeWeb = LinkModeIPv6
+		}
+		gLog.i("%s TCP connection ok", t.linkModeWeb)
 		return ul, nil
 	}
 
@@ -355,49 +395,60 @@ func (t *P2PTunnel) connectUnderlayTCP() (c underlay, err error) {
 		GNetwork.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, ReadMsgTimeout)
 	} else { //tcp punch should sleep for punch the same time
 		if compareVersion(t.config.peerVersion, SyncServerTimeVersion) < 0 {
-			gLog.Printf(LvDEBUG, "peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
+			gLog.d("peer version %s less than %s", t.config.peerVersion, SyncServerTimeVersion)
 		} else {
 			ts := time.Duration(int64(t.punchTs) + GNetwork.dt + GNetwork.ddtma*int64(time.Since(GNetwork.hbTime)+PunchTsDelay)/int64(NetworkHeartbeatTime) - time.Now().UnixNano())
 			if ts > PunchTsDelay || ts < 0 {
 				ts = PunchTsDelay
 			}
-			gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
+			gLog.d("sleep %d ms", ts/time.Millisecond)
 			time.Sleep(ts)
 		}
 	}
-	ul, err = dialTCP(peerIP, t.config.peerConeNatPort, t.coneLocalPort, t.config.linkMode)
+	host := peerIP
+	if t.config.linkMode == LinkModeTCP6 {
+		host = t.config.peerIPv6
+	}
+	ul, err = dialTCP(host, t.config.peerConeNatPort, t.coneLocalPort, t.config.linkMode)
 	if err != nil {
-		return nil, fmt.Errorf("TCP dial to %s:%d error:%s", t.config.peerIP, t.config.peerConeNatPort, err)
+		return nil, fmt.Errorf("TCP dial to %s:%d error:%s", host, t.config.peerConeNatPort, err)
 	}
 	handshakeBegin := time.Now()
 	tidBuff := new(bytes.Buffer)
 	binary.Write(tidBuff, binary.LittleEndian, t.id)
+	// fake_http_hostname := "speedtest.cn"
+	// user_agent := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+	// ul.WriteMessage(MsgP2P, 100, fmt.Sprintf("GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: %s\r\nAccept: */*\r\n\r\n",
+	// 	fake_http_hostname, user_agent))
 	ul.WriteBytes(MsgP2P, MsgTunnelHandshake, tidBuff.Bytes()) //  tunnelID
 	_, buff, err := ul.ReadBuffer()
 	if err != nil {
 		return nil, fmt.Errorf("read MsgTunnelHandshake error:%s", err)
 	}
 	if buff != nil {
-		gLog.Println(LvDEBUG, "hello ", string(buff))
+		gLog.d("hello %s", string(buff))
 	}
 
-	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
-	gLog.Println(LvINFO, "TCP connection ok")
+	gLog.i("rtt=%dms", time.Since(handshakeBegin)/time.Millisecond)
 	t.linkModeWeb = LinkModeIPv4
 	if t.config.linkMode == LinkModeIntranet {
 		t.linkModeWeb = LinkModeIntranet
 	}
+	if t.config.linkMode == LinkModeTCP6 {
+		t.linkModeWeb = LinkModeIPv6
+	}
+	gLog.i("%s TCP connection ok", t.linkModeWeb)
 	return ul, nil
 }
 
 func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayTCPSymmetric %s start ", t.config.LogPeerNode())
-	defer gLog.Printf(LvDEBUG, "connectUnderlayTCPSymmetric %s end ", t.config.LogPeerNode())
+	gLog.d("connectUnderlayTCPSymmetric %s start ", t.config.LogPeerNode())
+	defer gLog.d("connectUnderlayTCPSymmetric %s end ", t.config.LogPeerNode())
 	ts := time.Duration(int64(t.punchTs) + GNetwork.dt + GNetwork.ddtma*int64(time.Since(GNetwork.hbTime)+PunchTsDelay)/int64(NetworkHeartbeatTime) - time.Now().UnixNano())
 	if ts > PunchTsDelay || ts < 0 {
 		ts = PunchTsDelay
 	}
-	gLog.Printf(LvDEBUG, "sleep %d ms", ts/time.Millisecond)
+	gLog.d("sleep %d ms", ts/time.Millisecond)
 	time.Sleep(ts)
 	startTime := time.Now()
 	t.linkModeWeb = LinkModeTCPPunch
@@ -424,8 +475,8 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 					return
 				}
 				_, buff, err := ul.ReadBuffer()
-				if err != nil {
-					gLog.Println(LvDEBUG, "c2s ul.ReadBuffer error:", err)
+				if err != nil || buff == nil {
+					gLog.d("c2s ul.ReadBuffer error:%s", err)
 					return
 				}
 				req := P2PHandshakeReq{}
@@ -435,7 +486,7 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 				if req.ID != t.id {
 					return
 				}
-				gLog.Printf(LvINFO, "handshakeS2C TCP ok. cost %dms", time.Since(startTime)/time.Millisecond)
+				gLog.i("handshakeS2C TCP ok. cost %dms", time.Since(startTime)/time.Millisecond)
 
 				gotCh <- ul
 				close(gotCh)
@@ -453,8 +504,8 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 				}
 
 				_, buff, err := ul.ReadBuffer()
-				if err != nil {
-					gLog.Println(LvDEBUG, "s2c ul.ReadBuffer error:", err)
+				if err != nil || buff == nil {
+					gLog.d("s2c ul.ReadBuffer error:%s", err)
 					return
 				}
 				req := P2PHandshakeReq{}
@@ -485,91 +536,116 @@ func (t *P2PTunnel) connectUnderlayTCPSymmetric() (c underlay, err error) {
 }
 
 func (t *P2PTunnel) connectUnderlayTCP6() (c underlay, err error) {
-	gLog.Printf(LvDEBUG, "connectUnderlayTCP6 %s start ", t.config.LogPeerNode())
-	defer gLog.Printf(LvDEBUG, "connectUnderlayTCP6 %s end ", t.config.LogPeerNode())
-	var ul *underlayTCP6
+	gLog.d("connectUnderlayTCP6 %s start ", t.config.LogPeerNode())
+	defer gLog.d("connectUnderlayTCP6 %s end ", t.config.LogPeerNode())
+	tidBuff := new(bytes.Buffer)
+	binary.Write(tidBuff, binary.LittleEndian, t.id)
 	if t.config.isUnderlayServer == 1 {
 		GNetwork.push(t.config.PeerNode, MsgPushUnderlayConnect, nil)
-		ul, err = listenTCP6(t.coneNatPort, UnderlayConnectTimeout)
-		if err != nil {
+		// ul, err = listenTCP6(t.coneNatPort, UnderlayConnectTimeout)
+		tid := t.id
+		if compareVersion(t.config.peerVersion, PublicIPVersion) < 0 { // old version
+			ipBytes := net.ParseIP(t.config.peerIP).To4()
+			tid = uint64(binary.BigEndian.Uint32(ipBytes))
+			gLog.d("compatible with old client, use ip as key:%d", tid)
+		}
+
+		if v4l != nil {
+			c = v4l.getUnderlay(tid)
+		}
+		if c == nil {
 			return nil, fmt.Errorf("listen TCP6 error:%s", err)
 		}
-		_, buff, err := ul.ReadBuffer()
+		_, buff, err := c.ReadBuffer()
 		if err != nil {
 			return nil, fmt.Errorf("read start msg error:%s", err)
 		}
 		if buff != nil {
-			gLog.Println(LvDEBUG, string(buff))
+			gLog.d("handshake flag:%s", string(buff))
 		}
-		ul.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, []byte("OpenP2P,hello2"))
-		gLog.Println(LvDEBUG, "TCP6 connection ok")
+		c.WriteBytes(MsgP2P, MsgTunnelHandshake, tidBuff.Bytes()) //  tunnelID
+		// ul.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, []byte("OpenP2P,hello2"))
+		gLog.d("TCP6 connection ok")
 		t.linkModeWeb = LinkModeIPv6
-		return ul, nil
+		return c, nil
 	}
 
 	//else
 	GNetwork.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, ReadMsgTimeout)
-	gLog.Println(LvDEBUG, "TCP6 dial to ", t.config.peerIPv6)
-	ul, err = dialTCP6(t.config.peerIPv6, t.config.peerConeNatPort)
+	gLog.d("TCP6 dial to %s", t.config.peerIPv6)
+	ul, err := dialTCP(fmt.Sprintf("[%s]", t.config.peerIPv6), t.config.peerConeNatPort, 0, LinkModeTCP6)
 	if err != nil || ul == nil {
 		return nil, fmt.Errorf("TCP6 dial to %s:%d error:%s", t.config.peerIPv6, t.config.peerConeNatPort, err)
 	}
 	handshakeBegin := time.Now()
-	ul.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
+	ul.WriteBytes(MsgP2P, MsgTunnelHandshake, tidBuff.Bytes()) //  tunnelID
+	// ul.WriteBytes(MsgP2P, MsgTunnelHandshake, []byte("OpenP2P,hello"))
 	_, buff, errR := ul.ReadBuffer()
 	if errR != nil {
 		return nil, fmt.Errorf("read MsgTunnelHandshake error:%s", errR)
 	}
 	if buff != nil {
-		gLog.Println(LvDEBUG, string(buff))
+		gLog.d("handshake flag:%s", string(buff))
 	}
 
-	gLog.Println(LvINFO, "rtt=", time.Since(handshakeBegin))
-	gLog.Println(LvINFO, "TCP6 connection ok")
+	gLog.i("rtt=%dms", time.Since(handshakeBegin))
+	gLog.i("TCP6 connection ok")
 	t.linkModeWeb = LinkModeIPv6
 	return ul, nil
 }
 
 func (t *P2PTunnel) readLoop() {
 	decryptData := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
-	gLog.Printf(LvDEBUG, "%d tunnel readloop start", t.id)
+	gLog.d("%d tunnel readloop start", t.id)
 	for t.isRuning() {
 		t.conn.SetReadDeadline(time.Now().Add(TunnelHeartbeatTime * 2))
 		head, body, err := t.conn.ReadBuffer()
-		if err != nil {
+		if err != nil || head == nil {
 			if t.isRuning() {
-				gLog.Printf(LvERROR, "%d tunnel read error:%s", t.id, err)
+				gLog.w("%d tunnel read error:%s", t.id, err)
 			}
 			break
 		}
 		if head.MainType != MsgP2P {
-			gLog.Printf(LvWARN, "%d head.MainType != MsgP2P", t.id)
+			gLog.w("%d head.MainType(%d) != MsgP2P", head.MainType, t.id)
 			continue
 		}
+		// gLog.d("%d tunnel read %d:%d len=%d", t.id, head.MainType, head.SubType, head.DataLen)
 		// TODO: replace some case implement to functions
 		switch head.SubType {
 		case MsgTunnelHeartbeat:
 			t.hbMtx.Lock()
 			t.hbTime = time.Now()
 			t.hbMtx.Unlock()
-			t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeatAck, nil)
-			gLog.Printf(LvDev, "%d read tunnel heartbeat", t.id)
+			memAppPeerID := new(bytes.Buffer)
+			binary.Write(memAppPeerID, binary.LittleEndian, gConf.Network.nodeID)
+			t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeatAck, memAppPeerID.Bytes())
+			gLog.dev("%d read tunnel heartbeat", t.id)
 		case MsgTunnelHeartbeatAck:
 			t.hbMtx.Lock()
 			t.hbTime = time.Now()
 			t.hbMtx.Unlock()
-			gLog.Printf(LvDev, "%d read tunnel heartbeat ack", t.id)
+			if head.DataLen >= 8 {
+				memAppPeerID := binary.LittleEndian.Uint64(body[:8])
+				existApp, appok := GNetwork.apps.Load(memAppPeerID)
+				if appok {
+					app := existApp.(*p2pApp)
+					app.rtt[0].Store(int32(time.Since(t.whbTime) / time.Millisecond))
+				}
+			}
+
+			gLog.dev("%d read tunnel heartbeat ack, rtt=%dms", t.id, time.Since(t.whbTime)/time.Millisecond)
 		case MsgOverlayData:
 			if len(body) < overlayHeaderSize {
-				gLog.Printf(LvWARN, "%d len(body) < overlayHeaderSize", t.id)
+				gLog.w("%d len(body) < overlayHeaderSize", t.id)
 				continue
 			}
 			overlayID := binary.LittleEndian.Uint64(body[:8])
-			gLog.Printf(LvDev, "%d tunnel read overlay data %d bodylen=%d", t.id, overlayID, head.DataLen)
-			s, ok := t.overlayConns.Load(overlayID)
+			gLog.dev("%d tunnel read overlay data %d bodylen=%d", t.id, overlayID, head.DataLen)
+			s, ok := overlayConns.Load(overlayID)
 			if !ok {
 				// debug level, when overlay connection closed, always has some packet not found tunnel
-				gLog.Printf(LvDEBUG, "%d tunnel not found overlay connection %d", t.id, overlayID)
+				gLog.d("%d tunnel not found overlay connection %d", t.id, overlayID)
 				continue
 			}
 			overlayConn, ok := s.(*overlayConn)
@@ -578,101 +654,86 @@ func (t *P2PTunnel) readLoop() {
 			}
 			payload := body[overlayHeaderSize:]
 			var err error
-			if overlayConn.appKey != 0 {
-				payload, _ = decryptBytes(overlayConn.appKeyBytes, decryptData, body[overlayHeaderSize:], int(head.DataLen-uint32(overlayHeaderSize)))
+			if overlayConn.app.key != 0 {
+				payload, _ = decryptBytes(overlayConn.app.appKeyBytes, decryptData, body[overlayHeaderSize:], int(head.DataLen-uint32(overlayHeaderSize)))
 			}
 			_, err = overlayConn.Write(payload)
 			if err != nil {
-				gLog.Println(LvERROR, "overlay write error:", err)
+				gLog.e("overlay write error:%s", err)
 			}
-		case MsgNodeData:
+		case MsgNodeDataMP:
+			t.handleNodeDataMP(head, body)
+		case MsgNodeDataMPAck:
+			t.handleNodeDataMPAck(head, body)
+		case MsgNodeData: // unused
 			t.handleNodeData(head, body, false)
-		case MsgRelayNodeData:
+		case MsgRelayNodeData: // unused
 			t.handleNodeData(head, body, true)
 		case MsgRelayData:
 			if len(body) < 8 {
 				continue
 			}
 			tunnelID := binary.LittleEndian.Uint64(body[:8])
-			gLog.Printf(LvDev, "relay data to %d, len=%d", tunnelID, head.DataLen-RelayHeaderSize)
+			gLog.dev("relay data to %d, len=%d", tunnelID, head.DataLen-RelayHeaderSize)
 			if err := GNetwork.relay(tunnelID, body[RelayHeaderSize:]); err != nil {
-				gLog.Printf(LvERROR, "%s:%d relay to %d len=%d error:%s", t.config.LogPeerNode(), t.id, tunnelID, len(body), ErrRelayTunnelNotFound)
+				gLog.d("%s:%d relay to %d len=%d error:%s", t.config.LogPeerNode(), t.id, tunnelID, len(body), ErrRelayTunnelNotFound)
 			}
-		case MsgRelayHeartbeat:
+		case MsgRelayHeartbeat: // only client side will write relay heartbeat, different with tunnel heartbeat
 			req := RelayHeartbeat{}
 			if err := json.Unmarshal(body, &req); err != nil {
-				gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+				gLog.e("wrong %v:%s", reflect.TypeOf(req), err)
 				continue
 			}
 			// TODO: debug relay heartbeat
-			gLog.Printf(LvDEBUG, "read MsgRelayHeartbeat from rtid:%d,appid:%d", req.RelayTunnelID, req.AppID)
+			gLog.dev("read MsgRelayHeartbeat from rtid:%d,appid:%d", req.RelayTunnelID, req.AppID)
 			// update app hbtime
-			GNetwork.updateAppHeartbeat(req.AppID)
+			GNetwork.updateAppHeartbeat(req.AppID, req.RelayTunnelID, true)
 			req.From = gConf.Network.Node
 			t.WriteMessage(req.RelayTunnelID, MsgP2P, MsgRelayHeartbeatAck, &req)
 		case MsgRelayHeartbeatAck:
 			req := RelayHeartbeat{}
 			err := json.Unmarshal(body, &req)
 			if err != nil {
-				gLog.Printf(LvERROR, "wrong RelayHeartbeat:%s", err)
+				gLog.e("wrong RelayHeartbeat:%s", err)
 				continue
 			}
 			// TODO: debug relay heartbeat
-			gLog.Printf(LvDEBUG, "read MsgRelayHeartbeatAck to appid:%d", req.AppID)
-			GNetwork.updateAppHeartbeat(req.AppID)
-		case MsgOverlayConnectReq:
-			req := OverlayConnectReq{}
-			if err := json.Unmarshal(body, &req); err != nil {
-				gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
-				continue
-			}
-			// app connect only accept token(not relay totp token), avoid someone using the share relay node's token
-			if req.Token != gConf.Network.Token {
-				gLog.Println(LvERROR, "Access Denied:", req.Token)
-				continue
-			}
-
-			overlayID := req.ID
-			gLog.Printf(LvDEBUG, "App:%d overlayID:%d connect %s:%d", req.AppID, overlayID, req.DstIP, req.DstPort)
-			oConn := overlayConn{
-				tunnel:   t,
-				id:       overlayID,
-				isClient: false,
-				rtid:     req.RelayTunnelID,
-				appID:    req.AppID,
-				appKey:   GetKey(req.AppID),
-				running:  true,
-			}
-			if req.Protocol == "udp" {
-				oConn.connUDP, err = net.DialUDP("udp", nil, &net.UDPAddr{IP: net.ParseIP(req.DstIP), Port: req.DstPort})
-			} else {
-				oConn.connTCP, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.DstIP, req.DstPort), ReadMsgTimeout)
-
-			}
+			gLog.dev("read MsgRelayHeartbeatAck to appid:%d", req.AppID)
+			GNetwork.updateAppHeartbeat(req.AppID, req.RelayTunnelID, false)
+			req.From = gConf.Network.Node
+			t.WriteMessage(req.RelayTunnelID2, MsgP2P, MsgRelayHeartbeatAck2, &req)
+		case MsgRelayHeartbeatAck2:
+			req := RelayHeartbeat{}
+			err := json.Unmarshal(body, &req)
 			if err != nil {
-				gLog.Println(LvERROR, err)
+				gLog.e("wrong RelayHeartbeat:%s", err)
 				continue
 			}
-
-			// calc key bytes for encrypt
-			if oConn.appKey != 0 {
-				encryptKey := make([]byte, AESKeySize)
-				binary.LittleEndian.PutUint64(encryptKey, oConn.appKey)
-				binary.LittleEndian.PutUint64(encryptKey[8:], oConn.appKey)
-				oConn.appKeyBytes = encryptKey
+			gLog.dev("read MsgRelayHeartbeatAck2 to appid:%d", req.AppID)
+			GNetwork.updateAppHeartbeat(req.AppID, req.RelayTunnelID, false)
+		case MsgOverlayConnectReq: // TODO: send this msg withAppID, and app handle it
+			// app connect only accept token(not relay totp token), avoid someone using the share relay node's token
+			// targetApp := GNetwork.GetAPPByID(req.AppID)
+			t.handleOverlayConnectReq(body, err)
+		case MsgOverlayConnectRsp:
+			appID := binary.LittleEndian.Uint64(body[:8])
+			i, ok := GNetwork.apps.Load(appID)
+			if !ok {
+				gLog.e("MsgOverlayConnectRsp app not found %d", appID)
+				return
 			}
-
-			t.overlayConns.Store(oConn.id, &oConn)
-			go oConn.run()
+			app := i.(*p2pApp)
+			// ndmp := NodeDataMPHeader{fromNodeID: gConf.Network.nodeID, seq: seq}
+			app.StoreMessage(head, body)
 		case MsgOverlayDisconnectReq:
 			req := OverlayDisconnectReq{}
 			if err := json.Unmarshal(body, &req); err != nil {
-				gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(req), err)
+				gLog.e("wrong %v:%s", reflect.TypeOf(req), err)
 				continue
 			}
 			overlayID := req.ID
-			gLog.Printf(LvDEBUG, "%d disconnect overlay connection %d", t.id, overlayID)
-			i, ok := t.overlayConns.Load(overlayID)
+			gLog.d("%d disconnect overlay connection %d", t.id, overlayID)
+			i, ok := overlayConns.Load(overlayID)
 			if ok {
 				oConn := i.(*overlayConn)
 				oConn.Close()
@@ -681,7 +742,55 @@ func (t *P2PTunnel) readLoop() {
 		}
 	}
 	t.close()
-	gLog.Printf(LvDEBUG, "%d tunnel readloop end", t.id)
+	gLog.d("%d tunnel readloop end", t.id)
+}
+
+func (*P2PTunnel) handleOverlayConnectReq(body []byte, err error) {
+	req := OverlayConnectReq{}
+	if err := json.Unmarshal(body, &req); err != nil {
+		gLog.e("wrong %v:%s", reflect.TypeOf(req), err)
+		return
+	}
+
+	if req.Token != gConf.Network.Token {
+		gLog.e("Access Denied,token=%d", req.Token)
+		return
+	}
+
+	overlayID := req.ID
+	gLog.d("App:%d overlayID:%d connect %s:%d", req.AppID, overlayID, req.DstIP, req.DstPort)
+
+	i, ok := GNetwork.apps.Load(req.AppID)
+	if !ok {
+		return
+	}
+	targetApp := i.(*p2pApp)
+	oConn := overlayConn{
+		app:      targetApp,
+		id:       overlayID,
+		isClient: false,
+		running:  true,
+	}
+	// connect local service should use sys dns
+	sysResolver := &net.Resolver{}
+	ips, err := sysResolver.LookupIP(context.Background(), "ip4", req.DstIP)
+	if err != nil {
+		gLog.e("handleOverlayConnectReq dial error:%s", err)
+		return
+	}
+	if req.Protocol == "udp" {
+		oConn.connUDP, err = net.DialUDP("udp", nil, &net.UDPAddr{IP: ips[0], Port: req.DstPort})
+	} else {
+		oConn.connTCP, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ips[0].String(), req.DstPort), ReadMsgTimeout)
+
+	}
+	if err != nil {
+		gLog.e("handleOverlayConnectReq dial error:%s", err)
+		return
+	}
+	overlayConns.Store(oConn.id, &oConn)
+	go oConn.run()
+	targetApp.WriteMessageWithAppID(MsgP2P, MsgOverlayConnectRsp, nil)
 }
 
 func (t *P2PTunnel) writeLoop() {
@@ -690,29 +799,39 @@ func (t *P2PTunnel) writeLoop() {
 	t.hbMtx.Unlock()
 	tc := time.NewTicker(TunnelHeartbeatTime)
 	defer tc.Stop()
-	gLog.Printf(LvDEBUG, "%s:%d tunnel writeLoop start", t.config.LogPeerNode(), t.id)
-	defer gLog.Printf(LvDEBUG, "%s:%d tunnel writeLoop end", t.config.LogPeerNode(), t.id)
+	gLog.d("%s:%d tunnel writeLoop start", t.config.LogPeerNode(), t.id)
+	defer gLog.d("%s:%d tunnel writeLoop end", t.config.LogPeerNode(), t.id)
+	writeHb := func() {
+		// tunnel send
+		t.whbTime = time.Now()
+		err := t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeat, nil)
+		if err != nil {
+			gLog.w("%d write tunnel heartbeat error %s", t.id, err)
+			t.close()
+			return
+		}
+		gLog.dev("%d write tunnel heartbeat ok", t.id)
+	}
+	writeHb()
 	for t.isRuning() {
 		select {
 		case buff := <-t.writeDataSmall:
 			t.conn.WriteBuffer(buff)
-			// gLog.Printf(LvDEBUG, "write icmp %d", time.Now().Unix())
+			// gLog.d("write icmp %d", time.Now().Unix())
 		default:
 			select {
 			case buff := <-t.writeDataSmall:
 				t.conn.WriteBuffer(buff)
-				// gLog.Printf(LvDEBUG, "write icmp %d", time.Now().Unix())
+				// gLog.d("write icmp %d", time.Now().Unix())
 			case buff := <-t.writeData:
-				t.conn.WriteBuffer(buff)
-			case <-tc.C:
-				// tunnel send
-				err := t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeat, nil)
+				err := t.conn.WriteBuffer(buff)
 				if err != nil {
-					gLog.Printf(LvERROR, "%d write tunnel heartbeat error %s", t.id, err)
+					gLog.e("%d write tunnel error %s", t.id, err)
 					t.close()
 					return
 				}
-				gLog.Printf(LvDev, "%d write tunnel heartbeat ok", t.id)
+			case <-tc.C:
+				writeHb()
 			}
 		}
 	}
@@ -742,54 +861,74 @@ func (t *P2PTunnel) listen() error {
 	}
 
 	GNetwork.push(t.config.PeerNode, MsgPushConnectRsp, rsp)
-	gLog.Printf(LvDEBUG, "p2ptunnel wait for connecting")
-	t.tunnelServer = true
+	gLog.d("p2ptunnel wait for connecting")
 	return t.start()
 }
 
-func (t *P2PTunnel) closeOverlayConns(appID uint64) {
-	t.overlayConns.Range(func(_, i interface{}) bool {
-		oConn := i.(*overlayConn)
-		if oConn.appID == appID {
-			oConn.Close()
-		}
-		return true
-	})
-}
-
 func (t *P2PTunnel) handleNodeData(head *openP2PHeader, body []byte, isRelay bool) {
-	gLog.Printf(LvDev, "%d tunnel read node data bodylen=%d, relay=%t", t.id, head.DataLen, isRelay)
+	gLog.dev("%d tunnel read node data bodylen=%d, relay=%t", t.id, head.DataLen, isRelay)
 	ch := GNetwork.nodeData
 	// if body[9] == 1 { // TODO: deal relay
 	// 	ch = GNetwork.nodeDataSmall
-	// 	gLog.Printf(LvDEBUG, "read icmp %d", time.Now().Unix())
+	// 	gLog.d("read icmp %d", time.Now().Unix())
 	// }
 	if isRelay {
-		fromPeerID := binary.LittleEndian.Uint64(body[:8])
-		ch <- &NodeData{fromPeerID, body[8:]} // TODO: cache peerNodeID; encrypt/decrypt
+		// fromPeerID := binary.LittleEndian.Uint64(body[:8]) // unused
+		ch <- body[8:] // TODO: cache peerNodeID; encrypt/decrypt
 	} else {
-		ch <- &NodeData{NodeNameToID(t.config.PeerNode), body} // TODO: cache peerNodeID; encrypt/decrypt
+		ch <- body // TODO: cache peerNodeID; encrypt/decrypt
 	}
 }
 
-func (t *P2PTunnel) asyncWriteNodeData(mainType, subType uint16, data []byte) {
-	writeBytes := append(encodeHeader(mainType, subType, uint32(len(data))), data...)
-	// if len(data) < 192 {
-	if data[9] == 1 { // icmp
-		select {
-		case t.writeDataSmall <- writeBytes:
-			// gLog.Printf(LvWARN, "%s:%d t.writeDataSmall write %d", t.config.PeerNode, t.id, len(t.writeDataSmall))
-		default:
-			gLog.Printf(LvWARN, "%s:%d t.writeDataSmall is full, drop it", t.config.LogPeerNode(), t.id)
-		}
-	} else {
-		select {
-		case t.writeData <- writeBytes:
-		default:
-			gLog.Printf(LvWARN, "%s:%d t.writeData is full, drop it", t.config.LogPeerNode(), t.id)
-		}
+func (t *P2PTunnel) handleNodeDataMP(head *openP2PHeader, body []byte) {
+	gLog.dev("%s tid:%d tunnel read node data mp bodylen=%d", t.config.LogPeerNode(), t.id, head.DataLen) // Debug
+	if head.DataLen < 16 {
+		return
 	}
 
+	// TODO: reorder write tun
+	fromNodeID := binary.LittleEndian.Uint64(body[:8])
+	seq := binary.LittleEndian.Uint64(body[8:16])
+	i, ok := GNetwork.apps.Load(fromNodeID)
+	if !ok {
+		gLog.e("handleNodeDataMP peer not found,from=%s nodeID=%d, seq=%d", t.config.LogPeerNode(), fromNodeID, seq)
+		return
+	}
+	app := i.(*p2pApp)
+	// ndmp := NodeDataMPHeader{fromNodeID: gConf.Network.nodeID, seq: seq}
+	app.handleNodeDataMP(seq, body[16:], t)
+
+}
+func (t *P2PTunnel) handleNodeDataMPAck(head *openP2PHeader, body []byte) {
+
+}
+
+func (t *P2PTunnel) asyncWriteNodeData(id uint64, seq uint64, IPPacket []byte, relayHead []byte) {
+	all := new(bytes.Buffer)
+	if relayHead != nil {
+		all.Write(encodeHeader(MsgP2P, MsgRelayData, uint32(openP2PHeaderSize+len(relayHead)+16+len(IPPacket))))
+		all.Write(relayHead)
+	}
+	all.Write(encodeHeader(MsgP2P, MsgNodeDataMP, 16+uint32(len(IPPacket)))) // id+seq=16 bytes
+	binary.Write(all, binary.LittleEndian, id)
+	binary.Write(all, binary.LittleEndian, seq)
+	all.Write(IPPacket)
+	// if len(data) < 192 {
+	if IPPacket[9] == 1 { // icmp
+		select {
+		case t.writeDataSmall <- all.Bytes():
+			// gLog.w("%s:%d t.writeDataSmall write %d", t.config.PeerNode, t.id, len(t.writeDataSmall))
+		default:
+			gLog.w("%s:%d t.writeDataSmall is full, drop it", t.config.LogPeerNode(), t.id)
+		}
+	} else {
+		t.writeData <- all.Bytes()
+		// select {
+		// case t.writeData <- writeBytes:
+		// default:
+		// 	gLog.w("%s:%d t.writeData is full, drop it", t.config.LogPeerNode(), t.id)
+		// }
+	}
 }
 
 func (t *P2PTunnel) WriteMessage(rtid uint64, mainType uint16, subType uint16, req interface{}) error {
@@ -803,3 +942,41 @@ func (t *P2PTunnel) WriteMessage(rtid uint64, mainType uint16, subType uint16, r
 	return t.conn.WriteBytes(mainType, MsgRelayData, msgWithHead)
 
 }
+
+func (t *P2PTunnel) WriteMessageWithAppID(appID uint64, rtid uint64, mainType uint16, subType uint16, req interface{}) error {
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	head := new(bytes.Buffer)
+	binary.Write(head, binary.LittleEndian, appID)
+	msgWithAppID := append(head.Bytes(), data...)
+	if rtid == 0 {
+		return t.conn.WriteBytes(mainType, subType, msgWithAppID)
+	}
+	relayHead := new(bytes.Buffer)
+	binary.Write(relayHead, binary.LittleEndian, rtid)
+	msg, _ := newMessageWithBuff(mainType, subType, msgWithAppID)
+	msgWithHead := append(relayHead.Bytes(), msg...)
+	return t.conn.WriteBytes(mainType, MsgRelayData, msgWithHead)
+
+}
+
+func (t *P2PTunnel) WriteBytes(rtid uint64, mainType uint16, subType uint16, data []byte) error {
+	if rtid == 0 {
+		return t.conn.WriteBytes(mainType, subType, data)
+	}
+	all := new(bytes.Buffer)
+	binary.Write(all, binary.LittleEndian, rtid)
+	all.Write(encodeHeader(mainType, subType, uint32(len(data))))
+	all.Write(data)
+	return t.conn.WriteBytes(mainType, MsgRelayData, all.Bytes())
+
+}
+
+// func (t *P2PTunnel) RTT() int {
+// 	if t.isWriting.Load() && t.rtt.Load() < int32(time.Now().Add(time.Duration(-t.writingTs.Load())).Unix()/int64(time.Millisecond)) {
+// 		return int(time.Now().Add(time.Duration(-t.writingTs.Load())).Unix() / int64(time.Millisecond))
+// 	}
+// 	return int(t.rtt.Load())
+// }

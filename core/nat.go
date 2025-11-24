@@ -149,7 +149,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 			break
 		}
 		defer conn.Close()
-		dst, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", gConf.Network.ServerHost, gConf.Network.ServerPort))
+		dst, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", gConf.Network.ServerIP, gConf.Network.ServerPort))
 		if err != nil {
 			break
 		}

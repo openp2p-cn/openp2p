@@ -24,6 +24,14 @@ allprojects {
         jcenter() // Warning: this repository is going to shut down soon
     }
 }
+allprojects {
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://jitpack.io' }
+    }
+}
 
 task clean(type: Delete) {
     delete rootProject.buildDir

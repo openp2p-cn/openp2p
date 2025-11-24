@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -21,18 +22,24 @@ func (e *DeadlineExceededError) Error() string   { return "i/o timeout" }
 func (e *DeadlineExceededError) Timeout() bool   { return true }
 func (e *DeadlineExceededError) Temporary() bool { return true }
 
+var overlayConns sync.Map // both TCP and UDP
+func closeOverlayConns(appID uint64) {
+	overlayConns.Range(func(_, i interface{}) bool {
+		oConn := i.(*overlayConn)
+		if oConn.app.id == appID {
+			oConn.Close()
+		}
+		return true
+	})
+}
+
 // implement io.Writer
 type overlayConn struct {
-	tunnel      *P2PTunnel // TODO: del
-	app         *p2pApp
-	connTCP     net.Conn
-	id          uint64
-	rtid        uint64
-	running     bool
-	isClient    bool
-	appID       uint64 // TODO: del
-	appKey      uint64 // TODO: del
-	appKeyBytes []byte // TODO: del
+	app      *p2pApp
+	connTCP  net.Conn
+	id       uint64
+	running  bool
+	isClient bool
 	// for udp
 	connUDP       *net.UDPConn
 	remoteAddr    net.Addr
@@ -41,42 +48,31 @@ type overlayConn struct {
 }
 
 func (oConn *overlayConn) run() {
-	gLog.Printf(LvDEBUG, "oid:%d overlayConn run start", oConn.id)
-	defer gLog.Printf(LvDEBUG, "oid:%d overlayConn run end", oConn.id)
+	gLog.d("oid:%d overlayConn run start", oConn.id)
+	defer gLog.d("oid:%d overlayConn run end", oConn.id)
 	oConn.lastReadUDPTs = time.Now()
 	buffer := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
 	reuseBuff := buffer[:ReadBuffLen]
 	encryptData := make([]byte, ReadBuffLen+PaddingSize) // 16 bytes for padding
-	tunnelHead := new(bytes.Buffer)
-	relayHead := new(bytes.Buffer)
-	binary.Write(relayHead, binary.LittleEndian, oConn.rtid)
-	binary.Write(tunnelHead, binary.LittleEndian, oConn.id)
-	for oConn.running && oConn.tunnel.isRuning() {
+	overlayHead := new(bytes.Buffer)
+
+	binary.Write(overlayHead, binary.LittleEndian, oConn.id)
+	for oConn.running && oConn.app.running {
 		readBuff, dataLen, err := oConn.Read(reuseBuff)
 		if err != nil {
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
 			// overlay tcp connection normal close, debug log
-			gLog.Printf(LvDEBUG, "oid:%d overlayConn read error:%s,close it", oConn.id, err)
+			gLog.d("oid:%d overlayConn read error:%s,close it", oConn.id, err)
 			break
 		}
 		payload := readBuff[:dataLen]
-		if oConn.appKey != 0 {
-			payload, _ = encryptBytes(oConn.appKeyBytes, encryptData, readBuff[:dataLen], dataLen)
+		if oConn.app.key != 0 {
+			payload, _ = encryptBytes(oConn.app.appKeyBytes, encryptData, readBuff[:dataLen], dataLen)
 		}
-		writeBytes := append(tunnelHead.Bytes(), payload...)
-		// TODO: app.write
-		if oConn.rtid == 0 {
-			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgOverlayData, writeBytes)
-			gLog.Printf(LvDev, "oid:%d write overlay data to tid:%d bodylen=%d", oConn.id, oConn.tunnel.id, oConn.id, len(writeBytes))
-		} else {
-			// write raley data
-			all := append(relayHead.Bytes(), encodeHeader(MsgP2P, MsgOverlayData, uint32(len(writeBytes)))...)
-			all = append(all, writeBytes...)
-			oConn.tunnel.conn.WriteBytes(MsgP2P, MsgRelayData, all)
-			gLog.Printf(LvDev, "oid:%d write relay data to tid:%d,rtid:%d bodylen=%d", oConn.id, oConn.tunnel.id, oConn.rtid, len(writeBytes))
-		}
+		writeBytes := append(overlayHead.Bytes(), payload...)
+		oConn.app.WriteBytes(writeBytes)
 	}
 	if oConn.connTCP != nil {
 		oConn.connTCP.Close()
@@ -84,10 +80,10 @@ func (oConn *overlayConn) run() {
 	if oConn.connUDP != nil {
 		oConn.connUDP.Close()
 	}
-	oConn.tunnel.overlayConns.Delete(oConn.id)
+	overlayConns.Delete(oConn.id)
 	// notify peer disconnect
 	req := OverlayDisconnectReq{ID: oConn.id}
-	oConn.tunnel.WriteMessage(oConn.rtid, MsgP2P, MsgOverlayDisconnectReq, &req)
+	oConn.app.WriteMessage(MsgP2P, MsgOverlayDisconnectReq, &req)
 }
 
 func (oConn *overlayConn) Read(reuseBuff []byte) (buff []byte, dataLen int, err error) {

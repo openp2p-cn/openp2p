@@ -2,6 +2,7 @@ package openp2p
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -27,13 +28,31 @@ func Run() {
 		case "uninstall":
 			uninstall(true)
 			return
+		case "start":
+			d := daemon{}
+			err := d.Control("start", "", nil)
+			if err != nil {
+				log.Println("openp2p start error:", err)
+				return
+			}
+			log.Println("openp2p start ok")
+			return
+		case "stop":
+			d := daemon{}
+			err := d.Control("stop", "", nil)
+			if err != nil {
+				log.Println("openp2p stop error:", err)
+				return
+			}
+			log.Println("openp2p stop ok")
+			return
 		}
 	} else {
 		installByFilename()
 	}
 	parseParams("", "")
-	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
+	gLog.i("openp2p start. version: %s", OpenP2PVersion)
+	gLog.i("Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
 
 	if gConf.daemonMode {
 		d := daemon{}
@@ -41,18 +60,18 @@ func Run() {
 		return
 	}
 
-	gLog.Printf(LvINFO, "node=%s, serverHost=%s, serverPort=%d", gConf.Network.Node, gConf.Network.ServerHost, gConf.Network.ServerPort)
+	gLog.i("node=%s, serverHost=%s, serverPort=%d", gConf.Network.Node, gConf.Network.ServerHost, gConf.Network.ServerPort)
 	setFirewall()
 	err := setRLimit()
 	if err != nil {
-		gLog.Println(LvINFO, "setRLimit error:", err)
+		gLog.i("setRLimit error:%s", err)
 	}
-	GNetwork = P2PNetworkInstance()
+	P2PNetworkInstance()
 	if ok := GNetwork.Connect(30000); !ok {
-		gLog.Println(LvERROR, "P2PNetwork login error")
+		gLog.e("P2PNetwork login error")
 		return
 	}
-	// gLog.Println(LvINFO, "waiting for connection...")
+	// gLog.i("waiting for connection...")
 	forever := make(chan bool)
 	<-forever
 }
@@ -76,16 +95,16 @@ func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork
 	}
 	// gLog.setLevel(LogLevel(logLevel))
 	gConf.setShareBandwidth(bw)
-	gLog.Println(LvINFO, "openp2p start. version: ", OpenP2PVersion)
-	gLog.Println(LvINFO, "Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
-	gLog.Printf(LvINFO, "node=%s, serverHost=%s, serverPort=%d", gConf.Network.Node, gConf.Network.ServerHost, gConf.Network.ServerPort)
+	gLog.i("openp2p start. version: %s", OpenP2PVersion)
+	gLog.i("Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
+	gLog.i("node=%s, serverHost=%s, serverPort=%d", gConf.Network.Node, gConf.Network.ServerHost, gConf.Network.ServerPort)
 
-	GNetwork = P2PNetworkInstance()
+	P2PNetworkInstance()
 	if ok := GNetwork.Connect(30000); !ok {
-		gLog.Println(LvERROR, "P2PNetwork login error")
+		gLog.e("P2PNetwork login error")
 		return nil
 	}
-	// gLog.Println(LvINFO, "waiting for connection...")
+	// gLog.i("waiting for connection...")
 	return GNetwork
 }
 
@@ -99,11 +118,11 @@ func RunCmd(cmd string) {
 	setFirewall()
 	err := setRLimit()
 	if err != nil {
-		gLog.Println(LvINFO, "setRLimit error:", err)
+		gLog.i("setRLimit error:%s", err)
 	}
-	GNetwork = P2PNetworkInstance()
+	P2PNetworkInstance()
 	if ok := GNetwork.Connect(30000); !ok {
-		gLog.Println(LvERROR, "P2PNetwork login error")
+		gLog.e("P2PNetwork login error")
 		return
 	}
 	forever := make(chan bool)

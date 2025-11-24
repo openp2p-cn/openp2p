@@ -51,9 +51,10 @@ type AppConfig struct {
 }
 
 const (
-	PunchPriorityTCPFirst   = 1
-	PunchPriorityUDPDisable = 1 << 1
-	PunchPriorityTCPDisable = 1 << 2
+	PunchPriorityUDPFirst = 0
+	PunchPriorityTCPFirst = 1
+	PunchPriorityTCPOnly  = 1 << 1
+	PunchPriorityUDPOnly  = 1 << 2
 )
 
 func (c *AppConfig) ID() uint64 {
@@ -147,6 +148,12 @@ func (c *Config) setSDWAN(s SDWANInfo) {
 		}
 	}
 	c.sdwan = s
+	if c.sdwan.TunnelNum < 2 {
+		c.sdwan.TunnelNum = 2 // DEBUG
+	}
+	if c.sdwan.TunnelNum > 3 {
+		c.sdwan.TunnelNum = 3
+	}
 }
 
 func (c *Config) switchApp(app AppConfig, enabled int) {
@@ -163,26 +170,16 @@ func (c *Config) switchApp(app AppConfig, enabled int) {
 	c.save()
 }
 
+// TODO: move to p2pnetwork
 func (c *Config) retryApp(peerNode string) {
 	GNetwork.apps.Range(func(id, i interface{}) bool {
 		app := i.(*p2pApp)
 		if app.config.PeerNode == peerNode {
-			gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
-			app.config.retryNum = 0
-			app.config.nextRetryTime = time.Now()
-			app.retryRelayNum = 0
-			app.nextRetryRelayTime = time.Now()
-			app.hbMtx.Lock()
-			app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
-			app.hbMtx.Unlock()
+			app.Retry(true)
 		}
 		if app.config.RelayNode == peerNode {
-			gLog.Println(LvDEBUG, "retry app relay=", app.config.LogPeerNode())
-			app.retryRelayNum = 0
-			app.nextRetryRelayTime = time.Now()
-			app.hbMtx.Lock()
-			app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
-			app.hbMtx.Unlock()
+			app.Retry(false)
+			gLog.d("retry app relay=%s", app.config.LogPeerNode())
 		}
 		return true
 	})
@@ -191,14 +188,7 @@ func (c *Config) retryApp(peerNode string) {
 func (c *Config) retryAllApp() {
 	GNetwork.apps.Range(func(id, i interface{}) bool {
 		app := i.(*p2pApp)
-		gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
-		app.config.retryNum = 0
-		app.config.nextRetryTime = time.Now()
-		app.retryRelayNum = 0
-		app.nextRetryRelayTime = time.Now()
-		app.hbMtx.Lock()
-		defer app.hbMtx.Unlock()
-		app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
+		app.Retry(true)
 		return true
 	})
 }
@@ -209,19 +199,15 @@ func (c *Config) retryAllMemApp() {
 		if app.config.SrcPort != 0 {
 			return true
 		}
-		gLog.Println(LvDEBUG, "retry app ", app.config.LogPeerNode())
-		app.config.retryNum = 0
-		app.config.nextRetryTime = time.Now()
-		app.retryRelayNum = 0
-		app.nextRetryRelayTime = time.Now()
-		app.hbMtx.Lock()
-		defer app.hbMtx.Unlock()
-		app.hbTimeRelay = time.Now().Add(-TunnelHeartbeatTime * 3)
+		app.Retry(true)
 		return true
 	})
 }
 
 func (c *Config) add(app AppConfig, override bool) {
+	if app.AppName == "" {
+		app.AppName = fmt.Sprintf("%d", app.ID())
+	}
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	defer c.save()
@@ -386,15 +372,19 @@ type NetworkConfig struct {
 	ShareBandwidth  int
 	// server info
 	ServerHost     string
+	ServerIP       string
 	ServerPort     int
-	NATDetectPort1 int
-	NATDetectPort2 int
-	PublicIPPort   int
+	natDetectPort1 int
+	natDetectPort2 int
+	PublicIPPort   int // both tcp and udp
+	specTunnel     int
 }
 
 func parseParams(subCommand string, cmd string) {
 	fset := flag.NewFlagSet(subCommand, flag.ExitOnError)
+	installPath := fset.String("installpath", "", "custom install path")
 	serverHost := fset.String("serverhost", "api.openp2p.cn", "server host ")
+	insecure := fset.Bool("insecure", false, "not verify TLS certificate")
 	serverPort := fset.Int("serverport", WsPort, "server port ")
 	// serverHost := flag.String("serverhost", "127.0.0.1", "server host ") // for debug
 	token := fset.Uint64("token", 0, "token")
@@ -427,7 +417,6 @@ func parseParams(subCommand string, cmd string) {
 		fset.Parse(args)
 	}
 
-	gLog.setMaxSize(int64(*maxLogSize))
 	config := AppConfig{Enabled: 1}
 	config.PeerNode = *peerNode
 	config.DstHost = *dstIP
@@ -439,6 +428,19 @@ func parseParams(subCommand string, cmd string) {
 	config.PunchPriority = *punchPriority
 	config.AppName = *appName
 	config.RelayNode = *relayNode
+	if *installPath != "" {
+		defaultInstallPath = *installPath
+	}
+	if subCommand == "install" {
+		if err := os.MkdirAll(defaultInstallPath, 0775); err != nil {
+			gLog.e("parseParams MkdirAll %s error:%s", defaultInstallPath, err)
+			return
+		}
+		if err := os.Chdir(defaultInstallPath); err != nil {
+			gLog.e("parseParams Chdir error:%s", err)
+			return
+		}
+	}
 	if !*newconfig {
 		gConf.load() // load old config. otherwise will clear all apps
 	}
@@ -470,10 +472,19 @@ func parseParams(subCommand string, cmd string) {
 		if f.Name == "token" {
 			gConf.setToken(*token)
 		}
+		if f.Name == "serverport" {
+			gConf.Network.ServerPort = *serverPort
+		}
+		if f.Name == "insecure" {
+			gConf.TLSInsecureSkipVerify = *insecure
+		}
 	})
 	// set default value
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost
+	}
+	if gConf.Network.ServerPort == 0 {
+		gConf.Network.ServerPort = *serverPort
 	}
 	if *node != "" {
 		gConf.setNode(*node)
@@ -488,7 +499,7 @@ func parseParams(subCommand string, cmd string) {
 	}
 	if gConf.Network.PublicIPPort == 0 {
 		if *publicIPPort == 0 {
-			p := int(gConf.nodeID()%15000 + 50000)
+			p := int(gConf.nodeID()%8192 + 1025)
 			publicIPPort = &p
 		}
 		gConf.Network.PublicIPPort = *publicIPPort
@@ -501,9 +512,9 @@ func parseParams(subCommand string, cmd string) {
 			}
 		}
 	}
-	gConf.Network.ServerPort = *serverPort
-	gConf.Network.NATDetectPort1 = NATDetectPort1
-	gConf.Network.NATDetectPort2 = NATDetectPort2
+
+	gConf.Network.natDetectPort1 = NATDetectPort1
+	gConf.Network.natDetectPort2 = NATDetectPort2
 	gLog.setLevel(LogLevel(gConf.LogLevel))
 	gLog.setMaxSize(int64(gConf.MaxLogSize))
 	if *notVerbose {

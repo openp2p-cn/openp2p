@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -43,8 +44,8 @@ type sdwanNode struct {
 }
 
 type p2pSDWAN struct {
-	nodeName      string
 	tun           *optun
+	tunErr        string
 	sysRoute      sync.Map // ip:sdwanNode
 	subnet        *net.IPNet
 	gateway       net.IP
@@ -53,36 +54,37 @@ type p2pSDWAN struct {
 }
 
 func (s *p2pSDWAN) reset() {
-	gLog.Println(LvINFO, "reset sdwan when network disconnected")
+	gLog.i("reset sdwan when network disconnected")
 	// clear sysroute
 	delRoutesByGateway(s.gateway.String())
 	// clear internel route
 	s.internalRoute = NewIPTree("")
 	// clear p2papp
-	for _, node := range gConf.getAddNodes() {
+	for _, node := range gConf.getSDWAN().Nodes {
 		gConf.delete(AppConfig{SrcPort: 0, PeerNode: node.Name})
+		GNetwork.DeleteApp(AppConfig{SrcPort: 0, PeerNode: node.Name})
 	}
 
 	gConf.resetSDWAN()
 }
-func (s *p2pSDWAN) init(name string) error {
+func (s *p2pSDWAN) init() error {
+	gConf.Network.previousIP = gConf.Network.publicIP
 	if gConf.getSDWAN().Gateway == "" {
-		gLog.Println(LvDEBUG, "sdwan init: not in sdwan clear all ")
+		gLog.d("sdwan init: not in sdwan clear all ")
 	}
 	if s.internalRoute == nil {
 		s.internalRoute = NewIPTree("")
 	}
 
-	s.nodeName = name
 	if gw, sn, err := net.ParseCIDR(gConf.getSDWAN().Gateway); err == nil { // preserve old gateway
 		s.gateway = gw
 		s.subnet = sn
 	}
 
 	for _, node := range gConf.getDelNodes() {
-		gLog.Println(LvDEBUG, "sdwan init: deal deleted node: ", node.Name)
-		gLog.Printf(LvDEBUG, "sdwan init: delRoute: %s, %s ", node.IP, s.gateway.String())
-		delRoute(node.IP, s.gateway.String())
+		gLog.d("sdwan init: deal deleted node: %s", node.Name)
+		gLog.d("sdwan init: delRoute: %s, %s ", node.IP, s.gateway.String())
+		// delRoute(node.IP, s.gateway.String()) // TODO: seems no need delelte each node
 		s.internalRoute.Del(node.IP, node.IP)
 		ipNum, _ := inetAtoN(node.IP)
 		s.sysRoute.Delete(ipNum)
@@ -106,26 +108,26 @@ func (s *p2pSDWAN) init(name string) error {
 			}
 			s.internalRoute.Del(minIP.String(), maxIP.String())
 			delRoute(ipnet.String(), s.gateway.String())
-			gLog.Printf(LvDEBUG, "sdwan init: resource delRoute: %s, %s ", ipnet.String(), s.gateway.String())
+			gLog.d("sdwan init: resource delRoute: %s, %s ", ipnet.String(), s.gateway.String())
 		}
 	}
 	for _, node := range gConf.getAddNodes() {
-		gLog.Println(LvDEBUG, "sdwan init: deal add node: ", node.Name)
+		gLog.d("sdwan init: deal add node: %s", node.Name)
 		ipNet := &net.IPNet{
 			IP:   net.ParseIP(node.IP),
 			Mask: s.subnet.Mask,
 		}
-		if node.Name == s.nodeName {
+		if node.Name == gConf.Network.Node {
 			s.virtualIP = ipNet
-			gLog.Println(LvINFO, "sdwan init: start tun ", ipNet.String())
+			gLog.i("sdwan init: start tun %s", ipNet.String())
 			err := s.StartTun()
 			if err != nil {
-				gLog.Println(LvERROR, "sdwan init: start tun error:", err)
+				gLog.e("sdwan init: start tun error:%s", err)
 				return err
 			}
-			gLog.Println(LvINFO, "sdwan init: start tun ok")
+			gLog.i("sdwan init: start tun ok")
 			allowTunForward()
-			gLog.Printf(LvDEBUG, "sdwan init: addRoute %s %s %s", s.subnet.String(), s.gateway.String(), s.tun.tunName)
+			gLog.d("sdwan init: addRoute %s %s %s", s.subnet.String(), s.gateway.String(), s.tun.tunName)
 			addRoute(s.subnet.String(), s.gateway.String(), s.tun.tunName)
 			// addRoute("255.255.255.255/32", s.gateway.String(), s.tun.tunName) // for broadcast
 			// addRoute("224.0.0.0/4", s.gateway.String(), s.tun.tunName)        // for multicast
@@ -140,11 +142,11 @@ func (s *p2pSDWAN) init(name string) error {
 		s.internalRoute.AddIntIP(ip, ip, &sdwanNode{name: node.Name, id: NodeNameToID(node.Name)})
 	}
 	for _, node := range gConf.getAddNodes() {
-		if node.Name == s.nodeName { // not deal resource itself
+		if node.Name == gConf.Network.Node { // not deal resource itself
 			continue
 		}
 		if len(node.Resource) > 0 {
-			gLog.Printf(LvINFO, "sdwan init: deal add node: %s resource: %s", node.Name, node.Resource)
+			gLog.i("sdwan init: deal add node: %s resource: %s", node.Name, node.Resource)
 			arr := strings.Split(node.Resource, ",")
 			for _, r := range arr {
 				// add internal route
@@ -154,17 +156,17 @@ func (s *p2pSDWAN) init(name string) error {
 					continue
 				}
 				if ipnet.Contains(net.ParseIP(gConf.Network.localIP)) { // local ip and resource in the same lan
-					gLog.Printf(LvDEBUG, "sdwan init: local ip %s in this resource %s, ignore", gConf.Network.localIP, ipnet.IP.String())
+					gLog.d("sdwan init: local ip %s in this resource %s, ignore", gConf.Network.localIP, ipnet.IP.String())
 					continue
 				}
 				// local net could access this single ip
 				if ipnet.Mask[0] == 255 && ipnet.Mask[1] == 255 && ipnet.Mask[2] == 255 && ipnet.Mask[3] == 255 {
-					gLog.Printf(LvDEBUG, "sdwan init: ping %s start", ipnet.IP.String())
+					gLog.d("sdwan init: ping %s start", ipnet.IP.String())
 					if _, err := Ping(ipnet.IP.String()); err == nil {
-						gLog.Printf(LvDEBUG, "sdwan init: ping %s ok, ignore this resource", ipnet.IP.String())
+						gLog.d("sdwan init: ping %s ok, ignore this resource", ipnet.IP.String())
 						continue
 					}
-					gLog.Printf(LvDEBUG, "sdwan init: ping %s failed", ipnet.IP.String())
+					gLog.d("sdwan init: ping %s failed", ipnet.IP.String())
 				}
 				minIP := ipnet.IP
 				maxIP := make(net.IP, len(minIP))
@@ -174,13 +176,13 @@ func (s *p2pSDWAN) init(name string) error {
 				}
 				s.internalRoute.Add(minIP.String(), maxIP.String(), &sdwanNode{name: node.Name, id: NodeNameToID(node.Name)})
 				// add sys route
-				gLog.Printf(LvDEBUG, "sdwan init: addRoute %s %s %s", ipnet.String(), s.gateway.String(), s.tun.tunName)
+				gLog.d("sdwan init: addRoute %s %s %s", ipnet.String(), s.gateway.String(), s.tun.tunName)
 				addRoute(ipnet.String(), s.gateway.String(), s.tun.tunName)
 			}
 		}
 	}
 	gConf.retryAllMemApp()
-	gLog.Printf(LvINFO, "sdwan init ok")
+	gLog.i("sdwan init ok")
 	return nil
 }
 
@@ -193,28 +195,28 @@ func (s *p2pSDWAN) run() {
 }
 
 func (s *p2pSDWAN) readNodeLoop() {
-	gLog.Printf(LvDEBUG, "sdwan readNodeLoop start")
-	defer gLog.Printf(LvDEBUG, "sdwan readNodeLoop end")
+	gLog.d("sdwan readNodeLoop start")
+	defer gLog.d("sdwan readNodeLoop end")
 	writeBuff := make([][]byte, 1)
 	for {
 		nd := GNetwork.ReadNode(time.Second * 10) // TODO: read multi packet
 		if nd == nil {
-			gLog.Printf(LvDev, "waiting for node data")
+			gLog.dev("waiting for node data")
 			continue
 		}
 		head := PacketHeader{}
-		parseHeader(nd.Data, &head)
-		gLog.Printf(LvDev, "write tun dst ip=%s,len=%d", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String(), len(nd.Data))
+		parseHeader(nd, &head)
+		gLog.dev("write tun dst ip=%s,len=%d", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String(), len(nd))
 		if PIHeaderSize == 0 {
-			writeBuff[0] = nd.Data
+			writeBuff[0] = nd
 		} else {
-			writeBuff[0] = make([]byte, PIHeaderSize+len(nd.Data))
-			copy(writeBuff[0][PIHeaderSize:], nd.Data)
+			writeBuff[0] = make([]byte, PIHeaderSize+len(nd))
+			copy(writeBuff[0][PIHeaderSize:], nd)
 		}
 
 		len, err := s.tun.Write(writeBuff, PIHeaderSize)
 		if err != nil {
-			gLog.Printf(LvDEBUG, "write tun dst ip=%s,len=%d,error:%s", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String(), len, err)
+			gLog.d("write tun dst ip=%s,len=%d,error:%s", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String(), len, err)
 		}
 	}
 }
@@ -230,9 +232,11 @@ func (s *p2pSDWAN) routeTunPacket(p []byte, head *PacketHeader) {
 	v, ok := s.internalRoute.Load(head.dst)
 	if !ok || v == nil {
 		if isBroadcastOrMulticast(head.dst, s.subnet) {
-			gLog.Printf(LvDev, "multicast ip=%s", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String())
+			gLog.dev("multicast ip=%s", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String())
 			GNetwork.WriteBroadcast(p)
+			return
 		}
+		gLog.dev("internalRoute not found ip:%s", net.IP{byte(head.dst >> 24), byte(head.dst >> 16), byte(head.dst >> 8), byte(head.dst)}.String())
 		return
 	} else {
 		node = v.(*sdwanNode)
@@ -240,13 +244,13 @@ func (s *p2pSDWAN) routeTunPacket(p []byte, head *PacketHeader) {
 
 	err := GNetwork.WriteNode(node.id, p)
 	if err != nil {
-		gLog.Printf(LvDev, "write packet to %s fail: %s", node.name, err)
+		gLog.dev("write packet to %s fail: %s", node.name, err)
 	}
 }
 
 func (s *p2pSDWAN) readTunLoop() {
-	gLog.Printf(LvDEBUG, "sdwan readTunLoop start")
-	defer gLog.Printf(LvDEBUG, "sdwan readTunLoop end")
+	gLog.d("sdwan readTunLoop start")
+	defer gLog.d("sdwan readTunLoop end")
 	readBuff := make([][]byte, ReadTunBuffNum)
 	for i := 0; i < ReadTunBuffNum; i++ {
 		readBuff[i] = make([]byte, ReadTunBuffSize+PIHeaderSize)
@@ -256,16 +260,16 @@ func (s *p2pSDWAN) readTunLoop() {
 	for {
 		n, err := s.tun.Read(readBuff, readBuffSize, PIHeaderSize)
 		if err != nil {
-			gLog.Printf(LvERROR, "read tun fail: ", err)
+			gLog.e("read tun fail: %s", err)
 			return
 		}
 		for i := 0; i < n; i++ {
 			if readBuffSize[i] > ReadTunBuffSize {
-				gLog.Printf(LvERROR, "read tun overflow: len=", readBuffSize[i])
+				gLog.e("read tun overflow: len=%d", readBuffSize[i])
 				continue
 			}
 			parseHeader(readBuff[i][PIHeaderSize:readBuffSize[i]+PIHeaderSize], &ih)
-			gLog.Printf(LvDev, "read tun dst ip=%s,len=%d", net.IP{byte(ih.dst >> 24), byte(ih.dst >> 16), byte(ih.dst >> 8), byte(ih.dst)}.String(), readBuffSize[0])
+			gLog.dev("read tun dst ip=%s,len=%d", net.IP{byte(ih.dst >> 24), byte(ih.dst >> 16), byte(ih.dst >> 8), byte(ih.dst)}.String(), readBuffSize[0])
 			s.routeTunPacket(readBuff[i][PIHeaderSize:readBuffSize[i]+PIHeaderSize], &ih)
 		}
 	}
@@ -277,23 +281,25 @@ func (s *p2pSDWAN) StartTun() error {
 		tun := &optun{}
 		err := tun.Start(s.virtualIP.String(), &sdwan)
 		if err != nil {
-			gLog.Println(LvERROR, "open tun fail:", err)
+			gLog.e("open tun fail:%v", err)
+			s.tunErr = err.Error()
 			return err
 		}
 		s.tun = tun
+		s.tunErr = ""
 		go s.readTunLoop()
 		go s.readNodeLoop() // multi-thread read will cause packets out of order, resulting in slower speeds
 	}
 	err := setTunAddr(s.tun.tunName, s.virtualIP.String(), sdwan.Gateway, s.tun.dev)
 	if err != nil {
-		gLog.Printf(LvERROR, "setTunAddr error:%s,%s,%s,%s", err, s.tun.tunName, s.virtualIP.String(), sdwan.Gateway)
+		gLog.e("setTunAddr error:%s,%s,%s,%s", err, s.tun.tunName, s.virtualIP.String(), sdwan.Gateway)
 		return err
 	}
 	return nil
 }
 
 func handleSDWAN(subType uint16, msg []byte) error {
-	gLog.Printf(LvDEBUG, "handle sdwan msg type:%d", subType)
+	gLog.d("handle sdwan msg type:%d", subType)
 	var err error
 	switch subType {
 	case MsgSDWANInfoRsp:
@@ -301,15 +307,25 @@ func handleSDWAN(subType uint16, msg []byte) error {
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &rsp); err != nil {
 			return ErrMsgFormat
 		}
-		gLog.Println(LvINFO, "sdwan init:", prettyJson(rsp))
-		if runtime.GOOS == "android" {
-			AndroidSDWANConfig <- msg[openP2PHeaderSize:]
-		}
+		gLog.i("sdwan init:%s", prettyJson(rsp))
 		// GNetwork.sdwan.detail = &rsp
+		if gConf.Network.previousIP != gConf.Network.publicIP || gConf.getSDWAN().CentralNode != rsp.CentralNode {
+			GNetwork.sdwan.reset()
+			preAndroidSDWANConfig = "" // let androind app reset vpnservice
+		}
 		gConf.setSDWAN(rsp)
-		err = GNetwork.sdwan.init(gConf.Network.Node)
+		if runtime.GOOS == "android" {
+			if !compareResources(preAndroidSDWANConfig, string(msg[openP2PHeaderSize:])) { // when config change, notify android app
+				select {
+				case AndroidSDWANConfig <- msg[openP2PHeaderSize:]:
+				default:
+				}
+				preAndroidSDWANConfig = string(msg[openP2PHeaderSize:])
+			}
+		}
+		err = GNetwork.sdwan.init()
 		if err != nil {
-			gLog.Println(LvERROR, "sdwan init fail: ", err)
+			gLog.e("sdwan init fail: %s", err)
 			if GNetwork.sdwan.tun != nil {
 				GNetwork.sdwan.tun.Stop()
 				GNetwork.sdwan.tun = nil
@@ -320,4 +336,34 @@ func handleSDWAN(subType uint16, msg []byte) error {
 	default:
 	}
 	return err
+}
+
+// for android vpnservice
+func compareResources(json1, json2 string) bool {
+	var net1, net2 SDWANInfo
+	if err := json.Unmarshal([]byte(json1), &net1); err != nil {
+		fmt.Println("Error parsing json1:", err)
+		fmt.Println("Error parsing json1:", string(json1))
+		return false
+	}
+	if err := json.Unmarshal([]byte(json2), &net2); err != nil {
+		fmt.Println("Error parsing json2:", err)
+		fmt.Println("Error parsing json1:", string(json2))
+		return false
+	}
+
+	// 获取所有资源并比较
+	resources1 := getResources(net1)
+	resources2 := getResources(net2)
+	return reflect.DeepEqual(resources1, resources2)
+}
+
+func getResources(network SDWANInfo) []string {
+	var resources []string
+	for _, node := range network.Nodes {
+		if node.Resource != "" {
+			resources = append(resources, node.Resource)
+		}
+	}
+	return resources
 }

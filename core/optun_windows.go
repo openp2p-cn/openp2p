@@ -19,6 +19,9 @@ import (
 const (
 	tunIfaceName = "optun"
 	PIHeaderSize = 0
+	// sdwan
+	ReadTunBuffSize = 1024 * 64 // wintun will read date len > mtu, default 64k
+	ReadTunBuffNum  = 4
 )
 
 func (t *optun) Start(localAddr string, detail *SDWANInfo) error {
@@ -42,9 +45,9 @@ func (t *optun) Start(localAddr string, detail *SDWANInfo) error {
 		Data3: 0x4567,
 		Data4: [8]byte{0x80, 0x42, 0x83, 0x7e, 0xf4, 0x56, 0xce, 0x13},
 	}
-	t.dev, err = tun.CreateTUNWithRequestedGUID(t.tunName, uuid, 1420)
+	t.dev, err = tun.CreateTUNWithRequestedGUID(t.tunName, uuid, int(detail.Mtu))
 	if err != nil { // retry
-		t.dev, err = tun.CreateTUNWithRequestedGUID(t.tunName, uuid, 1420)
+		t.dev, err = tun.CreateTUNWithRequestedGUID(t.tunName, uuid, int(detail.Mtu))
 	}
 
 	if err != nil {
@@ -67,12 +70,12 @@ func setTunAddr(ifname, localAddr, remoteAddr string, wintun interface{}) error 
 	link := winipcfg.LUID(nativeTunDevice.LUID())
 	ip, err := netip.ParsePrefix(localAddr)
 	if err != nil {
-		gLog.Printf(LvERROR, "ParsePrefix error:%s, luid:%d,localAddr:%s", err, nativeTunDevice.LUID(), localAddr)
+		gLog.e("ParsePrefix error:%s, luid:%d,localAddr:%s", err, nativeTunDevice.LUID(), localAddr)
 		return err
 	}
 	err = link.SetIPAddresses([]netip.Prefix{ip})
 	if err != nil {
-		gLog.Printf(LvERROR, "SetIPAddresses error:%s, netip.Prefix:%+v", err, []netip.Prefix{ip})
+		gLog.e("SetIPAddresses error:%s, netip.Prefix:%+v", err, []netip.Prefix{ip})
 		return err
 	}
 	return nil
@@ -133,10 +136,10 @@ func delRoutesByGateway(gateway string) error {
 			cmd := exec.Command("route", "delete", fields[0], "mask", fields[1], gateway)
 			err := cmd.Run()
 			if err != nil {
-				gLog.Printf(LvERROR, "Delete route %s error:%s", fields[0], err)
+				gLog.e("Delete route %s error:%s", fields[0], err)
 				continue
 			}
-			gLog.Printf(LvINFO, "Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
+			gLog.i("Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
 		}
 	}
 	return nil

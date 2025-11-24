@@ -12,6 +12,10 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
+	"runtime"
+
+	// _ "net/http/pprof"
 	"net/url"
 	"reflect"
 	"strings"
@@ -23,25 +27,25 @@ import (
 
 var (
 	v4l            *v4Listener
-	instance       *P2PNetwork
 	onceP2PNetwork sync.Once
-	onceV4Listener sync.Once
 )
 
 const (
 	retryLimit                  = 20
 	retryInterval               = 10 * time.Second
 	DefaultLoginMaxDelaySeconds = 60
+	MsgQueueSize                = 256
 )
 
 // golang not support float64 const
 var (
+	ma20 float64 = 1.0 / 20
 	ma10 float64 = 1.0 / 10
 	ma5  float64 = 1.0 / 5
 )
 
 type NodeData struct {
-	NodeID uint64
+	NodeID uint64 // unused
 	Data   []byte
 }
 
@@ -54,6 +58,7 @@ type P2PNetwork struct {
 	writeMtx      sync.Mutex
 	reqGatewayMtx sync.Mutex
 	hbTime        time.Time
+	initTime      time.Time
 	// for sync server time
 	t1     int64 // nanoSeconds
 	preRtt int64 // nanoSeconds
@@ -63,12 +68,13 @@ type P2PNetwork struct {
 	msgMap sync.Map //key: nodeID
 	// msgMap     map[uint64]chan pushMsg //key: nodeID
 	allTunnels           sync.Map // key: tid
-	apps                 sync.Map //key: config.ID(); value: *p2pApp
+	apps                 sync.Map //key: peerid when memapp for sdwan node data indicate app/random uint64 when portforward; value: *p2pApp
 	limiter              *SpeedLimiter
-	nodeData             chan *NodeData
+	nodeData             chan []byte
 	sdwan                *p2pSDWAN
 	tunnelCloseCh        chan *P2PTunnel
 	loginMaxDelaySeconds int
+	peerNodeMutex        sync.Map
 }
 
 type msgCtx struct {
@@ -76,34 +82,96 @@ type msgCtx struct {
 	ts   time.Time
 }
 
-func P2PNetworkInstance() *P2PNetwork {
-	if instance == nil {
+func P2PNetworkInstance() {
+	if GNetwork == nil {
 		onceP2PNetwork.Do(func() {
-			instance = &P2PNetwork{
+			GNetwork = &P2PNetwork{
 				restartCh:            make(chan bool, 1),
 				tunnelCloseCh:        make(chan *P2PTunnel, 100),
-				nodeData:             make(chan *NodeData, 10000),
+				nodeData:             make(chan []byte, 10000),
 				online:               false,
 				running:              true,
 				limiter:              newSpeedLimiter(gConf.Network.ShareBandwidth*1024*1024/8, 1),
 				dt:                   0,
 				ddt:                  0,
 				loginMaxDelaySeconds: DefaultLoginMaxDelaySeconds,
+				initTime:             time.Now(),
 			}
-			instance.msgMap.Store(uint64(0), make(chan msgCtx, 50)) // for gateway
-			instance.StartSDWAN()
-			instance.init()
-			go instance.run()
+			GNetwork.msgMap.Store(uint64(0), make(chan msgCtx, MsgQueueSize)) // for gateway
+			GNetwork.StartSDWAN()
+			v4l = &v4Listener{port: gConf.Network.PublicIPPort}
+			go GNetwork.keepAlive() // init() will block, keepalive should before init
+			GNetwork.init()
+			go GNetwork.run()
+
+			go func() {
+				ticker := time.NewTicker(10 * time.Minute)
+				defer ticker.Stop()
+				for range ticker.C {
+					dumpStack()
+				}
+			}()
 			go func() {
 				for {
-					instance.refreshIPv6()
 					time.Sleep(time.Hour)
+					oldIPv6 := gConf.IPv6()
+					GNetwork.refreshIPv6()
+					newIPv6 := gConf.IPv6()
+					if oldIPv6 != newIPv6 {
+						req := ReportBasic{
+							Mac:             gConf.Network.mac,
+							LanIP:           gConf.Network.localIP,
+							OS:              gConf.Network.os,
+							HasIPv4:         gConf.Network.hasIPv4,
+							HasUPNPorNATPMP: gConf.Network.hasUPNPorNATPMP,
+							Version:         OpenP2PVersion,
+							IPv6:            newIPv6,
+						}
+						GNetwork.write(MsgReport, MsgReportBasic, &req)
+					}
 				}
 			}()
 			cleanTempFiles()
+			// go func() {
+			// 	log.Println("Starting pprof server on :16060")
+			// 	log.Println(http.ListenAndServe("0.0.0.0:16060", nil))
+			// }()
 		})
 	}
-	return instance
+}
+
+func (pn *P2PNetwork) keepAlive() {
+	gLog.i("P2PNetwork keepAlive start")
+	// !hbTime && !initTime = hang, exit worker
+	var lastCheckTime time.Time
+
+	for {
+		time.Sleep(time.Second * 10)
+		// Skip check if we're waking from sleep/hibernation
+		now := time.Now()
+		if !lastCheckTime.IsZero() && now.Sub(lastCheckTime) > time.Minute*2 {
+			gLog.i("Detected possible sleep/wake cycle, skipping this check")
+			lastCheckTime = now
+			continue
+		}
+		lastCheckTime = now
+		if pn.hbTime.Before(time.Now().Add(-3*time.Minute)) && pn.initTime.Before(time.Now().Add(-3*time.Minute)) {
+			gLog.e("P2PNetwork keepAlive error, exit worker")
+			dumpStack()
+			os.Exit(9)
+		}
+	}
+}
+
+func dumpStack() {
+	buf := make([]byte, 1024*1024)
+	n := runtime.Stack(buf, true)
+	tmpFile := "./log/stack.log.tmp"
+	if err := os.WriteFile(tmpFile, buf[:n], 0644); err != nil {
+		gLog.e("print runtime.Stack error")
+		return
+	}
+	os.Rename(tmpFile, "./log/stack.log")
 }
 
 func (pn *P2PNetwork) run() {
@@ -115,28 +183,41 @@ func (pn *P2PNetwork) run() {
 		case <-heartbeatTimer.C:
 			pn.t1 = time.Now().UnixNano()
 			pn.write(MsgHeartbeat, 0, "")
-		case <-pn.restartCh:
-			gLog.Printf(LvDEBUG, "got restart channel")
-			pn.sdwan.reset()
+		case isRestartDelay := <-pn.restartCh:
+			gLog.i("got restart channel")
+			// pn.sdwan.reset()
 			pn.online = false
-			pn.wgReconnect.Wait() // wait read/autorunapp goroutine end
-			delay := ClientAPITimeout + time.Duration(rand.Int()%pn.loginMaxDelaySeconds)*time.Second
-			time.Sleep(delay)
+			waitDone := make(chan struct{})
+			go func() {
+				defer close(waitDone)
+				pn.wgReconnect.Wait()
+			}()
+
+			select {
+			case <-waitDone:
+			case <-time.After(30 * time.Second):
+				gLog.e("pn.wgReconnect.Wait() timeout, mostly websocket hang. restart client")
+				os.Exit(0)
+			}
+
+			if isRestartDelay {
+				delay := ClientAPITimeout + time.Duration(rand.Int()%pn.loginMaxDelaySeconds)*time.Second
+				time.Sleep(delay)
+			}
 			err := pn.init()
 			if err != nil {
-				gLog.Println(LvERROR, "P2PNetwork init error:", err)
+				gLog.e("P2PNetwork init error:%s", err)
 			}
 			gConf.retryAllApp()
 
 		case t := <-pn.tunnelCloseCh:
-			gLog.Printf(LvDEBUG, "got tunnelCloseCh %s", t.config.LogPeerNode())
+			gLog.d("got tunnelCloseCh %s", t.config.LogPeerNode())
 			pn.apps.Range(func(id, i interface{}) bool {
 				app := i.(*p2pApp)
-				if app.DirectTunnel() == t {
-					app.setDirectTunnel(nil)
-				}
-				if app.RelayTunnel() == t {
-					app.setRelayTunnel(nil)
+				for i := 0; i < app.tunnelNum; i++ {
+					if app.Tunnel(i) == t {
+						app.SetTunnel(nil, i)
+					}
 				}
 				return true
 			})
@@ -165,46 +246,54 @@ func (pn *P2PNetwork) Connect(timeout int) bool {
 }
 
 func (pn *P2PNetwork) runAll() {
-	gConf.mtx.Lock() // lock for copy gConf.Apps and the modification of config(it's pointer)
-	defer gConf.mtx.Unlock()
+	gConf.mtx.RLock() // lock for coRUpy gConf.Apps and the modification of config(it's pointer)
+	defer gConf.mtx.RUnlock()
 	allApps := gConf.Apps // read a copy, other thread will modify the gConf.Apps
 	for _, config := range allApps {
-		if config.AppName == "" {
-			config.AppName = fmt.Sprintf("%d", config.ID())
-		}
 		if config.Enabled == 0 {
 			continue
 		}
-		if _, ok := pn.apps.Load(config.ID()); ok {
+		if app := pn.findApp(config); app != nil {
+			// update some attribute
+			app.config.PunchPriority = config.PunchPriority
+			app.config.UnderlayProtocol = config.UnderlayProtocol
+			app.config.RelayNode = config.RelayNode
 			continue
 		}
 
-		config.peerToken = gConf.Network.Token
-		gConf.mtx.Unlock() // AddApp will take a period of time, let outside modify gConf
+		// config.peerToken = gConf.Network.Token // move to AddApp
+		gConf.mtx.RUnlock() // AddApp will take a period of time, let outside modify gConf
 		pn.AddApp(*config)
-		gConf.mtx.Lock()
+		gConf.mtx.RLock()
 
 	}
 }
 
 func (pn *P2PNetwork) autorunApp() {
-	gLog.Println(LvINFO, "autorunApp start")
+	gLog.i("autorunApp start")
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
 	for pn.running && pn.online {
 		time.Sleep(time.Second)
 		pn.runAll()
 	}
-	gLog.Println(LvINFO, "autorunApp end")
+	gLog.i("autorunApp end")
 }
 
-func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, string, error) {
-	gLog.Printf(LvINFO, "addRelayTunnel to %s start", config.LogPeerNode())
-	defer gLog.Printf(LvINFO, "addRelayTunnel to %s end", config.LogPeerNode())
+func (pn *P2PNetwork) addRelayTunnel(config AppConfig, excludeNodes string) (*P2PTunnel, uint64, string, error) {
+	gLog.i("addRelayTunnel to %s start", config.LogPeerNode())
+	defer gLog.i("addRelayTunnel to %s end", config.LogPeerNode())
+	var relayTunnel *P2PTunnel
 	relayConfig := AppConfig{
-		PeerNode:  config.RelayNode,
-		peerToken: config.peerToken,
-		relayMode: "private"}
+		peerToken:        config.peerToken,
+		PunchPriority:    config.PunchPriority,
+		UnderlayProtocol: config.UnderlayProtocol,
+		relayMode:        "private",
+	}
+	if config.RelayNode != excludeNodes {
+		relayConfig.PeerNode = config.RelayNode
+		// TODO: verify relay node is online
+	}
 	if relayConfig.PeerNode == "" {
 		// find existing relay tunnel
 		pn.apps.Range(func(id, i interface{}) bool {
@@ -212,16 +301,20 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 			if app.config.PeerNode != config.PeerNode {
 				return true
 			}
-			if app.RelayTunnel() == nil {
-				return true
+			for i := 1; i < app.tunnelNum; i++ { // index 1 for relay tunnel
+				if app.Tunnel(i) != nil && app.Tunnel(i).config.PeerNode != excludeNodes && time.Now().Before(app.hbTime[i].Add(TunnelHeartbeatTime*2)) {
+					relayConfig.PeerNode = app.Tunnel(i).config.PeerNode
+					relayConfig.relayMode = app.Tunnel(i).config.relayMode
+					relayTunnel = app.Tunnel(i)
+					gLog.d("found existing relay tunnel %s", relayConfig.LogPeerNode())
+					return false
+				}
 			}
-			relayConfig.PeerNode = app.RelayTunnel().config.PeerNode
-			gLog.Printf(LvDEBUG, "found existing relay tunnel %s", relayConfig.LogPeerNode())
-			return false
+			return true
 		})
 		if relayConfig.PeerNode == "" { // request relay node
 			pn.reqGatewayMtx.Lock()
-			pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode})
+			pn.write(MsgRelay, MsgRelayNodeReq, &RelayNodeReq{config.PeerNode, excludeNodes})
 			head, body := pn.read("", MsgRelay, MsgRelayNodeRsp, ClientAPITimeout)
 			pn.reqGatewayMtx.Unlock()
 			if head == nil {
@@ -232,92 +325,134 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig) (*P2PTunnel, uint64, stri
 				return nil, 0, "", errors.New("unmarshal MsgRelayNodeRsp error")
 			}
 			if rsp.RelayName == "" || rsp.RelayToken == 0 {
-				gLog.Printf(LvERROR, "MsgRelayNodeReq error")
+				gLog.e("MsgRelayNodeReq error")
 				return nil, 0, "", errors.New("MsgRelayNodeReq error")
 			}
-			gLog.Printf(LvDEBUG, "got relay node:%s", relayConfig.LogPeerNode())
-
 			relayConfig.PeerNode = rsp.RelayName
 			relayConfig.peerToken = rsp.RelayToken
 			relayConfig.relayMode = rsp.Mode
+			gLog.d("got relay node:%s", relayConfig.LogPeerNode())
 		}
 
 	}
 	///
-	t, err := pn.addDirectTunnel(relayConfig, 0)
-	if err != nil {
-		gLog.Println(LvERROR, "direct connect error:", err)
-		return nil, 0, "", ErrConnectRelayNode // relay offline will stop retry
+	if relayTunnel == nil {
+		var err error
+		relayTunnel, err = pn.addDirectTunnel(relayConfig, 0)
+		if err != nil || relayTunnel == nil {
+			gLog.w("direct connect error:%s", err)
+			if err != nil && config.RelayNode != "" {
+				return nil, 0, "", err // let outside known the specified relay node offline, than stop retry
+			}
+			return nil, 0, "", ErrConnectRelayNode // relay offline will stop retry
+		}
 	}
+
 	// notify peer addRelayTunnel
 	req := AddRelayTunnelReq{
-		From:          gConf.Network.Node,
-		RelayName:     relayConfig.PeerNode,
-		RelayToken:    relayConfig.peerToken,
-		RelayMode:     relayConfig.relayMode,
-		RelayTunnelID: t.id,
+		From:             gConf.Network.Node,
+		RelayName:        relayConfig.PeerNode,
+		RelayToken:       relayConfig.peerToken,
+		RelayMode:        relayConfig.relayMode,
+		RelayTunnelID:    relayTunnel.id,
+		PunchPriority:    relayConfig.PunchPriority,
+		UnderlayProtocol: relayConfig.UnderlayProtocol,
 	}
-	gLog.Printf(LvDEBUG, "push %s the relay node(%s)", config.LogPeerNode(), relayConfig.LogPeerNode())
+
+	gLog.d("push %s the relay node(%s)", config.LogPeerNode(), relayConfig.LogPeerNode())
 	pn.push(config.PeerNode, MsgPushAddRelayTunnelReq, &req)
 
 	// wait relay ready
 	head, body := pn.read(config.PeerNode, MsgPush, MsgPushAddRelayTunnelRsp, PeerAddRelayTimeount)
 	if head == nil {
-		gLog.Printf(LvERROR, "read MsgPushAddRelayTunnelRsp error")
+		gLog.e("read MsgPushAddRelayTunnelRsp error")
 		return nil, 0, "", errors.New("read MsgPushAddRelayTunnelRsp error")
 	}
 	rspID := TunnelMsg{}
-	if err = json.Unmarshal(body, &rspID); err != nil {
-		gLog.Println(LvDEBUG, ErrPeerConnectRelay)
+	if err := json.Unmarshal(body, &rspID); err != nil {
+		gLog.d("Unmarshal error:%s", ErrPeerConnectRelay)
 		return nil, 0, "", ErrPeerConnectRelay
 	}
-	return t, rspID.ID, relayConfig.relayMode, err
+	return relayTunnel, rspID.ID, relayConfig.relayMode, nil
 }
 
 // use *AppConfig to save status
 func (pn *P2PNetwork) AddApp(config AppConfig) error {
-	gLog.Printf(LvINFO, "addApp %s to %s:%s:%d start", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
-	defer gLog.Printf(LvINFO, "addApp %s to %s:%s:%d end", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
+	config.peerToken = gConf.Network.Token
+	gLog.i("addApp %s to %s:%s:%d start", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
+	defer gLog.i("addApp %s to %s:%s:%d end", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
 	if !pn.online {
 		return errors.New("P2PNetwork offline")
 	}
 	if _, ok := pn.msgMap.Load(NodeNameToID(config.PeerNode)); !ok {
-		pn.msgMap.Store(NodeNameToID(config.PeerNode), make(chan msgCtx, 50))
+		pn.msgMap.Store(NodeNameToID(config.PeerNode), make(chan msgCtx, MsgQueueSize))
 	}
 	// check if app already exist?
-	if _, ok := pn.apps.Load(config.ID()); ok {
+	if pn.findApp(&config) != nil {
 		return errors.New("P2PApp already exist")
 	}
 
 	app := p2pApp{
 		// tunnel:    t,
-		id:          rand.Uint64(),
-		key:         rand.Uint64(),
-		config:      config,
-		iptree:      NewIPTree(config.Whitelist),
-		running:     true,
-		hbTimeRelay: time.Now(),
+		id:      rand.Uint64(),
+		key:     rand.Uint64(),
+		config:  config,
+		iptree:  NewIPTree(config.Whitelist),
+		running: true,
+		// asyncWriteChan: make(chan []byte, WriteDataChanSize),
 	}
+	if config.SrcPort == 0 {
+		app.id = NodeNameToID(config.PeerNode)
+	}
+	tunnelNum := 2
+
+	app.Init(tunnelNum)
 	if _, ok := pn.msgMap.Load(NodeNameToID(config.PeerNode)); !ok {
-		pn.msgMap.Store(NodeNameToID(config.PeerNode), make(chan msgCtx, 50))
+		pn.msgMap.Store(NodeNameToID(config.PeerNode), make(chan msgCtx, MsgQueueSize))
 	}
-	pn.apps.Store(config.ID(), &app)
-	gLog.Printf(LvDEBUG, "Store app %d", config.ID())
-	go app.checkP2PTunnel()
+	app.Start(true)
+	pn.apps.Store(app.id, &app) // TODO: store appid
+	gLog.d("Store app %d", app.id)
+
 	return nil
 }
 
+func (pn *P2PNetwork) findApp(config *AppConfig) (app *p2pApp) {
+	pn.apps.Range(func(id, i interface{}) bool {
+		tempApp := i.(*p2pApp)
+		if config.SrcPort == 0 { // sdwan app
+			if tempApp.config.SrcPort == config.SrcPort &&
+				tempApp.config.PeerNode == config.PeerNode {
+				app = tempApp
+				return false
+			}
+		} else { // portforward app
+			if tempApp.config.SrcPort == config.SrcPort &&
+				tempApp.config.Protocol == config.Protocol {
+				app = tempApp
+				return false
+			}
+		}
+		return true
+	})
+	return
+}
+
 func (pn *P2PNetwork) DeleteApp(config AppConfig) {
-	gLog.Printf(LvINFO, "DeleteApp %s to %s:%s:%d start", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
-	defer gLog.Printf(LvINFO, "DeleteApp %s to %s:%s:%d end", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
+	gLog.i("DeleteApp %s to %s:%s:%d start", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
+	defer gLog.i("DeleteApp %s to %s:%s:%d end", config.AppName, config.LogPeerNode(), config.DstHost, config.DstPort)
 	// close the apps of this config
-	i, ok := pn.apps.Load(config.ID())
-	if ok {
-		app := i.(*p2pApp)
-		gLog.Printf(LvINFO, "app %s exist, delete it", app.config.AppName)
-		app.close()
-		pn.apps.Delete(config.ID())
+	if tempApp := pn.findApp(&config); tempApp != nil {
+		gLog.i("app %s exist, delete it", tempApp.config.AppName)
+		tempApp.Close()
+		if config.SrcPort != 0 {
+			pn.apps.Delete(tempApp.id)
+		} else {
+			pn.apps.Delete(NodeNameToID(config.PeerNode))
+		}
+
 	}
+
 }
 
 func (pn *P2PNetwork) findTunnel(peerNode string) (t *P2PTunnel) {
@@ -326,11 +461,11 @@ func (pn *P2PNetwork) findTunnel(peerNode string) (t *P2PTunnel) {
 	pn.allTunnels.Range(func(id, i interface{}) bool {
 		tmpt := i.(*P2PTunnel)
 		if tmpt.config.PeerNode == peerNode {
-			gLog.Println(LvINFO, "tunnel already exist ", peerNode)
+			gLog.i("tunnel already exist %s", tmpt.config.LogPeerNode())
 			isActive := tmpt.checkActive()
 			// inactive, close it
 			if !isActive {
-				gLog.Println(LvINFO, "but it's not active, close it ", peerNode)
+				gLog.i("but it's not active, close it %s", tmpt.config.LogPeerNode())
 				tmpt.close()
 			} else {
 				t = tmpt
@@ -343,16 +478,29 @@ func (pn *P2PNetwork) findTunnel(peerNode string) (t *P2PTunnel) {
 }
 
 func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunnel, err error) {
-	gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d start", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
-	defer gLog.Printf(LvDEBUG, "addDirectTunnel %s%d to %s:%s:%d tid:%d end", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
+	gLog.d("addDirectTunnel %s%d to %s:%s:%d tid:%d start", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
+	defer gLog.d("addDirectTunnel %s%d to %s:%s:%d tid:%d end", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
+
+	nodeID := NodeNameToID(config.PeerNode)
+	mutex, _ := pn.peerNodeMutex.LoadOrStore(nodeID, &sync.Mutex{})
+	mutex.(*sync.Mutex).Lock()
+	defer mutex.(*sync.Mutex).Unlock()
+
 	isClient := false
 	// client side tid=0, assign random uint64
 	if tid == 0 {
 		tid = rand.Uint64()
 		isClient = true
 	}
-	if _, ok := pn.msgMap.Load(NodeNameToID(config.PeerNode)); !ok {
-		pn.msgMap.Store(NodeNameToID(config.PeerNode), make(chan msgCtx, 50))
+
+	if _, ok := pn.msgMap.Load(nodeID); !ok {
+		pn.msgMap.Store(nodeID, make(chan msgCtx, MsgQueueSize))
+	}
+
+	if isClient { // only client side find existing tunnel, server side should force build tunnel
+		if existTunnel := pn.findTunnel(config.PeerNode); existTunnel != nil {
+			return existTunnel, nil
+		}
 	}
 
 	// server side
@@ -360,30 +508,36 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		t, err = pn.newTunnel(config, tid, isClient)
 		return t, err // always return
 	}
+
 	// client side
 	// peer info
 	initErr := pn.requestPeerInfo(&config)
 	if initErr != nil {
-		gLog.Printf(LvERROR, "%s init error:%s", config.LogPeerNode(), initErr)
-
+		gLog.w("%s init error:%s", config.LogPeerNode(), initErr)
 		return nil, initErr
 	}
-	gLog.Printf(LvDEBUG, "config.peerNode=%s,config.peerVersion=%s,config.peerIP=%s,config.peerLanIP=%s,gConf.Network.publicIP=%s,config.peerIPv6=%s,config.hasIPv4=%d,config.hasUPNPorNATPMP=%d,gConf.Network.hasIPv4=%d,gConf.Network.hasUPNPorNATPMP=%d,config.peerNatType=%d,gConf.Network.natType=%d,",
+
+	gLog.d("config.peerNode=%s,config.peerVersion=%s,config.peerIP=%s,config.peerLanIP=%s,gConf.Network.publicIP=%s,config.peerIPv6=%s,config.hasIPv4=%d,config.hasUPNPorNATPMP=%d,gConf.Network.hasIPv4=%d,gConf.Network.hasUPNPorNATPMP=%d,config.peerNatType=%d,gConf.Network.natType=%d,",
 		config.LogPeerNode(), config.peerVersion, config.peerIP, config.peerLanIP, gConf.Network.publicIP, config.peerIPv6, config.hasIPv4, config.hasUPNPorNATPMP, gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, config.peerNatType, gConf.Network.natType)
+
 	// try Intranet
 	if config.peerIP == gConf.Network.publicIP && compareVersion(config.peerVersion, SupportIntranetVersion) >= 0 { // old version client has no peerLanIP
-		gLog.Println(LvINFO, "try Intranet")
+		gLog.i("try Intranet")
 		config.linkMode = LinkModeIntranet
 		config.isUnderlayServer = 0
 		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
 			return t, nil
 		}
 	}
+	thisTunnelForcev6 := false
 	// try TCP6
-	if IsIPv6(config.peerIPv6) && IsIPv6(gConf.IPv6()) {
-		gLog.Println(LvINFO, "try TCP6")
+	if !strings.Contains(gConf.Network.Node, "openp2pS2STest") && IsIPv6(config.peerIPv6) && IsIPv6(gConf.IPv6()) && (config.PunchPriority&PunchPriorityUDPOnly == 0) {
+		gLog.i("try TCP6")
 		config.linkMode = LinkModeTCP6
 		config.isUnderlayServer = 0
+		if gConf.Forcev6 {
+			thisTunnelForcev6 = true
+		}
 		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
 			return t, nil
 		}
@@ -391,10 +545,16 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 
 	// try UDP6? maybe no
 
-	// try TCP4
-	if config.hasIPv4 == 1 || gConf.Network.hasIPv4 == 1 || config.hasUPNPorNATPMP == 1 || gConf.Network.hasUPNPorNATPMP == 1 {
-		gLog.Println(LvINFO, "try TCP4")
-		config.linkMode = LinkModeTCP4
+	// try IPv4
+	if !thisTunnelForcev6 && !strings.Contains(gConf.Network.Node, "openp2pS2STest") && (config.hasIPv4 == 1 || gConf.Network.hasIPv4 == 1 || config.hasUPNPorNATPMP == 1 || gConf.Network.hasUPNPorNATPMP == 1) {
+		if config.PunchPriority&PunchPriorityUDPOnly != 0 && compareVersion(config.peerVersion, SupportUDP4DirectVersion) >= 0 {
+			gLog.i("try UDP4")
+			config.linkMode = LinkModeUDP4
+		} else {
+			gLog.i("try TCP4")
+			config.linkMode = LinkModeTCP4
+		}
+
 		if gConf.Network.hasIPv4 == 1 || gConf.Network.hasUPNPorNATPMP == 1 {
 			config.isUnderlayServer = 1
 		} else {
@@ -408,13 +568,13 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 	var primaryPunchFunc func() (*P2PTunnel, error)
 	var secondaryPunchFunc func() (*P2PTunnel, error)
 	funcUDP := func() (t *P2PTunnel, err error) {
-		if config.PunchPriority&PunchPriorityUDPDisable != 0 {
+		if thisTunnelForcev6 && config.PunchPriority&PunchPriorityTCPOnly != 0 {
 			return
 		}
 		// try UDPPunch
 		for i := 0; i < Cone2ConeUDPPunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
 			if config.peerNatType == NATCone || gConf.Network.natType == NATCone {
-				gLog.Println(LvINFO, "try UDP4 Punch")
+				gLog.i("try UDP4 Punch")
 				config.linkMode = LinkModeUDPPunch
 				config.isUnderlayServer = 0
 				if t, err = pn.newTunnel(config, tid, isClient); err == nil {
@@ -428,17 +588,17 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		return
 	}
 	funcTCP := func() (t *P2PTunnel, err error) {
-		if config.PunchPriority&PunchPriorityTCPDisable != 0 {
+		if thisTunnelForcev6 && config.PunchPriority&PunchPriorityUDPOnly != 0 {
 			return
 		}
 		// try TCPPunch
 		for i := 0; i < Cone2ConeTCPPunchMaxRetry; i++ { // when both 2 nats has restrict firewall, simultaneous punching needs to be very precise, it takes a few tries
 			if config.peerNatType == NATCone || gConf.Network.natType == NATCone {
-				gLog.Println(LvINFO, "try TCP4 Punch")
+				gLog.i("try TCP4 Punch")
 				config.linkMode = LinkModeTCPPunch
 				config.isUnderlayServer = 0
 				if t, err = pn.newTunnel(config, tid, isClient); err == nil {
-					gLog.Println(LvINFO, "TCP4 Punch ok")
+					gLog.i("TCP4 Punch ok")
 					return t, nil
 				}
 			}
@@ -464,7 +624,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 }
 
 func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t *P2PTunnel, err error) {
-	if isClient { // only client side find existing tunnel
+	if isClient { // only client side find existing tunnel, server side should force build tunnel
 		if existTunnel := pn.findTunnel(config.PeerNode); existTunnel != nil {
 			return existTunnel, nil
 		}
@@ -474,42 +634,58 @@ func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t 
 		config:         config,
 		id:             tid,
 		writeData:      make(chan []byte, WriteDataChanSize),
-		writeDataSmall: make(chan []byte, WriteDataChanSize/30),
+		writeDataSmall: make(chan []byte, WriteDataChanSize),
 	}
 	t.initPort()
 	if isClient {
 		if err = t.connect(); err != nil {
-			gLog.Println(LvERROR, "p2pTunnel connect error:", err)
+			gLog.d("p2pTunnel connect error:%s", err)
 			return
 		}
 	} else {
 		if err = t.listen(); err != nil {
-			gLog.Println(LvERROR, "p2pTunnel listen error:", err)
+			gLog.d("p2pTunnel listen error:%s", err)
 			return
 		}
 	}
 	// store it when success
-	gLog.Printf(LvDEBUG, "store tunnel %d", tid)
+	gLog.d("store tunnel %d", tid)
 	pn.allTunnels.Store(tid, t)
 	return
 }
+
 func (pn *P2PNetwork) init() error {
-	gLog.Println(LvINFO, "P2PNetwork init start")
-	defer gLog.Println(LvINFO, "P2PNetwork init end")
+	gLog.i("P2PNetwork init start")
+	defer gLog.i("P2PNetwork init end")
+	pn.initTime = time.Now()
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
 	var err error
-	net.DefaultResolver = &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return net.Dial("udp", "119.29.29.29:53")
-		},
+	ips, err := resolveServerIP(gConf.Network.ServerHost)
+	if err != nil {
+		gLog.e("resolve dns failed: %v", err)
+		return err
 	}
+	gConf.Network.ServerIP = ips[0]
+	if isAndroid() {
+		net.DefaultResolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				gLog.i("lookup dns %s %s", network, address)
+				dialer := &net.Dialer{
+					Timeout: 5 * time.Second,
+				}
+				primaryDNS := "119.29.29.29:53" // Tencent Cloud DNS
+				return dialer.DialContext(ctx, network, primaryDNS)
+			},
+		}
+	}
+	v4l.stop() // stop old v4 listener if exist
 	for {
 		// detect nat type
-		gConf.Network.publicIP, gConf.Network.natType, err = getNATType(gConf.Network.ServerHost, gConf.Network.NATDetectPort1, gConf.Network.NATDetectPort2)
+		gConf.Network.publicIP, gConf.Network.natType, err = getNATType(gConf.Network.ServerIP, NATDetectPort1, NATDetectPort2)
 		if err != nil {
-			gLog.Println(LvDEBUG, "detect NAT type error:", err)
+			gLog.d("detect NAT type error:%s", err)
 			break
 		}
 		if gConf.Network.hasIPv4 == 0 && gConf.Network.hasUPNPorNATPMP == 0 { // if already has ipv4 or upnp no need test again
@@ -521,48 +697,58 @@ func (pn *P2PNetwork) init() error {
 			gConf.Network.natType = NATSymmetric
 			gConf.Network.hasIPv4 = 0
 			gConf.Network.hasUPNPorNATPMP = 0
-			gLog.Println(LvINFO, "openp2pS2STest debug")
+			gLog.i("openp2pS2STest debug")
 
 		}
 		if strings.Contains(gConf.Network.Node, "openp2pC2CTest") {
 			gConf.Network.natType = NATCone
 			gConf.Network.hasIPv4 = 0
 			gConf.Network.hasUPNPorNATPMP = 0
-			gLog.Println(LvINFO, "openp2pC2CTest debug")
+			gLog.i("openp2pC2CTest debug")
 		}
 
 		// public ip and intranet connect
-		onceV4Listener.Do(func() {
-			v4l = &v4Listener{port: gConf.Network.PublicIPPort}
-			go v4l.start()
-		})
-		gLog.Printf(LvINFO, "hasIPv4:%d, UPNP:%d, NAT type:%d, publicIP:%s", gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, gConf.Network.natType, gConf.Network.publicIP)
-		gatewayURL := fmt.Sprintf("%s:%d", gConf.Network.ServerHost, gConf.Network.ServerPort)
+		v4l.start()
+		pn.refreshIPv6()
+		gLog.i("hasIPv4:%d, UPNP:%d, NAT type:%d, publicIP:%s, IPv6:%s", gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, gConf.Network.natType, gConf.Network.publicIP, gConf.IPv6())
+		gatewayURL := fmt.Sprintf("%s:%d", gConf.Network.ServerIP, gConf.Network.ServerPort)
 		uri := "/api/v1/login"
 		caCertPool, errCert := x509.SystemCertPool()
 		if errCert != nil {
-			gLog.Println(LvERROR, "Failed to load system root CAs:", errCert)
+			gLog.e("Failed to load system root CAs:%s", errCert)
 			caCertPool = x509.NewCertPool()
 		}
 		caCertPool.AppendCertsFromPEM([]byte(rootCA))
+		caCertPool.AppendCertsFromPEM([]byte(rootEdgeCA))
 		caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 		config := tls.Config{
 			RootCAs:            caCertPool,
-			InsecureSkipVerify: false} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
+			InsecureSkipVerify: gConf.TLSInsecureSkipVerify} // let's encrypt root cert "DST Root CA X3" expired at 2021/09/29. many old system(windows server 2008 etc) will not trust our cert
 		websocket.DefaultDialer.TLSClientConfig = &config
-		websocket.DefaultDialer.HandshakeTimeout = ClientAPITimeout
+		websocket.DefaultDialer.HandshakeTimeout = ClientAPITimeout * 3
 		u := url.URL{Scheme: "wss", Host: gatewayURL, Path: uri}
 		q := u.Query()
 		q.Add("node", gConf.Network.Node)
 		q.Add("token", fmt.Sprintf("%d", gConf.Network.Token))
 		q.Add("version", OpenP2PVersion)
+		q.Add("ipv4", gConf.Network.publicIP)
+		q.Add("ipv6", gConf.IPv6())
 		q.Add("nattype", fmt.Sprintf("%d", gConf.Network.natType))
 		q.Add("sharebandwidth", fmt.Sprintf("%d", gConf.Network.ShareBandwidth))
 		u.RawQuery = q.Encode()
-		var ws *websocket.Conn
-		ws, _, err = websocket.DefaultDialer.Dial(u.String(), nil)
+		d := websocket.Dialer{
+			NetDialContext: (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+			TLSClientConfig: &tls.Config{
+				RootCAs:            caCertPool,               // 你的根证书池
+				ServerName:         gConf.Network.ServerHost, // <--- 关键：把域名放到 ServerName
+				InsecureSkipVerify: gConf.TLSInsecureSkipVerify,
+			},
+			HandshakeTimeout: 10 * time.Second,
+		}
+
+		ws, _, err := d.Dial(u.String(), nil)
 		if err != nil {
-			gLog.Println(LvERROR, "Dial error:", err)
+			gLog.e("Dial error:%s", err)
 			break
 		}
 		pn.running = true
@@ -588,7 +774,7 @@ func (pn *P2PNetwork) init() error {
 				Version:         OpenP2PVersion,
 			}
 			rsp := netInfo()
-			gLog.Println(LvDEBUG, "netinfo:", rsp)
+			gLog.d("netinfo:%v", rsp)
 			if rsp != nil && rsp.Country != "" {
 				if IsIPv6(rsp.IP.String()) {
 					gConf.setIPv6(rsp.IP.String())
@@ -602,13 +788,13 @@ func (pn *P2PNetwork) init() error {
 		}()
 		go pn.autorunApp()
 		pn.write(MsgSDWAN, MsgSDWANInfoReq, nil)
-		gLog.Println(LvDEBUG, "P2PNetwork init ok")
+		gLog.d("P2PNetwork init ok")
 		break
 	}
 	if err != nil {
 		// init failed, retry
-		pn.close()
-		gLog.Println(LvERROR, "P2PNetwork init error:", err)
+		pn.close(true)
+		gLog.e("P2PNetwork init error:%s", err)
 	}
 	return err
 }
@@ -617,19 +803,20 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 	head := openP2PHeader{}
 	err := binary.Read(bytes.NewReader(msg[:openP2PHeaderSize]), binary.LittleEndian, &head)
 	if err != nil {
-		gLog.Println(LvERROR, "handleMessage error:", err)
+		gLog.e("handleMessage error:%s", err)
 		return
 	}
+	gLog.dev("handleMessage %+v", head)
 	switch head.MainType {
 	case MsgLogin:
 		// gLog.Println(LevelINFO,string(msg))
 		rsp := LoginRsp{}
 		if err = json.Unmarshal(msg[openP2PHeaderSize:], &rsp); err != nil {
-			gLog.Printf(LvERROR, "wrong %v:%s", reflect.TypeOf(rsp), err)
+			gLog.e("wrong %v:%s", reflect.TypeOf(rsp), err)
 			return
 		}
 		if rsp.Error != 0 {
-			gLog.Printf(LvERROR, "login error:%d, detail:%s", rsp.Error, rsp.Detail)
+			gLog.e("login error:%d, detail:%s", rsp.Error, rsp.Detail)
 			pn.running = false
 		} else {
 			gConf.setToken(rsp.Token)
@@ -637,17 +824,18 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 			if len(rsp.Node) >= MinNodeNameLen {
 				gConf.setNode(rsp.Node)
 			}
+			gConf.save()
 			if rsp.LoginMaxDelay > 0 {
 				pn.loginMaxDelaySeconds = rsp.LoginMaxDelay
 			}
-			gLog.Printf(LvINFO, "login ok. user=%s,node=%s", rsp.User, rsp.Node)
+			gLog.i("login ok. user=%s, node=%s", rsp.User, rsp.Node)
 		}
 	case MsgHeartbeat:
-		gLog.Printf(LvDev, "P2PNetwork heartbeat ok")
+		gLog.dev("P2PNetwork heartbeat ok")
 		pn.hbTime = time.Now()
 		rtt := pn.hbTime.UnixNano() - pn.t1
 		if rtt > int64(PunchTsDelay) || (pn.preRtt > 0 && rtt > pn.preRtt*5) {
-			gLog.Printf(LvINFO, "rtt=%d too large ignore", rtt)
+			gLog.d("rtt=%dms too large ignore", rtt/int64(time.Millisecond))
 			return // invalid hb rsp
 		}
 		pn.preRtt = rtt
@@ -665,7 +853,7 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 			}
 		}
 		pn.dt = newdt
-		gLog.Printf(LvDEBUG, "synctime thisdt=%dms dt=%dms ddt=%dns ddtma=%dns rtt=%dms ", thisdt/int64(time.Millisecond), pn.dt/int64(time.Millisecond), pn.ddt, pn.ddtma, rtt/int64(time.Millisecond))
+		gLog.dev("synctime thisdt=%dms dt=%dms ddt=%dns ddtma=%dns rtt=%dms ", thisdt/int64(time.Millisecond), pn.dt/int64(time.Millisecond), pn.ddt, pn.ddtma, rtt/int64(time.Millisecond))
 	case MsgPush:
 		handlePush(head.SubType, msg)
 	case MsgSDWAN:
@@ -674,7 +862,11 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 		i, ok := pn.msgMap.Load(uint64(0))
 		if ok {
 			ch := i.(chan msgCtx)
-			ch <- msgCtx{data: msg, ts: time.Now()}
+			select {
+			case ch <- msgCtx{data: msg, ts: time.Now()}:
+			default:
+				gLog.e("msgQueue full, drop it")
+			}
 		}
 
 		return
@@ -682,20 +874,28 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 }
 
 func (pn *P2PNetwork) readLoop() {
-	gLog.Printf(LvDEBUG, "P2PNetwork readLoop start")
+	gLog.d("P2PNetwork readLoop start")
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
 	for pn.running {
 		pn.conn.SetReadDeadline(time.Now().Add(NetworkHeartbeatTime + 10*time.Second))
 		_, msg, err := pn.conn.ReadMessage()
 		if err != nil {
-			gLog.Printf(LvERROR, "P2PNetwork read error:%s", err)
-			pn.close()
+			gLog.e("P2PNetwork read error:%s", err)
+			if closeErr, ok := err.(*websocket.CloseError); ok {
+				if closeErr.Code == 1006 {
+					pn.close(true)
+				} else {
+					pn.close(false)
+				}
+			} else {
+				pn.close(false)
+			}
 			break
 		}
 		pn.handleMessage(msg)
 	}
-	gLog.Printf(LvDEBUG, "P2PNetwork readLoop end")
+	gLog.d("P2PNetwork readLoop end")
 }
 
 func (pn *P2PNetwork) write(mainType uint16, subType uint16, packet interface{}) error {
@@ -708,9 +908,10 @@ func (pn *P2PNetwork) write(mainType uint16, subType uint16, packet interface{})
 	}
 	pn.writeMtx.Lock()
 	defer pn.writeMtx.Unlock()
+	pn.conn.SetWriteDeadline(time.Now().Add(NetworkHeartbeatTime))
 	if err = pn.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
-		gLog.Printf(LvERROR, "write msgType %d,%d error:%s", mainType, subType, err)
-		pn.close()
+		gLog.e("write msgType %d,%d error:%s", mainType, subType, err)
+		pn.close(false)
 	}
 	return err
 }
@@ -726,13 +927,13 @@ func (pn *P2PNetwork) relay(to uint64, body []byte) error {
 	}
 	var err error
 	if err = tunnel.conn.WriteBuffer(body); err != nil {
-		gLog.Printf(LvERROR, "relay to %d len=%d error:%s", to, len(body), err)
+		gLog.dev("relay to %d len=%d error:%s", to, len(body), err)
 	}
 	return err
 }
 
 func (pn *P2PNetwork) push(to string, subType uint16, packet interface{}) error {
-	// gLog.Printf(LvDEBUG, "push msgType %d to %s", subType, to)
+	// gLog.d("push msgType %d to %s", subType, to)
 	if !pn.online {
 		return errors.New("client offline")
 	}
@@ -753,14 +954,15 @@ func (pn *P2PNetwork) push(to string, subType uint16, packet interface{}) error 
 	pushMsg = append(pushMsg, data...)
 	pn.writeMtx.Lock()
 	defer pn.writeMtx.Unlock()
+	pn.conn.SetWriteDeadline(time.Now().Add(NetworkHeartbeatTime))
 	if err = pn.conn.WriteMessage(websocket.BinaryMessage, pushMsg); err != nil {
-		gLog.Printf(LvERROR, "push to %s error:%s", to, err)
-		pn.close()
+		gLog.e("push to %s error:%s", to, err)
+		pn.close(false)
 	}
 	return err
 }
 
-func (pn *P2PNetwork) close() {
+func (pn *P2PNetwork) close(isRestartDelay bool) {
 	if pn.running {
 		if pn.conn != nil {
 			pn.conn.Close()
@@ -768,7 +970,7 @@ func (pn *P2PNetwork) close() {
 		pn.running = false
 	}
 	select {
-	case pn.restartCh <- true:
+	case pn.restartCh <- isRestartDelay:
 	default:
 	}
 }
@@ -782,28 +984,28 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 	}
 	i, ok := pn.msgMap.Load(nodeID)
 	if !ok {
-		gLog.Printf(LvERROR, "read msg error: %s not found", node)
+		gLog.e("read msg error: %s not found", node)
 		return
 	}
 	ch := i.(chan msgCtx)
 	for {
 		select {
 		case <-time.After(timeout):
-			gLog.Printf(LvERROR, "read msg error %d:%d timeout", mainType, subType)
+			gLog.e("read msg error %d:%d timeout", mainType, subType)
 			return
 		case msg := <-ch:
 			head = &openP2PHeader{}
 			err := binary.Read(bytes.NewReader(msg.data[:openP2PHeaderSize]), binary.LittleEndian, head)
 			if err != nil {
-				gLog.Println(LvERROR, "read msg error:", err)
+				gLog.e("read msg error:%s", err)
 				break
 			}
 			if time.Since(msg.ts) > ReadMsgTimeout {
-				gLog.Printf(LvDEBUG, "read msg error expired %d:%d", head.MainType, head.SubType)
+				gLog.d("read msg error expired %d:%d", head.MainType, head.SubType)
 				continue
 			}
 			if head.MainType != mainType || head.SubType != subType {
-				gLog.Printf(LvDEBUG, "read msg error type %d:%d, requeue it", head.MainType, head.SubType)
+				// gLog.d("read msg error type %d:%d expect %d:%d, requeue it", head.MainType, head.SubType, mainType, subType)
 				ch <- msg
 				time.Sleep(time.Second)
 				continue
@@ -818,11 +1020,16 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 	}
 }
 
-func (pn *P2PNetwork) updateAppHeartbeat(appID uint64) {
+func (pn *P2PNetwork) updateAppHeartbeat(appID uint64, rtid uint64, updateRelayTs bool) {
 	pn.apps.Range(func(id, i interface{}) bool {
 		app := i.(*p2pApp)
 		if app.id == appID {
-			app.updateHeartbeat()
+			if updateRelayTs {
+				app.UpdateRelayHeartbeatTs(rtid)
+			} else {
+				app.UpdateHeartbeat(rtid)
+			}
+
 		}
 		return true
 	})
@@ -834,19 +1041,25 @@ func (pn *P2PNetwork) refreshIPv6() {
 		client := &http.Client{Timeout: time.Second * 10}
 		r, err := client.Get("http://ipv6.ddnspod.com/")
 		if err != nil {
-			gLog.Println(LvDEBUG, "refreshIPv6 error:", err)
+			gLog.d("refreshIPv6 error:%s", err)
 			continue
 		}
 		defer r.Body.Close()
 		buf := make([]byte, 1024)
 		n, err := r.Body.Read(buf)
 		if n <= 0 {
-			gLog.Println(LvINFO, "refreshIPv6 error:", err, n)
+			gLog.e("refreshIPv6 error:%s", err)
 			continue
 		}
 		if IsIPv6(string(buf[:n])) {
-			gConf.setIPv6(string(buf[:n]))
+			newIPv6 := string(buf[:n])
+			if newIPv6 != gConf.IPv6() {
+				gLog.i("refreshIPv6 change:%s ---> %s", gConf.IPv6(), newIPv6)
+				gConf.setIPv6(newIPv6)
+
+			}
 		}
+		gLog.d("refreshIPv6:%s", gConf.IPv6())
 		break
 	}
 
@@ -860,7 +1073,7 @@ func (pn *P2PNetwork) requestPeerInfo(config *AppConfig) error {
 	head, body := pn.read("", MsgQuery, MsgQueryPeerInfoRsp, ClientAPITimeout)
 	pn.reqGatewayMtx.Unlock()
 	if head == nil {
-		gLog.Println(LvERROR, "requestPeerInfo error")
+		gLog.e("requestPeerInfo error")
 		return ErrNetwork // network error, should not be ErrPeerOffline
 	}
 	rsp := QueryPeerInfoRsp{}
@@ -890,7 +1103,7 @@ func (pn *P2PNetwork) StartSDWAN() {
 }
 
 func (pn *P2PNetwork) ConnectNode(node string) error {
-	if gConf.nodeID() < NodeNameToID(node) {
+	if gConf.nodeID() <= NodeNameToID(node) {
 		return errors.New("only the bigger nodeid connect")
 	}
 	peerNodeID := fmt.Sprintf("%d", NodeNameToID(node))
@@ -900,6 +1113,7 @@ func (pn *P2PNetwork) ConnectNode(node string) error {
 	config.PeerNode = node
 	sdwan := gConf.getSDWAN()
 	config.PunchPriority = int(sdwan.PunchPriority)
+	// config.UnderlayProtocol = "kcp"
 	if node != sdwan.CentralNode && gConf.Network.Node != sdwan.CentralNode { // neither is centralnode
 		config.RelayNode = sdwan.CentralNode
 		config.ForceRelay = int(sdwan.ForceRelay)
@@ -919,22 +1133,24 @@ func (pn *P2PNetwork) WriteNode(nodeID uint64, buff []byte) error {
 	}
 	var err error
 	app := i.(*p2pApp)
-	if app.Tunnel() == nil {
-		return errors.New("peer tunnel nil")
-	}
 	// TODO: move to app.write
-	gLog.Printf(LvDev, "%d tunnel write node data bodylen=%d, relay=%t", app.Tunnel().id, len(buff), !app.isDirect())
-	if app.isDirect() { // direct
-		app.Tunnel().asyncWriteNodeData(MsgP2P, MsgNodeData, buff)
-	} else { // relay
-		fromNodeIDHead := new(bytes.Buffer)
-		binary.Write(fromNodeIDHead, binary.LittleEndian, gConf.nodeID())
-		all := app.RelayHead().Bytes()
-		all = append(all, encodeHeader(MsgP2P, MsgRelayNodeData, uint32(len(buff)+overlayHeaderSize))...)
-		all = append(all, fromNodeIDHead.Bytes()...)
-		all = append(all, buff...)
-		app.Tunnel().asyncWriteNodeData(MsgP2P, MsgRelayData, all)
+	err = app.WriteNodeDataMP(buff)
+	if err != nil {
+		gLog.dev("appID:%d WriteNodeDataMP %s", app.id, err)
 	}
+	// gLog.dev("%d tunnel write node data bodylen=%d, relay=%t", app.Tunnel().id, len(buff), !app.isDirect())
+	// if app.DirectTunnel() != nil { // direct
+	// 	app.Tunnel().asyncWriteNodeData(MsgP2P, MsgNodeData, buff)
+	// }
+	// if app.Tunnel() != nil { // relay
+	// 	fromNodeIDHead := new(bytes.Buffer)
+	// 	binary.Write(fromNodeIDHead, binary.LittleEndian, gConf.nodeID())
+	// 	all := app.RelayHead().Bytes()
+	// 	all = append(all, encodeHeader(MsgP2P, MsgRelayNodeData, uint32(len(buff)+overlayHeaderSize))...)
+	// 	all = append(all, fromNodeIDHead.Bytes()...)
+	// 	all = append(all, buff...)
+	// 	app.Tunnel().asyncWriteNodeData(MsgP2P, MsgRelayData, all)
+	// }
 
 	return err
 }
@@ -949,32 +1165,23 @@ func (pn *P2PNetwork) WriteBroadcast(buff []byte) error {
 		// binary.BigEndian.PutUint16(buff[10:12], ipChecksum)
 		// binary.BigEndian.PutUint16(buff[26:28], 0x082e)
 		app := i.(*p2pApp)
-		if app.Tunnel() == nil {
-			return true
-		}
+
 		if app.config.SrcPort != 0 { // normal portmap app
 			return true
 		}
 		if app.config.peerIP == gConf.Network.publicIP { // mostly in a lan
 			return true
 		}
-		if app.isDirect() { // direct
-			app.Tunnel().conn.WriteBytes(MsgP2P, MsgNodeData, buff)
-		} else { // relay
-			fromNodeIDHead := new(bytes.Buffer)
-			binary.Write(fromNodeIDHead, binary.LittleEndian, gConf.nodeID())
-			all := app.RelayHead().Bytes()
-			all = append(all, encodeHeader(MsgP2P, MsgRelayNodeData, uint32(len(buff)+overlayHeaderSize))...)
-			all = append(all, fromNodeIDHead.Bytes()...)
-			all = append(all, buff...)
-			app.Tunnel().conn.WriteBytes(MsgP2P, MsgRelayData, all)
+		err := app.WriteNodeDataMP(buff)
+		if err != nil {
+			gLog.dev("appID:%d WriteNodeDataMP %s", app.id, err)
 		}
 		return true
 	})
 	return nil
 }
 
-func (pn *P2PNetwork) ReadNode(tm time.Duration) *NodeData {
+func (pn *P2PNetwork) ReadNode(tm time.Duration) []byte {
 	select {
 	case nd := <-pn.nodeData:
 		return nd
@@ -982,3 +1189,4 @@ func (pn *P2PNetwork) ReadNode(tm time.Duration) *NodeData {
 	}
 	return nil
 }
+

@@ -1,10 +1,8 @@
 __debug_bin
 __debug_bin.exe
 # .vscode
-test/
 openp2p.exe*
 *.log*
-go.sum
 *.tar.gz
 *.zip
 *.exe
@@ -22,3 +20,8 @@ app/.idea/
 *_debug_bin*
 cmd/openp2p
 vendor/
+config.json
+openp2p
+lib/openp2p.dll
+cmd/config.json0
+test/docker/Dockerfile

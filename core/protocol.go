@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.21.12"
+const OpenP2PVersion = "3.24.28"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -18,13 +18,14 @@ const SymmetricSimultaneouslySendVersion = "3.10.7"
 const PublicIPVersion = "3.11.2"
 const SupportIntranetVersion = "3.14.5"
 const SupportDualTunnelVersion = "3.15.5"
-
+const IPv6PunchVersion = "3.24.9"
+const SupportUDP4DirectVersion = "3.24.16"
 const (
-	IfconfigPort1  = 27180
-	IfconfigPort2  = 27181
+	NATDetectPort1 = 27180
+	NATDetectPort2 = 27181
 	WsPort         = 27183
-	NATDetectPort1 = 27182
-	NATDetectPort2 = 27183
+	UDPPort1       = 27182
+	UDPPort2       = 27183
 )
 
 type openP2PHeader struct {
@@ -46,6 +47,12 @@ const RelayHeaderSize = 8
 
 type overlayHeader struct {
 	id uint64
+}
+
+type NodeDataMPAck struct {
+	FromNodeID uint64
+	Seq        uint64
+	Delay      uint32 // delay write mergeack ms
 }
 
 var overlayHeaderSize = binary.Size(overlayHeader{})
@@ -111,6 +118,7 @@ const (
 	MsgPushCheckRemoteService   = 19
 	MsgPushSpecTunnel           = 20
 	MsgPushReportHeap           = 21
+	MsgPushSDWanRefresh         = 22
 )
 
 // MsgP2P sub type message
@@ -172,16 +180,12 @@ const (
 	MaxRetry                   = 10
 	Cone2ConeTCPPunchMaxRetry  = 1
 	Cone2ConeUDPPunchMaxRetry  = 1
-	PublicIPEchoTimeout        = time.Second * 3
+	PublicIPEchoTimeout        = time.Second * 5
 	NatDetectTimeout           = time.Second * 5
 	UDPReadTimeout             = time.Second * 5
 	ClientAPITimeout           = time.Second * 10
 	UnderlayConnectTimeout     = time.Second * 10
 	MaxDirectTry               = 3
-
-	// sdwan
-	ReadTunBuffSize = 1600
-	ReadTunBuffNum  = 10
 )
 
 // NATNone has public ip
@@ -349,7 +353,8 @@ type TunnelMsg struct {
 }
 
 type RelayNodeReq struct {
-	PeerNode string `json:"peerNode,omitempty"`
+	PeerNode     string `json:"peerNode,omitempty"`
+	ExcludeNodes string `json:"excludeNodes,omitempty"` //TODO: add exclude ip
 }
 
 type RelayNodeRsp struct {

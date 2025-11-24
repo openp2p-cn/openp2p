@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	op "openp2p/core"
+	op2p "openp2p/core"
 	"time"
 )
 
 func main() {
-	op.Run()
+	op2p.Run()
 	for i := 0; i < 10; i++ {
 		go echoClient("5800-debug")
 	}
@@ -15,28 +15,28 @@ func main() {
 }
 
 func echoClient(peerNode string) {
-	sendDatalen := op.ReadBuffLen
+	sendDatalen := op2p.ReadBuffLen
 	sendBuff := make([]byte, sendDatalen)
 	for i := 0; i < len(sendBuff); i++ {
 		sendBuff[i] = byte('A' + i/100)
 	}
 	// peerNode = "YOUR-PEER-NODE-NAME"
-	if err := op.GNetwork.ConnectNode(peerNode); err != nil {
+	if err := op2p.GNetwork.ConnectNode(peerNode); err != nil {
 		fmt.Println("connect error:", err)
 		return
 	}
 	for i := 0; ; i++ {
 		sendBuff[1] = 'A' + byte(i%26)
-		if err := op.GNetwork.WriteNode(op.NodeNameToID(peerNode), sendBuff[:sendDatalen]); err != nil {
+		if err := op2p.GNetwork.WriteNode(op2p.NodeNameToID(peerNode), sendBuff[:sendDatalen]); err != nil {
 			fmt.Println("write error:", err)
 			break
 		}
-		nd := op.GNetwork.ReadNode(time.Second * 10)
+		nd := op2p.GNetwork.ReadNode(time.Second * 10)
 		if nd == nil {
 			fmt.Printf("waiting for node data\n")
 			time.Sleep(time.Second * 10)
 			continue
 		}
-		fmt.Printf("read %d len=%d data=%s\n", nd.NodeID, len(nd.Data), nd.Data[:16]) // only print 16 bytes
+		fmt.Printf("read len=%d data=%s\n", len(nd), nd[:16]) // only print 16 bytes
 	}
 }

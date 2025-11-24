@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -68,7 +69,10 @@ func handlePush(subType uint16, msg []byte) error {
 			gLog.e("Unmarshal %v:%s", reflect.TypeOf(req), err)
 			return err
 		}
-		gLog.Println(LvDEBUG, "handle MsgPushServerSideSaveMemApp:", prettyJson(req))
+		gLog.d("handle MsgPushServerSideSaveMemApp:%s", prettyJson(req))
+		if req.RelayIndex > uint32(gConf.sdwan.TunnelNum-1) {
+			return errors.New("wrong relay index")
+		}
 		var existTunnel *P2PTunnel
 		i, ok := GNetwork.allTunnels.Load(req.TunnelID)
 		if !ok {
@@ -81,18 +85,24 @@ func handlePush(subType uint16, msg []byte) error {
 		}
 		existTunnel = i.(*P2PTunnel)
 		peerID := NodeNameToID(req.From)
-		existApp, appok := GNetwork.apps.Load(peerID)
+		appIdx := peerID
+		if req.SrcPort != 0 {
+			appIdx = req.AppID
+		}
+		existApp, appok := GNetwork.apps.Load(appIdx)
 		if appok {
 			app := existApp.(*p2pApp)
 			app.config.AppName = fmt.Sprintf("%d", peerID)
 			app.id = req.AppID
-			app.setRelayTunnelID(req.RelayTunnelID)
-			app.relayMode = req.RelayMode
-			app.hbTimeRelay = time.Now()
+			app.key = req.AppKey
+			app.PreCalcKeyBytes()
+			app.relayMode[req.RelayIndex] = req.RelayMode
+			app.hbTime[req.RelayIndex] = time.Now()
 			if req.RelayTunnelID == 0 {
-				app.setDirectTunnel(existTunnel)
+				app.SetTunnel(existTunnel, 0)
 			} else {
-				app.setRelayTunnel(existTunnel)
+				app.SetTunnel(existTunnel, int(req.RelayIndex))              // TODO: merge two func
+				app.SetRelayTunnelID(req.RelayTunnelID, int(req.RelayIndex)) // direct tunnel rtid=0, no need set rtid
 			}
 			gLog.d("found existing memapp, update it")
 		} else {
@@ -102,22 +112,32 @@ func handlePush(subType uint16, msg []byte) error {
 			appConfig.AppName = fmt.Sprintf("%d", peerID)
 			appConfig.PeerNode = req.From
 			app := p2pApp{
-				id:          req.AppID,
-				config:      appConfig,
-				relayMode:   req.RelayMode,
-				running:     true,
-				hbTimeRelay: time.Now(),
+				id:      req.AppID,
+				config:  appConfig,
+				running: true,
+				// asyncWriteChan: make(chan []byte, WriteDataChanSize),
+				key: req.AppKey,
 			}
+			app.PreCalcKeyBytes()
+			tunnelNum := 2
+			if req.TunnelNum > uint32(tunnelNum) {
+				tunnelNum = int(req.TunnelNum)
+			}
+			app.Init(tunnelNum)
+			app.relayMode[req.RelayIndex] = req.RelayMode
+			app.hbTime[req.RelayIndex] = time.Now()
 			if req.RelayTunnelID == 0 {
-				app.setDirectTunnel(existTunnel)
+				app.SetTunnel(existTunnel, 0)
 			} else {
-				app.setRelayTunnel(existTunnel)
-				app.setRelayTunnelID(req.RelayTunnelID)
+				app.SetTunnel(existTunnel, int(req.RelayIndex))
+				app.SetRelayTunnelID(req.RelayTunnelID, int(req.RelayIndex))
 			}
 			if req.RelayTunnelID != 0 {
-				app.relayNode = req.Node
+				app.relayNode[req.RelayIndex] = req.Node
 			}
-			GNetwork.apps.Store(NodeNameToID(req.From), &app)
+			app.Start(false)
+			GNetwork.apps.Store(appIdx, &app)
+			gLog.d("store memapp %d %d", appIdx, req.SrcPort)
 		}
 
 		return nil
@@ -155,6 +175,9 @@ func handlePush(subType uint16, msg []byte) error {
 		}
 		gConf.setNode(req.NewName)
 		gConf.setShareBandwidth(req.Bandwidth)
+		gConf.Forcev6 = (req.Forcev6 != 0)
+		gLog.i("set forcev6 to %v", gConf.Forcev6)
+		gConf.save()
 		os.Exit(0)
 	case MsgPushSwitchApp:
 		gLog.i("MsgPushSwitchApp")
@@ -178,6 +201,16 @@ func handlePush(subType uint16, msg []byte) error {
 		}
 		gLog.i("%s online, retryApp", req.Node)
 		gConf.retryApp(req.Node)
+	case MsgPushSpecTunnel:
+		req := SpecTunnel{}
+		if err = json.Unmarshal(msg[openP2PHeaderSize:], &req); err != nil {
+			gLog.e("Unmarshal %v:%s  %s", reflect.TypeOf(req), err, string(msg[openP2PHeaderSize:]))
+			return err
+		}
+		gLog.i("SpecTunnel %d", req.TunnelIndex)
+		gConf.Network.specTunnel = int(req.TunnelIndex)
+	case MsgPushSDWanRefresh:
+		GNetwork.write(MsgSDWAN, MsgSDWANInfoReq, nil)
 	default:
 		i, ok := GNetwork.msgMap.Load(pushHead.From)
 		if !ok {
@@ -295,28 +328,24 @@ func handleReportApps() (err error) {
 		linkMode := LinkModeUDPPunch
 		var connectTime string
 		var retryTime string
-		var app *p2pApp
-		i, ok := GNetwork.apps.Load(config.ID())
-		if ok {
-			app = i.(*p2pApp)
-			if app.isActive() {
+		app := GNetwork.findApp(config)
+		if app != nil {
+
+			if app.IsActive() {
 				appActive = 1
 			}
-			if app.config.SrcPort == 0 { // memapp
-				continue
-			}
 			specRelayNode = app.config.RelayNode
-			if !app.isDirect() { // TODO: should always report relay node for app edit
-				relayNode = app.relayNode
-				relayMode = app.relayMode
+			t, tidx := app.AvailableTunnel()
+			if tidx != 0 { // TODO: should always report relay node for app edit
+				relayNode = app.relayNode[tidx]
+				relayMode = app.relayMode[tidx]
 			}
 
-			if app.Tunnel() != nil {
-				linkMode = app.Tunnel().linkModeWeb
+			if t != nil {
+				linkMode = t.linkModeWeb
 			}
 			retryTime = app.RetryTime().Local().Format("2006-01-02T15:04:05-0700")
 			connectTime = app.ConnectTime().Local().Format("2006-01-02T15:04:05-0700")
-
 		}
 		appInfo := AppInfo{
 			AppName:       config.AppName,
@@ -358,13 +387,16 @@ func handleReportMemApps() (err error) {
 
 		i, ok := GNetwork.apps.Load(node.id)
 		var app *p2pApp
+		var t *P2PTunnel
+		var tidx int
 		if ok {
 			app = i.(*p2pApp)
-			if app.isActive() {
+			t, tidx = app.AvailableTunnel()
+			if app.IsActive() {
 				appActive = 1
 			}
-			if !app.isDirect() {
-				relayMode = app.relayMode
+			if tidx != 0 {
+				relayMode = app.relayMode[tidx]
 			}
 			retryTime = app.RetryTime().Local().Format("2006-01-02T15:04:05-0700")
 			connectTime = app.ConnectTime().Local().Format("2006-01-02T15:04:05-0700")
@@ -381,12 +413,13 @@ func handleReportMemApps() (err error) {
 			appInfo.Protocol = app.config.Protocol
 			appInfo.Whitelist = app.config.Whitelist
 			appInfo.SrcPort = app.config.SrcPort
-			if !app.isDirect() {
-				appInfo.RelayNode = app.relayNode
+
+			if tidx != 0 {
+				appInfo.RelayNode = app.relayNode[tidx]
 			}
 
-			if app.Tunnel() != nil {
-				appInfo.LinkMode = app.Tunnel().linkModeWeb
+			if t != nil {
+				appInfo.LinkMode = t.linkModeWeb
 			}
 			appInfo.DstHost = app.config.DstHost
 			appInfo.DstPort = app.config.DstPort
@@ -399,7 +432,9 @@ func handleReportMemApps() (err error) {
 		req.Apps = append(req.Apps, appInfo)
 		return true
 	})
-	gLog.Println(LvDEBUG, "handleReportMemApps res:", prettyJson(req))
+	req.TunError = GNetwork.sdwan.tunErr
+	gLog.d("handleReportMemApps res:%s", prettyJson(req))
+	gConf.retryAllMemApp()
 	return GNetwork.write(MsgReport, MsgReportMemApps, &req)
 }
 
