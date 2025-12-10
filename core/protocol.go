@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.24.28"
+const OpenP2PVersion = "3.24.33"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -119,6 +119,7 @@ const (
 	MsgPushSpecTunnel           = 20
 	MsgPushReportHeap           = 21
 	MsgPushSDWanRefresh         = 22
+	MsgPushNat4Detect           = 23
 )
 
 // MsgP2P sub type message
@@ -564,6 +565,19 @@ type CheckRemoteService struct {
 
 type SpecTunnel struct {
 	TunnelIndex uint32 `json:"tunnelIndex,omitempty"`
+}
+
+type Nat4Detect struct {
+	CustomData []*Nat4DetectItem
+	Num        int32 `json:"num,omitempty"`
+	*Nat4DetectItem
+}
+
+type Nat4DetectItem struct {
+	Protocol   string `json:"protocol,omitempty"`
+	Server     string `json:"server,omitempty"`
+	ServerPort int32  `json:"serverPort,omitempty"`
+	LocalPort  int32  `json:"localPort,omitempty"`
 }
 
 const rootCA = `-----BEGIN CERTIFICATE-----

@@ -210,7 +210,6 @@ func (c *Config) add(app AppConfig, override bool) {
 	}
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	defer c.save()
 	if override {
 		for i := 0; i < len(c.Apps); i++ {
 			if c.Apps[i].PeerNode == app.PeerNode && c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort {
@@ -220,12 +219,14 @@ func (c *Config) add(app AppConfig, override bool) {
 		}
 	}
 	c.Apps = append(c.Apps, &app)
+	if app.SrcPort != 0 {
+		c.save()
+	}
 }
 
 func (c *Config) delete(app AppConfig) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
-	defer c.save()
 	for i := 0; i < len(c.Apps); i++ {
 		if (app.SrcPort != 0 && c.Apps[i].Protocol == app.Protocol && c.Apps[i].SrcPort == app.SrcPort) || // normal app
 			(app.SrcPort == 0 && c.Apps[i].SrcPort == 0 && c.Apps[i].PeerNode == app.PeerNode) { // memapp
@@ -234,8 +235,11 @@ func (c *Config) delete(app AppConfig) {
 			} else {
 				c.Apps = append(c.Apps[:i], c.Apps[i+1:]...)
 			}
-			return
+			break
 		}
+	}
+	if app.SrcPort != 0 {
+		c.save()
 	}
 }
 

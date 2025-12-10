@@ -211,6 +211,8 @@ func handlePush(subType uint16, msg []byte) error {
 		gConf.Network.specTunnel = int(req.TunnelIndex)
 	case MsgPushSDWanRefresh:
 		GNetwork.write(MsgSDWAN, MsgSDWANInfoReq, nil)
+	case MsgPushNat4Detect:
+		handleNat4Detect(msg)
 	default:
 		i, ok := GNetwork.msgMap.Load(pushHead.From)
 		if !ok {
@@ -220,6 +222,45 @@ func handlePush(subType uint16, msg []byte) error {
 		ch <- msgCtx{data: msg, ts: time.Now()}
 	}
 	return err
+}
+
+func handleNat4Detect(msg []byte) (err error) {
+	gLog.d("handleNat4Detect")
+	nd := Nat4Detect{}
+	if err = json.Unmarshal(msg[openP2PHeaderSize:], &nd); err != nil {
+		gLog.e("Unmarshal %v:%s  %s", reflect.TypeOf(nd), err, string(msg[openP2PHeaderSize:]))
+		return err
+	}
+	detectNatPort := func(protocol, server string, serverPort, localPort int) int {
+		natPort := 0
+		if protocol == "tcp" {
+			_, natPort, _, _ = natDetectTCP(server, serverPort, localPort)
+		} else {
+			_, natPort, _ = natDetectUDP(server, serverPort, localPort)
+		}
+		// gLog.i("%s %s %d %d %d", protocol, server, serverPort, localPort, natPort)
+		return natPort
+	}
+
+	result := ""
+	if nd.Num > 0 {
+		for i := 0; i < int(nd.Num); i++ {
+			natPort := detectNatPort(nd.Protocol, nd.Server, int(nd.ServerPort), int(nd.LocalPort)+i)
+			if i > 0 {
+				result += ","
+			}
+			result += fmt.Sprintf("%d", natPort)
+		}
+	} else {
+		for idx, item := range nd.CustomData {
+			natPort := detectNatPort(item.Protocol, item.Server, int(item.ServerPort), int(item.LocalPort))
+			if idx > 0 {
+				result += ","
+			}
+			result += fmt.Sprintf("%d", natPort)
+		}
+	}
+	return GNetwork.write(MsgReport, MsgPushReportLog, &result)
 }
 
 func handleEditApp(msg []byte) (err error) {
