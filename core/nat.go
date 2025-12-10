@@ -13,8 +13,8 @@ import (
 )
 
 func natDetectTCP(serverHost string, serverPort int, lp int) (publicIP string, publicPort int, localPort int, err error) {
-	gLog.d("natDetectTCP start")
-	defer gLog.d("natDetectTCP end")
+	gLog.dev("natDetectTCP start")
+	defer gLog.dev("natDetectTCP end")
 	conn, err := reuse.DialTimeout("tcp4", fmt.Sprintf("0.0.0.0:%d", lp), fmt.Sprintf("%s:%d", serverHost, serverPort), NatDetectTimeout)
 	if err != nil {
 		err = fmt.Errorf("dial tcp4 %s:%d error: %w", serverHost, serverPort, err)
@@ -56,8 +56,8 @@ func natDetectTCP(serverHost string, serverPort int, lp int) (publicIP string, p
 }
 
 func natDetectUDP(serverHost string, serverPort int, localPort int) (publicIP string, publicPort int, err error) {
-	gLog.d("natDetectUDP start")
-	defer gLog.d("natDetectUDP end")
+	gLog.dev("natDetectUDP start")
+	defer gLog.dev("natDetectUDP end")
 	conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		gLog.e("natDetectUDP listen udp error:%s", err)

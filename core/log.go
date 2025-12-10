@@ -191,3 +191,9 @@ func (l *logger) e(format string, params ...interface{}) {
 func (l *logger) dev(format string, params ...interface{}) {
 	l.Printf(LvDev, format, params...)
 }
+
+func InitForUnitTest(lv LogLevel) {
+	baseDir := filepath.Dir(os.Args[0])
+	os.Chdir(baseDir) // for system service
+	gLog = NewLogger(baseDir, ProductName, lv, 1024*1024, LogFile|LogConsole)
+}
