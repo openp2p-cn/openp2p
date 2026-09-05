@@ -1,12 +1,14 @@
 package openp2p
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -48,6 +50,11 @@ func setRLimit() error {
 }
 
 func setFirewall() {
+	run := func(command string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		exec.CommandContext(ctx, "cmd.exe", `/c`, command).Run()
+	}
 	fullPath, err := filepath.Abs(os.Args[0])
 	if err != nil {
 		gLog.e("add firewall error:%s", err)
@@ -59,10 +66,10 @@ func setFirewall() {
 		isXP = true
 	}
 	if isXP {
-		exec.Command("cmd.exe", `/c`, fmt.Sprintf(`netsh firewall del allowedprogram "%s"`, fullPath)).Run()
-		exec.Command("cmd.exe", `/c`, fmt.Sprintf(`netsh firewall add allowedprogram "%s" "%s" ENABLE`, ProductName, fullPath)).Run()
+		run(fmt.Sprintf(`netsh firewall del allowedprogram "%s"`, fullPath))
+		run(fmt.Sprintf(`netsh firewall add allowedprogram "%s" "%s" ENABLE`, ProductName, fullPath))
 	} else { // win7 or later
-		exec.Command("cmd.exe", `/c`, fmt.Sprintf(`netsh advfirewall firewall del rule name="%s"`, ProductName)).Run()
-		exec.Command("cmd.exe", `/c`, fmt.Sprintf(`netsh advfirewall firewall add rule name="%s" dir=in action=allow program="%s" enable=yes`, ProductName, fullPath)).Run()
+		run(fmt.Sprintf(`netsh advfirewall firewall del rule name="%s"`, ProductName))
+		run(fmt.Sprintf(`netsh advfirewall firewall add rule name="%s" dir=in action=allow program="%s" enable=yes`, ProductName, fullPath))
 	}
 }
