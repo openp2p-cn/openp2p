@@ -1,0 +1,510 @@
+name: OpenP2P Release
+
+on:
+  #push:
+  #  branches: [master]
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: '发布类型 (beta: 测试版, stable: 正式版)'
+        type: choice
+        options:
+          - beta
+          - stable
+        default: beta
+        required: true
+      version:
+        description: '正式版版本号 (e.g. v3.25.11)，beta发布时可留空'
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  BINARY_NAME: openp2p
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows
+          - { os: windows, arch: amd64, runner: ubuntu-latest, goos: windows, goarch: amd64, ext: .exe }
+          - { os: windows, arch: arm64, runner: ubuntu-latest, goos: windows, goarch: arm64, ext: .exe }
+          - { os: windows, arch: i386, runner: ubuntu-latest, goos: windows, goarch: 386, ext: .exe }
+          # Linux
+          - { os: linux, arch: amd64, runner: ubuntu-latest, goos: linux, goarch: amd64, ext: '' }
+          - { os: linux, arch: arm64, runner: ubuntu-latest, goos: linux, goarch: arm64, ext: '' }
+          - { os: linux, arch: i386, runner: ubuntu-latest, goos: linux, goarch: 386, ext: '' }
+          - { os: linux, arch: mips, runner: ubuntu-latest, goos: linux, goarch: mips, ext: '' }
+          - { os: linux, arch: mips64, runner: ubuntu-latest, goos: linux, goarch: mips64, ext: '' }
+          # Darwin
+          - { os: darwin, arch: amd64, runner: ubuntu-latest, goos: darwin, goarch: amd64, ext: '' }
+          - { os: darwin, arch: arm64, runner: ubuntu-latest, goos: darwin, goarch: arm64, ext: '' }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+          GOPROXY: https://goproxy.io,direct
+        run: |
+          OUTPUT_NAME="${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+          go build -trimpath -ldflags="-s -w" -o "$OUTPUT_NAME" cmd/openp2p.go
+          echo "OUTPUT_NAME=$OUTPUT_NAME" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ env.OUTPUT_NAME }}
+          retention-days: 7
+
+  # build-android:
+  #   name: Build Android APK
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v6
+  #
+  #     - name: Setup Go
+  #       uses: actions/setup-go@v5
+  #       with:
+  #         go-version: '1.23'
+  #
+  #     - name: Setup JDK
+  #       uses: actions/setup-java@v4
+  #       with:
+  #         java-version: '17'
+  #         distribution: 'temurin'
+  #
+  #     - name: Setup Android SDK & NDK
+  #       uses: android-actions/setup-android@v3
+  #       with:
+  #         packages: 'build-tools;30.0.3 ndk;21.4.7075529 platform-tools platforms;android-31'
+  #
+  #     - name: Setup Android Environment
+  #       run: |
+  #         echo "$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_PATH
+  #         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
+  #
+  #     - name: Build Go mobile library (gomobile bind)
+  #       env:
+  #         GOPROXY: https://goproxy.io,direct
+  #       run: |
+  #         # Install gomobile and gobind at the same pinned commit to avoid @latest resolution
+  #         go install golang.org/x/mobile/cmd/gomobile@7c4916698cc93475ebfea76748ee0faba2deb2a5
+  #         go install golang.org/x/mobile/cmd/gobind@7c4916698cc93475ebfea76748ee0faba2deb2a5
+  #         gomobile init
+  #         go get -v golang.org/x/mobile/bind@7c4916698cc93475ebfea76748ee0faba2deb2a5
+  #
+  #         cd core
+  #         gomobile bind -target android -v -androidapi 16
+  #
+  #         # Copy artifacts to app libs
+  #         mkdir -p ../app/app/libs
+  #         cp openp2p.aar openp2p-sources.jar ../app/app/libs/
+  #         echo "Go mobile library built and copied to app/app/libs/"
+  #         ls -la ../app/app/libs/
+  #
+  #     - name: Build unsigned APK
+  #       working-directory: app
+  #       run: |
+  #         chmod +x gradlew
+  #         ./gradlew assembleRelease
+  #
+  #         # Find the built APK
+  #         APK_PATH=$(find . -name "*.apk" -path "*/release/*" | head -1)
+  #         if [ -z "$APK_PATH" ]; then
+  #           APK_PATH=$(find . -name "*.apk" | head -1)
+  #         fi
+  #
+  #         if [ -n "$APK_PATH" ]; then
+  #           cp "$APK_PATH" ../openp2p-android.apk
+  #           echo "APK built: $APK_PATH"
+  #         else
+  #           echo "ERROR: No APK found"
+  #           exit 1
+  #         fi
+  #
+  #     - name: Upload APK artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: openp2p-android-apk
+  #         path: openp2p-android.apk
+  #         retention-days: 7
+
+  sign:
+    name: Sign Artifacts (Certum SimplySign)
+    needs: [build]
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openp2p-windows-*
+          path: sign_binaries/windows
+          merge-multiple: true
+
+      # - name: Download Android APK
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: openp2p-android-apk
+      #     path: sign_binaries/android
+
+      # - name: Setup JDK (for jarsigner)
+      #   uses: actions/setup-java@v4
+      #   with:
+      #     java-version: '17'
+      #     distribution: 'temurin'
+
+      - name: Setup Certum Code Signing (Windows)
+        shell: bash
+        run: |
+          echo "=== SETTING UP CERTUM CODE SIGNING FOR WINDOWS ==="
+          echo "Installing SimplySign Desktop and configuring for automatic authentication"
+
+          chmod +x ./.github/scripts/install-simplysign.sh
+          ./.github/scripts/install-simplysign.sh
+
+          echo "Configuring registry for automatic login dialog..."
+          powershell -ExecutionPolicy Bypass -File "./.github/scripts/configure-simplysign-registry.ps1"
+
+          echo "Certum signing environment ready"
+
+      - name: Authenticate Certum (Windows)
+        shell: bash
+        env:
+          CERTUM_OTP_URI: ${{ secrets.CERTUM_OTP_URI }}
+          CERTUM_USERNAME: ${{ secrets.CERTUM_USERNAME }}
+          CERTUM_CERTIFICATE_SHA1: ${{ secrets.CERTUM_CERTIFICATE_SHA1 }}
+          CERTUM_EXE_PATH: ${{ secrets.CERTUM_EXE_PATH }}
+        run: |
+          echo "=== CERTUM AUTHENTICATION ==="
+          echo "Authenticating with Certum cloud certificate using TOTP"
+
+          for attempt in 1 2 3; do
+            echo "Authentication attempt ${attempt}/3"
+            if powershell -ExecutionPolicy Bypass -File "./.github/scripts/connect-simplySign-enhanced.ps1"; then
+              echo "Authentication completed"
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              echo "Authentication attempt failed, retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+
+          echo "ERROR: Certum authentication failed after 3 attempts"
+          exit 1
+
+      - name: Verify Certificate and Sign Windows Binaries
+        shell: bash
+        env:
+          CERTUM_CERTIFICATE_SHA1: ${{ secrets.CERTUM_CERTIFICATE_SHA1 }}
+        run: |
+          echo "=== CERTIFICATE VERIFICATION AND WINDOWS BINARY SIGNING ==="
+          echo "Allowing connection to stabilize..."
+          sleep 10
+
+          echo "Comprehensive certificate availability check..."
+          echo ""
+
+          echo "Skipping certificate store dump to avoid exposing certificate metadata in logs"
+
+          echo ""
+          echo "=== PKCS#11 Library Check ==="
+          if [ -f "/c/Windows/System32/SimplySignPKCS.dll" ]; then
+            echo "PKCS#11 library present: /c/Windows/System32/SimplySignPKCS.dll"
+            ls -la "/c/Windows/System32/SimplySignPKCS.dll"
+          else
+            echo "PKCS#11 library not found"
+          fi
+
+          echo ""
+          echo "=== SimplySign Desktop Status ==="
+          powershell -Command "
+            Write-Host 'SimplySign Desktop process status:'
+            Get-Process -Name '*SimplySign*' -ErrorAction SilentlyContinue |
+              Select-Object Name, Id, MainWindowTitle, Responding |
+              Format-Table -AutoSize
+          "
+
+          echo ""
+          echo "Certificate debugging completed - proceeding to signing..."
+          echo ""
+
+          powershell -ExecutionPolicy Bypass -File "./.github/scripts/sign-windows.ps1" -TargetDirectory "sign_binaries/windows"
+
+          echo "Windows binary signing completed"
+
+      # - name: Sign Android APK (jarsigner + PKCS#11)
+      #   shell: pwsh
+      #   run: |
+      #     Write-Host "=== SIGNING ANDROID APK WITH CERTUM CLOUD CERTIFICATE (PKCS#11) ==="
+      #
+      #     # Create PKCS#11 config file for Certum SimplySign
+      #     $pkcs11Config = @"
+      #     name = CertumSimplySign
+      #     library = C:\Program Files\Certum\SimplySign Desktop\cryptoCertum3PKCS.dll
+      #     slot = 0
+      #     "@
+      #     $pkcs11Config | Out-File -FilePath "pkcs11.cfg" -Encoding ASCII
+      #
+      #     Write-Host "PKCS#11 config created"
+      #
+      #     # Find APK files
+      #     $apkFiles = Get-ChildItem -Path "sign_binaries/android" -Recurse -Include *.apk
+      #
+      #     if ($apkFiles.Count -eq 0) {
+      #       Write-Host "No APK files found to sign"
+      #       exit 0
+      #     }
+      #
+      #     # Certum SimplySign default key alias is "1"
+      #     $keyAlias = "1"
+      #     Write-Host "Using key alias: $keyAlias"
+      #
+      #     foreach ($apk in $apkFiles) {
+      #       Write-Host "Signing APK: $($apk.FullName)"
+      #       try {
+      #         & jarsigner -verbose `
+      #           -keystore NONE `
+      #           -storetype PKCS11 `
+      #           -providerClass sun.security.pkcs11.SunPKCS11 `
+      #           -providerArg pkcs11.cfg `
+      #           -tsa http://time.certum.pl `
+      #           -signedjar "$($apk.DirectoryName)\signed-$($apk.Name)" `
+      #           "$($apk.FullName)" `
+      #           $keyAlias
+      #
+      #         # Replace original with signed version
+      #         Move-Item -Path "$($apk.DirectoryName)\signed-$($apk.Name)" -Destination $apk.FullName -Force
+      #         Write-Host "  OK: APK signed successfully"
+      #       } catch {
+      #         Write-Host "  WARNING: Failed to sign APK - $($_.Exception.Message)"
+      #       }
+      #     }
+      #
+      #     Write-Host "=== ANDROID APK SIGNING COMPLETE ==="
+      #   continue-on-error: true
+
+      - name: Verify Windows Signatures
+        shell: pwsh
+        run: |
+          $signedFiles = Get-ChildItem -Path "sign_binaries/windows" -Recurse -Include *.exe
+          foreach ($file in $signedFiles) {
+            $result = Get-AuthenticodeSignature -FilePath $file.FullName
+            $status = if ($result.Status -eq "Valid") { "VALID" } else { "INVALID/UNSIGNED ($($result.Status))" }
+            Write-Host "$($file.Name): $status"
+          }
+        continue-on-error: true
+
+      # - name: Verify APK Signature
+      #   shell: pwsh
+      #   run: |
+      #     $apkFiles = Get-ChildItem -Path "sign_binaries/android" -Recurse -Include *.apk
+      #     foreach ($apk in $apkFiles) {
+      #       Write-Host "Verifying: $($apk.Name)"
+      #       & jarsigner -verify -verbose -certs "$($apk.FullName)" 2>&1 | Select-Object -First 10
+      #     }
+      #   continue-on-error: true
+
+      - name: Upload signed Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-windows-artifacts
+          path: sign_binaries/windows
+          retention-days: 7
+
+      # - name: Upload signed Android APK
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: signed-android-apk
+      #     path: sign_binaries/android
+      #     retention-days: 7
+
+  release:
+    name: Create Release
+    needs: [build, sign]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Determine version
+        id: version
+        run: |
+          RELEASE_TYPE="${{ inputs.release_type }}"
+          if [ "$RELEASE_TYPE" = "stable" ]; then
+            VERSION="${{ inputs.version }}"
+            if [ -z "$VERSION" ]; then
+              echo "ERROR: stable release requires a version number"
+              exit 1
+            fi
+            IS_BETA="false"
+          else
+            VERSION="beta"
+            IS_BETA="true"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is_beta=$IS_BETA" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION, Is Beta: $IS_BETA, Release Type: $RELEASE_TYPE"
+
+      # Try to download signed Windows artifacts first, fall back to unsigned
+      - name: Download signed Windows artifacts
+        id: download-signed-win
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-windows-artifacts
+          path: release_binaries
+        continue-on-error: true
+
+      - name: Download unsigned Windows artifacts (fallback)
+        if: steps.download-signed-win.outcome != 'success'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openp2p-windows-*
+          path: release_binaries
+          merge-multiple: true
+
+      # Try to download signed Android APK first, fall back to unsigned
+      # - name: Download signed Android APK
+      #   id: download-signed-android
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: signed-android-apk
+      #     path: release_binaries
+      #   continue-on-error: true
+      #
+      # - name: Download unsigned Android APK (fallback)
+      #   if: steps.download-signed-android.outcome != 'success'
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: openp2p-android-apk
+      #     path: release_binaries
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openp2p-linux-*
+          path: release_binaries
+          merge-multiple: true
+
+      - name: Download Darwin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openp2p-darwin-*
+          path: release_binaries
+          merge-multiple: true
+
+      - name: Package release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p release_assets
+          cd release_binaries
+          chmod +x * 2>/dev/null || true
+          
+          for file in *; do
+            if [ -f "$file" ]; then
+              if [[ "$file" == *.exe ]]; then
+                zip "../release_assets/${file%.exe}-${VERSION}.zip" "$file"
+              elif [[ "$file" == *.apk ]]; then
+                # APK files: rename with version, no compression needed
+                cp "$file" "../release_assets/${file%.apk}-${VERSION}.apk"
+              else
+                tar czf "../release_assets/${file}-${VERSION}.tar.gz" "$file"
+              fi
+            fi
+          done
+          
+          cd ../release_assets
+          echo "=== Release Assets ==="
+          ls -la
+
+      - name: Generate release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IS_BETA: ${{ steps.version.outputs.is_beta }}
+        run: |
+          if [ "$IS_BETA" = "true" ]; then
+            cat > release_notes.md << EOF
+          ## OpenP2P Beta Release (latest unstable)
+
+          Built from commit \`${{ github.sha }}\` on $(date -u +"%Y-%m-%d %H:%M UTC").
+
+          ### Supported Platforms
+          | OS | Architectures |
+          |---|---|
+          | Windows | amd64, arm64, i386 |
+          | Linux | amd64, arm64, i386, mips, mips64 |
+          | Darwin (macOS) | amd64, arm64 |
+          | Android | amd64, arm64 |
+
+          > **Note**: This is a pre-release build and may be unstable. This release is automatically updated on every push to master.
+          EOF
+          else
+            cat > release_notes.md << EOF
+          ## OpenP2P $VERSION
+
+          ### Supported Platforms
+          | OS | Architectures |
+          |---|---|
+          | Windows | amd64, arm64, i386 |
+          | Linux | amd64, arm64, i386, mips, mips64 |
+          | Darwin (macOS) | amd64, arm64 |
+          | Android | amd64, arm64 |
+          EOF
+          fi
+
+      - name: Delete existing Beta Release
+        if: steps.version.outputs.is_beta == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing beta release if it exists
+          gh release delete beta --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Create Beta Release
+        if: steps.version.outputs.is_beta == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Beta (latest unstable)"
+          tag_name: beta
+          body_path: release_notes.md
+          prerelease: true
+          files: release_assets/*
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Stable Release
+        if: steps.version.outputs.is_beta == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          prerelease: false
+          make_latest: true
+          files: release_assets/*
+          token: ${{ secrets.GITHUB_TOKEN }}

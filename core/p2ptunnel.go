@@ -293,7 +293,7 @@ func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
 			gLog.d("UDP4 connection ok")
 		} else {
 			if t.config.UnderlayProtocol == "kcp" {
-				ul, err = listenKCP(t.localHoleAddr.String(), TunnelIdleTimeout)
+				// ul, err = listenKCP(t.localHoleAddr.String(), TunnelIdleTimeout)
 			} else {
 				ul, err = listenQuic(t.localHoleAddr.String(), TunnelIdleTimeout)
 			}
@@ -337,7 +337,7 @@ func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
 	GNetwork.read(t.config.PeerNode, MsgPush, MsgPushUnderlayConnect, ReadMsgTimeout)
 	gLog.d("%s dial to %s", underlayProtocol, t.remoteHoleAddr.String())
 	if t.config.UnderlayProtocol == "kcp" {
-		ul, errL = dialKCP(conn, t.remoteHoleAddr, UnderlayConnectTimeout)
+		// ul, errL = dialKCP(conn, t.remoteHoleAddr, UnderlayConnectTimeout)
 	} else {
 		ul, errL = dialQuic(conn, t.remoteHoleAddr, UnderlayConnectTimeout)
 	}
@@ -602,7 +602,7 @@ func (t *P2PTunnel) readLoop() {
 		head, body, err := t.conn.ReadBuffer()
 		if err != nil || head == nil {
 			if t.isRuning() {
-				gLog.w("%d tunnel read error:%s", t.id, err)
+				gLog.d("%d tunnel read error:%s", t.id, err)
 			}
 			break
 		}
@@ -630,7 +630,12 @@ func (t *P2PTunnel) readLoop() {
 				existApp, appok := GNetwork.apps.Load(memAppPeerID)
 				if appok {
 					app := existApp.(*p2pApp)
-					app.rtt[0].Store(int32(time.Since(t.whbTime) / time.Millisecond))
+					for i := 0; i < app.relayIdxStart; i++ {
+						if app.Tunnel(i) == t {
+							app.rtt[i].Store(int32(time.Since(t.whbTime) / time.Millisecond))
+							break
+						}
+					}
 				}
 			}
 
@@ -806,7 +811,7 @@ func (t *P2PTunnel) writeLoop() {
 		t.whbTime = time.Now()
 		err := t.conn.WriteBytes(MsgP2P, MsgTunnelHeartbeat, nil)
 		if err != nil {
-			gLog.w("%d write tunnel heartbeat error %s", t.id, err)
+			gLog.d("%d write tunnel heartbeat error %s", t.id, err)
 			t.close()
 			return
 		}

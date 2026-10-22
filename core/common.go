@@ -138,13 +138,13 @@ func netInfo() *NetInfo {
 		defer r.Body.Close()
 		buf := make([]byte, 1024*64)
 		n, err := r.Body.Read(buf)
-		if err != nil {
-			gLog.d("netInfo error:%s", err)
+		if err != nil && err != io.EOF {
+			gLog.d("error reading response body: %s", err)
 			continue
 		}
 		rsp := NetInfo{}
 		if err = json.Unmarshal(buf[:n], &rsp); err != nil {
-			gLog.e("wrong NetInfo:%s", err)
+			gLog.d("wrong NetInfo:%s", err)
 			continue
 		}
 		return &rsp
@@ -390,4 +390,16 @@ func lookupWithCustomDNS(ctx context.Context, domain string) ([]string, error) {
 	}
 
 	return resolver.LookupHost(ctx, domain)
+}
+
+func writeFull(w io.Writer, data []byte) error {
+	totalWritten := 0
+	for totalWritten < len(data) {
+		n, err := w.Write(data[totalWritten:])
+		if err != nil {
+			return fmt.Errorf("write failed after %d bytes: %w", totalWritten, err)
+		}
+		totalWritten += n
+	}
+	return nil
 }

@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
-	"strings"
 
 	"github.com/openp2p-cn/wireguard-go/tun"
 	"github.com/vishvananda/netlink"
@@ -116,26 +114,24 @@ func delRoute(dst, gw string) error {
 }
 
 func delRoutesByGateway(gateway string) error {
-	cmd := exec.Command("route", "-n")
-	output, err := cmd.Output()
-	if err != nil {
-		return err
+	ipGW := net.ParseIP(gateway)
+	if ipGW == nil {
+		return fmt.Errorf("invalid gateway IP: %s", gateway)
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if !strings.Contains(line, gateway) {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) >= 8 && fields[1] == "0.0.0.0" && fields[7] == gateway {
-			delCmd := exec.Command("route", "del", "-net", fields[0], "gw", gateway)
-			err := delCmd.Run()
+	routes, err := netlink.RouteList(nil, netlink.FAMILY_V4)
+	if err != nil {
+		return fmt.Errorf("failed to list routes: %v", err)
+	}
+
+	for _, route := range routes {
+		if route.Gw != nil && route.Gw.Equal(ipGW) || (route.Dst != nil && route.Dst.IP.Equal(ipGW)) {
+			err := netlink.RouteDel(&route)
 			if err != nil {
-				gLog.e("Delete route %s error:%s", fields[0], err)
+				gLog.e("Failed to delete route: %v, error: %v", route, err)
 				continue
 			}
-			gLog.i("Delete route ok: %s %s %s\n", fields[0], fields[1], gateway)
+			gLog.i("Deleted route: %v", route)
 		}
 	}
 	return nil

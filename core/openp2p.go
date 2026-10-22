@@ -135,6 +135,14 @@ func GetToken(baseDir string) string {
 	return fmt.Sprintf("%d", gConf.Network.Token)
 }
 
+func SetToken(token string) {
+	n, err := strconv.ParseUint(token, 10, 64)
+	if err == nil && n > 0 {
+		gConf.setToken(n)
+		gConf.save()
+	}
+}
+
 func Stop() {
 	os.Exit(0)
 }

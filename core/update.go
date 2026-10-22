@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -49,7 +48,7 @@ func update(host string, port int) error {
 		gLog.e("get update info error:%s", rsp.Status)
 		return err
 	}
-	rspBuf, err := ioutil.ReadAll(rsp.Body)
+	rspBuf, err := io.ReadAll(rsp.Body)
 	if err != nil {
 		gLog.e("update:read update list failed:%s", err)
 		return err
@@ -94,7 +93,8 @@ func downloadFile(url string, checksum string, dstFile string) error {
 			RootCAs:            caCertPool,
 			InsecureSkipVerify: gConf.TLSInsecureSkipVerify},
 	}
-	client := &http.Client{Transport: tr}
+	client := &http.Client{Transport: tr,
+		Timeout: 60 * time.Second}
 	response, err := client.Get(url)
 	if err != nil {
 		gLog.e("download url %s error:%s", url, err)

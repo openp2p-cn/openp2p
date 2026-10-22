@@ -25,3 +25,4 @@ openp2p
 lib/openp2p.dll
 cmd/config.json0
 test/docker/Dockerfile
+test/docker/get-client.sh

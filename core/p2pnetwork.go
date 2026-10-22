@@ -126,6 +126,7 @@ func P2PNetworkInstance() {
 							HasUPNPorNATPMP: gConf.Network.hasUPNPorNATPMP,
 							Version:         OpenP2PVersion,
 							IPv6:            newIPv6,
+							PublicIPPort:    gConf.Network.PublicIPPort,
 						}
 						GNetwork.write(MsgReport, MsgReportBasic, &req)
 					}
@@ -142,19 +143,9 @@ func P2PNetworkInstance() {
 
 func (pn *P2PNetwork) keepAlive() {
 	gLog.i("P2PNetwork keepAlive start")
-	// !hbTime && !initTime = hang, exit worker
-	var lastCheckTime time.Time
-
 	for {
 		time.Sleep(time.Second * 10)
-		// Skip check if we're waking from sleep/hibernation
-		now := time.Now()
-		if !lastCheckTime.IsZero() && now.Sub(lastCheckTime) > NetworkHeartbeatTime*3 {
-			gLog.i("Detected possible sleep/wake cycle, skipping this check")
-			lastCheckTime = now
-			continue
-		}
-		lastCheckTime = now
+
 		if pn.hbTime.Before(time.Now().Add(-NetworkHeartbeatTime * 3)) {
 			if pn.initTime.After(time.Now().Add(-NetworkHeartbeatTime * 3)) {
 				gLog.d("Init less than 3 mins, skipping this check")
@@ -162,7 +153,9 @@ func (pn *P2PNetwork) keepAlive() {
 			}
 			gLog.e("P2PNetwork keepAlive error, exit worker")
 			dumpStack()
-			os.Exit(9)
+			if !isAndroid() {
+				os.Exit(9)
+			}
 		}
 	}
 }
@@ -285,8 +278,8 @@ func (pn *P2PNetwork) autorunApp() {
 }
 
 func (pn *P2PNetwork) addRelayTunnel(config AppConfig, excludeNodes string) (*P2PTunnel, uint64, string, error) {
-	gLog.i("addRelayTunnel to %s start", config.LogPeerNode())
-	defer gLog.i("addRelayTunnel to %s end", config.LogPeerNode())
+	gLog.d("addRelayTunnel to %s start", config.LogPeerNode())
+	defer gLog.d("addRelayTunnel to %s end", config.LogPeerNode())
 	var relayTunnel *P2PTunnel
 	relayConfig := AppConfig{
 		peerToken:        config.peerToken,
@@ -342,7 +335,7 @@ func (pn *P2PNetwork) addRelayTunnel(config AppConfig, excludeNodes string) (*P2
 	///
 	if relayTunnel == nil {
 		var err error
-		relayTunnel, err = pn.addDirectTunnel(relayConfig, 0)
+		relayTunnel, err = pn.addDirectTunnel(relayConfig, 0, nil)
 		if err != nil || relayTunnel == nil {
 			gLog.w("direct connect error:%s", err)
 			if err != nil && config.RelayNode != "" {
@@ -392,8 +385,15 @@ func (pn *P2PNetwork) AddApp(config AppConfig) error {
 		pn.msgMap.Store(NodeNameToID(config.PeerNode), make(chan msgCtx, MsgQueueSize))
 	}
 	// check if app already exist?
-	if pn.findApp(&config) != nil {
-		return errors.New("P2PApp already exist")
+	existApp := pn.findApp(&config)
+	if existApp != nil {
+		if existApp.tunnelNum == int(gConf.sdwan.TunnelNum) {
+			return errors.New("P2PApp already exist")
+		} else {
+			gLog.d("app %s exist but tunnelNum changed from %d to %d, delete it and recreate", existApp.config.AppName, existApp.tunnelNum, gConf.sdwan.TunnelNum)
+			pn.DeleteApp(config)
+		}
+
 	}
 
 	app := p2pApp{
@@ -459,13 +459,13 @@ func (pn *P2PNetwork) DeleteApp(config AppConfig) {
 
 }
 
-func (pn *P2PNetwork) findTunnel(peerNode string) (t *P2PTunnel) {
+func (pn *P2PNetwork) findTunnel(peerNode string, ignoredTunnel *P2PTunnel) (t *P2PTunnel) {
 	t = nil
 	// find existing tunnel to peer
 	pn.allTunnels.Range(func(id, i interface{}) bool {
 		tmpt := i.(*P2PTunnel)
-		if tmpt.config.PeerNode == peerNode {
-			gLog.i("tunnel already exist %s", tmpt.config.LogPeerNode())
+		if tmpt.config.PeerNode == peerNode && tmpt != ignoredTunnel {
+			gLog.d("tunnel already exist %s", tmpt.config.LogPeerNode())
 			isActive := tmpt.checkActive()
 			// inactive, close it
 			if !isActive {
@@ -481,7 +481,7 @@ func (pn *P2PNetwork) findTunnel(peerNode string) (t *P2PTunnel) {
 	return t
 }
 
-func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunnel, err error) {
+func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64, ignoredTunnel *P2PTunnel) (t *P2PTunnel, err error) {
 	gLog.d("addDirectTunnel %s%d to %s:%s:%d tid:%d start", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
 	defer gLog.d("addDirectTunnel %s%d to %s:%s:%d tid:%d end", config.Protocol, config.SrcPort, config.LogPeerNode(), config.DstHost, config.DstPort, tid)
 
@@ -502,14 +502,14 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 	}
 
 	if isClient { // only client side find existing tunnel, server side should force build tunnel
-		if existTunnel := pn.findTunnel(config.PeerNode); existTunnel != nil {
+		if existTunnel := pn.findTunnel(config.PeerNode, ignoredTunnel); existTunnel != nil {
 			return existTunnel, nil
 		}
 	}
 
 	// server side
 	if !isClient {
-		t, err = pn.newTunnel(config, tid, isClient)
+		t, err = pn.newTunnel(config, tid, isClient, ignoredTunnel)
 		return t, err // always return
 	}
 
@@ -521,15 +521,15 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		return nil, initErr
 	}
 
-	gLog.d("config.peerNode=%s,config.peerVersion=%s,config.peerIP=%s,config.peerLanIP=%s,gConf.Network.publicIP=%s,config.peerIPv6=%s,config.hasIPv4=%d,config.hasUPNPorNATPMP=%d,gConf.Network.hasIPv4=%d,gConf.Network.hasUPNPorNATPMP=%d,config.peerNatType=%d,gConf.Network.natType=%d,",
-		config.LogPeerNode(), config.peerVersion, config.peerIP, config.peerLanIP, gConf.Network.publicIP, config.peerIPv6, config.hasIPv4, config.hasUPNPorNATPMP, gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, config.peerNatType, gConf.Network.natType)
+	gLog.d("config.peerNode=%s,config.peerVersion=%s,config.peerIP=%s,config.peerLanIP=%s,gConf.Network.publicIP=%s,config.peerIPv6=%s,config.hasIPv4=%d,config.hasUPNPorNATPMP=%d,gConf.Network.hasIPv4=%d,gConf.Network.hasUPNPorNATPMP=%d,config.peerNatType=%d,gConf.Network.natType=%d,config.PunchPriority=%d,IPv6=%s",
+		config.LogPeerNode(), config.peerVersion, config.peerIP, config.peerLanIP, gConf.Network.publicIP, config.peerIPv6, config.hasIPv4, config.hasUPNPorNATPMP, gConf.Network.hasIPv4, gConf.Network.hasUPNPorNATPMP, config.peerNatType, gConf.Network.natType, config.PunchPriority, gConf.IPv6())
 
 	// try Intranet
 	if config.peerIP == gConf.Network.publicIP && compareVersion(config.peerVersion, SupportIntranetVersion) >= 0 { // old version client has no peerLanIP
 		gLog.i("try Intranet")
 		config.linkMode = LinkModeIntranet
 		config.isUnderlayServer = 0
-		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+		if t, err = pn.newTunnel(config, tid, isClient, ignoredTunnel); err == nil {
 			return t, nil
 		}
 	}
@@ -542,7 +542,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		if gConf.Forcev6 {
 			thisTunnelForcev6 = true
 		}
-		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+		if t, err = pn.newTunnel(config, tid, isClient, ignoredTunnel); err == nil {
 			return t, nil
 		}
 	}
@@ -564,7 +564,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 		} else {
 			config.isUnderlayServer = 0
 		}
-		if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+		if t, err = pn.newTunnel(config, tid, isClient, ignoredTunnel); err == nil {
 			return t, nil
 		}
 	}
@@ -581,7 +581,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 				gLog.i("try UDP4 Punch")
 				config.linkMode = LinkModeUDPPunch
 				config.isUnderlayServer = 0
-				if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+				if t, err = pn.newTunnel(config, tid, isClient, ignoredTunnel); err == nil {
 					return t, nil
 				}
 			}
@@ -601,7 +601,7 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 				gLog.i("try TCP4 Punch")
 				config.linkMode = LinkModeTCPPunch
 				config.isUnderlayServer = 0
-				if t, err = pn.newTunnel(config, tid, isClient); err == nil {
+				if t, err = pn.newTunnel(config, tid, isClient, ignoredTunnel); err == nil {
 					gLog.i("TCP4 Punch ok")
 					return t, nil
 				}
@@ -627,9 +627,9 @@ func (pn *P2PNetwork) addDirectTunnel(config AppConfig, tid uint64) (t *P2PTunne
 	return nil, err
 }
 
-func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool) (t *P2PTunnel, err error) {
+func (pn *P2PNetwork) newTunnel(config AppConfig, tid uint64, isClient bool, ignoredTunnel *P2PTunnel) (t *P2PTunnel, err error) {
 	if isClient { // only client side find existing tunnel, server side should force build tunnel
-		if existTunnel := pn.findTunnel(config.PeerNode); existTunnel != nil {
+		if existTunnel := pn.findTunnel(config.PeerNode, ignoredTunnel); existTunnel != nil {
 			return existTunnel, nil
 		}
 	}
@@ -665,8 +665,9 @@ func (pn *P2PNetwork) init() error {
 	pn.wgReconnect.Add(1)
 	defer pn.wgReconnect.Done()
 	var err error
+	initOK := false
 	defer func() {
-		if err != nil {
+		if !initOK {
 			// init failed, retry
 			pn.close(true)
 			gLog.e("P2PNetwork init error:%s", err)
@@ -760,6 +761,14 @@ func (pn *P2PNetwork) init() error {
 		ws, _, err := d.Dial(u.String(), nil)
 		if err != nil {
 			gLog.e("Dial error:%s", err)
+			switch gConf.Network.ServerPort {
+			case WsPort:
+				gConf.Network.ServerPort = WsPort2
+				gLog.i("try alternative port %d", WsPort2)
+			case WsPort2:
+				gConf.Network.ServerPort = WsPort
+				gLog.i("try alternative port %d", WsPort)
+			}
 			break
 		}
 		pn.running = true
@@ -769,7 +778,7 @@ func (pn *P2PNetwork) init() error {
 		if len(localAddr) == 2 {
 			gConf.Network.localIP = localAddr[0]
 		} else {
-			err = errors.New("get local ip failed")
+			gLog.e("get local ip failed:%s", ws.LocalAddr().String())
 			break
 		}
 		go pn.readLoop()
@@ -781,6 +790,7 @@ func (pn *P2PNetwork) init() error {
 				LanIP:           gConf.Network.localIP,
 				OS:              gConf.Network.os,
 				HasIPv4:         gConf.Network.hasIPv4,
+				PublicIPPort:    gConf.Network.PublicIPPort,
 				HasUPNPorNATPMP: gConf.Network.hasUPNPorNATPMP,
 				Version:         OpenP2PVersion,
 			}
@@ -795,10 +805,24 @@ func (pn *P2PNetwork) init() error {
 				pn.refreshIPv6()
 			}
 			req.IPv6 = gConf.IPv6()
-			pn.write(MsgReport, MsgReportBasic, &req)
+			pn.write(MsgReport, MsgReportBasic, &req) // TODO: if report failed, many logic problems, loss lanip os version...
+			head, _ := pn.read("", MsgReport, MsgReportBasicRsp, ClientAPITimeout)
+			if head == nil {
+				gLog.e("read MsgReportBasic rsp error, retry")
+				pn.write(MsgReport, MsgReportBasic, &req) // TODO: if report failed, many logic problems, loss lanip os version...
+				head, _ := pn.read("", MsgReport, MsgReportBasicRsp, ClientAPITimeout)
+				if head == nil {
+					gLog.e("read MsgReportBasic rsp error again, exit")
+					if !isAndroid() {
+						os.Exit(9)
+					}
+				}
+				return
+			}
 		}()
 		go pn.autorunApp()
 		pn.write(MsgSDWAN, MsgSDWANInfoReq, nil)
+		initOK = true
 		gLog.d("P2PNetwork init ok")
 		break
 	}
@@ -828,6 +852,10 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 		} else {
 			gConf.setToken(rsp.Token)
 			gConf.setUser(rsp.User)
+			gConf.setForcev6(rsp.Forcev6 != 0)
+			if rsp.PublicIPPort != 0 {
+				gConf.Network.PublicIPPort = rsp.PublicIPPort
+			}
 			if len(rsp.Node) >= MinNodeNameLen {
 				gConf.setNode(rsp.Node)
 			}
@@ -1039,7 +1067,7 @@ func (pn *P2PNetwork) read(node string, mainType uint16, subType uint16, timeout
 			if head.MainType != mainType || head.SubType != subType {
 				// gLog.d("read msg error type %d:%d expect %d:%d, requeue it", head.MainType, head.SubType, mainType, subType)
 				ch <- msg
-				time.Sleep(time.Second)
+				time.Sleep(time.Millisecond * 50)
 				continue
 			}
 			if mainType == MsgPush {
@@ -1069,9 +1097,14 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64, rtid uint64, updateRelayT
 
 // ipv6 will expired need to refresh.
 func (pn *P2PNetwork) refreshIPv6() {
+
 	for i := 0; i < 2; i++ {
+		url := "http://ipv6.ddnspod.com/"
+		if i == 1 {
+			url = "ipv6.icanhazip.com"
+		}
 		client := &http.Client{Timeout: time.Second * 10}
-		r, err := client.Get("http://ipv6.ddnspod.com/")
+		r, err := client.Get(url)
 		if err != nil {
 			gLog.d("refreshIPv6 error:%s", err)
 			continue
@@ -1221,4 +1254,3 @@ func (pn *P2PNetwork) ReadNode(tm time.Duration) []byte {
 	}
 	return nil
 }
-

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	upnp "openp2p/pkg/upnp"
+
 	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
@@ -190,23 +192,23 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 }
 
 func setUPNP(echoPort int) {
-	nat, err := Discover()
-	if err != nil || nat == nil {
-		gLog.d("could not perform UPNP discover:%s", err)
+	nat := upnp.Any() // Initialize the NAT interface
+	if nat == nil {
+		gLog.d("NAT interface is not available")
 		return
 	}
-	ext, err := nat.GetExternalAddress()
+	ext, err := nat.ExternalIP()
 	if err != nil {
 		gLog.d("could not perform UPNP external address:%s", err)
 		return
 	}
 	gLog.i("PublicIP:%v", ext)
 
-	externalPort, err := nat.AddPortMapping("udp", echoPort, echoPort, "openp2p", 604800)
+	externalPort, err := nat.AddMapping("udp", echoPort, echoPort, "openp2p", 604800)
 	if err != nil {
 		gLog.d("could not add udp UPNP port mapping %d", externalPort)
 		return
 	} else {
-		nat.AddPortMapping("tcp", echoPort, echoPort, "openp2p", 604800)
+		nat.AddMapping("tcp", echoPort, echoPort, "openp2p", 604800)
 	}
 }

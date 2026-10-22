@@ -141,7 +141,8 @@ func (oConn *overlayConn) Write(buff []byte) (n int, err error) {
 		return
 	}
 	if oConn.connTCP != nil {
-		n, err = oConn.connTCP.Write(buff)
+		err = writeFull(oConn.connTCP, buff)
+		n = len(buff)
 	}
 
 	if err != nil {

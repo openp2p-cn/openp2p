@@ -42,6 +42,7 @@ type p2pApp struct {
 	msgChan       chan appMsgCtx
 	once          sync.Once
 	tunnelNum     int
+	relayIdxStart int
 	allTunnels    []*P2PTunnel
 	retryNum      []int
 	retryTime     []time.Time
@@ -106,7 +107,7 @@ func (app *p2pApp) RetryTime() time.Time {
 	if app.allTunnels[0] != nil {
 		return app.config.retryTime
 	}
-	return app.retryTime[1]
+	return app.retryTime[app.relayIdxStart]
 }
 
 func (app *p2pApp) Init(tunnelNum int) {
@@ -133,6 +134,10 @@ func (app *p2pApp) Init(tunnelNum int) {
 	for i := 0; i < tunnelNum; i++ {
 		app.hbTime[i] = time.Now()
 	}
+	app.relayIdxStart = app.tunnelNum - 2
+	if app.relayIdxStart == 0 {
+		app.relayIdxStart = 1 // at least one direct tunnel
+	}
 	// app.unAckSeqStart.Store(0)
 	// app.mergeAckTs.Store(0)
 	// for i := 0; i < relayNum; i++ {
@@ -152,64 +157,72 @@ func (app *p2pApp) Start(isClient bool) {
 
 func (app *p2pApp) daemonP2PTunnel() error {
 	for app.running {
-		app.daemonDirectTunnel()
-		if app.config.peerIP == gConf.Network.publicIP {
-			time.Sleep(time.Second * 10) // if peerIP is local IP, delay relay tunnel
-		}
-		for i := 1; i < app.tunnelNum; i++ {
-			app.daemonRelayTunnel(i)
-		}
 
+		for i := 0; i < app.relayIdxStart; i++ {
+			app.daemonDirectTunnel(i)
+			time.Sleep(time.Second)
+		}
+		for i := app.relayIdxStart; i < app.tunnelNum; i++ {
+			if i > app.relayIdxStart {
+				app.nextRetryTime[i] = time.Now().Add(time.Second * 180) // the second relay tunnel wait 3 mins
+			}
+			app.daemonRelayTunnel(i)
+			time.Sleep(time.Second)
+		}
 		time.Sleep(time.Second * 3)
 	}
 	return nil
 }
 
-func (app *p2pApp) daemonDirectTunnel() error {
+func (app *p2pApp) daemonDirectTunnel(idx int) error {
 	if !GNetwork.online {
 		return nil
 	}
 	if app.config.ForceRelay == 1 && app.config.RelayNode != app.config.PeerNode {
 		return nil
 	}
-	if app.Tunnel(0) != nil && app.Tunnel(0).isActive() {
+	// TODO: multi direct tunnel support symmetric NAT traversal later
+	if idx > 0 && gConf.Network.hasIPv4 == 0 && gConf.Network.hasUPNPorNATPMP == 0 && app.config.hasIPv4 == 0 && app.config.hasUPNPorNATPMP == 0 && (gConf.Network.natType == NATSymmetric || app.config.peerNatType == NATSymmetric) {
+		return nil
+	}
+	if app.Tunnel(idx) != nil && app.Tunnel(idx).isActive() {
 		return nil
 	}
 	if app.config.nextRetryTime.After(time.Now()) || app.config.Enabled == 0 {
 		return nil
 	}
 	if time.Now().Add(-time.Minute * 15).After(app.config.retryTime) { // run normally 15min, reset retrynum
-		app.config.retryNum = 1
+		app.retryNum[idx] = 1
 	}
-	if app.config.retryNum > 0 { // first time not show reconnect log
-		gLog.i("appid:%d checkDirectTunnel detect peer %s disconnect, reconnecting the %d times...", app.id, app.config.LogPeerNode(), app.config.retryNum)
+	if app.retryNum[idx] > 0 { // first time not show reconnect log
+		gLog.i("appid:%d checkDirectTunnel detect peer %s disconnect, reconnecting the %d times...", app.id, app.config.LogPeerNode(), app.retryNum[idx])
 	}
-	app.config.retryNum++
+	app.retryNum[idx]++
 	app.config.retryTime = time.Now()
 
 	app.config.connectTime = time.Now()
-	err := app.buildDirectTunnel()
+	err := app.buildDirectTunnel(idx)
 	if err != nil {
 		app.config.errMsg = err.Error()
-		if err == ErrPeerOffline && app.config.retryNum > 2 { // stop retry, waiting for online
-			app.config.retryNum = retryLimit
+		if err == ErrPeerOffline && app.retryNum[idx] > 2 { // stop retry, waiting for online
+			app.retryNum[idx] = retryLimit
 			gLog.i("appid:%d checkDirectTunnel %s offline, it will auto reconnect when peer node online", app.id, app.config.LogPeerNode())
 		}
 		if err == ErrBuildTunnelBusy {
-			app.config.retryNum--
+			app.retryNum[idx]--
 		}
 	}
-	interval := calcRetryTimeRelay(float64(app.config.retryNum))
+	interval := calcRetryTimeRelay(float64(app.retryNum[idx]))
 	if app.preDirectSuccessIP == app.config.peerIP {
 		interval = math.Min(interval, 1800) // if peerIP has been direct link succeed, retry 30min max
 	}
 	app.config.nextRetryTime = time.Now().Add(time.Duration(interval) * time.Second)
-	if app.Tunnel(0) != nil {
+	if app.Tunnel(idx) != nil {
 		app.preDirectSuccessIP = app.config.peerIP
 		app.once.Do(func() {
 			go app.listen()
 			// memapp also need
-			for i := 1; i < app.tunnelNum; i++ {
+			for i := app.relayIdxStart; i < app.tunnelNum; i++ {
 				go app.relayHeartbeatLoop(i)
 			}
 
@@ -217,7 +230,7 @@ func (app *p2pApp) daemonDirectTunnel() error {
 	}
 	return nil
 }
-func (app *p2pApp) buildDirectTunnel() error {
+func (app *p2pApp) buildDirectTunnel(idx int) error {
 	relayNode := ""
 	peerNatType := NATUnknown
 	peerIP := ""
@@ -225,12 +238,13 @@ func (app *p2pApp) buildDirectTunnel() error {
 	var t *P2PTunnel
 	var err error
 	pn := GNetwork
+	// TODO: optimize requestPeerInfo call frequency
 	initErr := pn.requestPeerInfo(&app.config)
 	if initErr != nil {
 		gLog.w("appid:%d buildDirectTunnel %s requestPeerInfo error:%s", app.id, app.config.LogPeerNode(), initErr)
 		return initErr
 	}
-	t, err = pn.addDirectTunnel(app.config, 0)
+	t, err = pn.addDirectTunnel(app.config, 0, app.Tunnel(idx^1))
 	if t != nil {
 		peerNatType = t.config.peerNatType
 		peerIP = t.config.peerIP
@@ -267,11 +281,11 @@ func (app *p2pApp) buildDirectTunnel() error {
 	}
 	gLog.d("appid:%d buildDirectTunnel sync appkey to %s", app.id, app.config.LogPeerNode())
 	pn.push(app.config.PeerNode, MsgPushAPPKey, &syncKeyReq)
-	app.SetTunnel(t, 0)
+	app.SetTunnel(t, idx)
 
 	// if memapp notify peer addmemapp
 	// if app.config.SrcPort == 0 {
-	req2 := ServerSideSaveMemApp{From: gConf.Network.Node, Node: gConf.Network.Node, TunnelID: t.id, RelayTunnelID: 0, TunnelNum: uint32(app.tunnelNum), AppID: app.id, AppKey: app.key, SrcPort: uint32(app.config.SrcPort)}
+	req2 := ServerSideSaveMemApp{From: gConf.Network.Node, Node: gConf.Network.Node, TunnelID: t.id, RelayTunnelID: 0, RelayIndex: uint32(idx), TunnelNum: uint32(app.tunnelNum), AppID: app.id, AppKey: app.key, SrcPort: uint32(app.config.SrcPort)}
 	pn.push(app.config.PeerNode, MsgPushServerSideSaveMemApp, &req2)
 	gLog.d("appid:%d buildDirectTunnel push %s ServerSideSaveMemApp: %s", app.id, app.config.LogPeerNode(), prettyJson(req2))
 
@@ -284,14 +298,15 @@ func (app *p2pApp) daemonRelayTunnel(idx int) error {
 	if !GNetwork.online {
 		return nil
 	}
-	if app.Tunnel(0) != nil && app.Tunnel(0).linkModeWeb == LinkModeIntranet { //  in the same Lan, no relay
+
+	if app.Tunnel(0) != nil && app.relayIdxStart >= 2 { // multi direct tunnel no relay
 		return nil
 	}
 	// if app.config.ForceRelay == 1 && (gConf.sdwan.CentralNode == app.config.PeerNode && compareVersion(app.config.peerVersion, SupportDualTunnelVersion) < 0) {
 	if app.config.SrcPort == 0 && (gConf.sdwan.CentralNode == app.config.PeerNode || gConf.sdwan.CentralNode == gConf.Network.Node) { // memapp central node not build relay tunnel
 		return nil
 	}
-	if gConf.sdwan.CentralNode != "" && idx > 1 { // if central node exist only need one relayTunnel
+	if gConf.sdwan.CentralNode != "" && idx != app.relayIdxStart { // if central node exist only need one relayTunnel
 		return nil
 	}
 	app.hbMtx.Lock()
@@ -352,9 +367,12 @@ func (app *p2pApp) buildRelayTunnel(idx int) error {
 		return initErr
 	}
 	ExcludeNodes := ""
-	kk := 1 + ((idx - 1) ^ 1)
-	if app.tunnelNum > 2 && app.allTunnels[kk] != nil {
-		ExcludeNodes = app.allTunnels[1+((idx-1)^1)].config.PeerNode
+	theOtherTunnelIdx := app.relayIdxStart
+	if idx == app.relayIdxStart {
+		theOtherTunnelIdx = app.relayIdxStart + 1
+	}
+	if app.tunnelNum > 2 && app.allTunnels[theOtherTunnelIdx] != nil {
+		ExcludeNodes = app.allTunnels[theOtherTunnelIdx].config.PeerNode
 	}
 	t, rtid, relayMode, err = pn.addRelayTunnel(config, ExcludeNodes)
 	if t != nil {
@@ -364,24 +382,27 @@ func (app *p2pApp) buildRelayTunnel(idx int) error {
 	if err != nil {
 		errMsg = err.Error()
 	}
-	req := ReportConnect{
-		Error:          errMsg,
-		Protocol:       config.Protocol,
-		SrcPort:        config.SrcPort,
-		NatType:        gConf.Network.natType,
-		PeerNode:       config.PeerNode,
-		DstPort:        config.DstPort,
-		DstHost:        config.DstHost,
-		PeerNatType:    peerNatType,
-		PeerIP:         peerIP,
-		ShareBandwidth: gConf.Network.ShareBandwidth,
-		RelayNode:      relayNode,
-		Version:        OpenP2PVersion,
+	if app.Tunnel(0) == nil {
+		req := ReportConnect{
+			Error:          errMsg,
+			Protocol:       config.Protocol,
+			SrcPort:        config.SrcPort,
+			NatType:        gConf.Network.natType,
+			PeerNode:       config.PeerNode,
+			DstPort:        config.DstPort,
+			DstHost:        config.DstHost,
+			PeerNatType:    peerNatType,
+			PeerIP:         peerIP,
+			ShareBandwidth: gConf.Network.ShareBandwidth,
+			RelayNode:      relayNode,
+			Version:        OpenP2PVersion,
+		}
+		pn.write(MsgReport, MsgReportConnect, &req)
 	}
-	pn.write(MsgReport, MsgReportConnect, &req)
-	if err != nil {
+	if err != nil || t == nil {
 		return err
 	}
+
 	// if rtid != 0 || t.conn.Protocol() == "tcp" {
 	// sync appkey
 	syncKeyReq := APPKeySync{
@@ -446,31 +467,40 @@ func (app *p2pApp) IsActive() bool {
 	return res
 }
 
+// only for relay tunnel heartbeat update
 func (app *p2pApp) UpdateHeartbeat(rtid uint64) {
 	app.hbMtx.Lock()
 	defer app.hbMtx.Unlock()
-	tidx := 1
-	if app.tunnelNum > 2 && rtid == app.rtid[2] || (app.Tunnel(2) != nil && app.Tunnel(2).id == rtid) { // ack return rtid!=
-		tidx = 2
+	for i := app.relayIdxStart; i < app.tunnelNum; i++ {
+		if rtid == app.rtid[i] || (app.Tunnel(i) != nil && app.Tunnel(i).id == rtid) {
+			app.hbTime[i] = time.Now()
+			rtt := int32(time.Since(app.whbTime[i]) / time.Millisecond)
+			preRtt := app.rtt[i].Load()
+			if preRtt != DefaultRtt {
+				rtt = int32(float64(preRtt)*(1-ma20) + float64(rtt)*ma20)
+			}
+			app.rtt[i].Store(rtt)
+			gLog.dev("appid:%d relay heartbeat %d store rtt %d", app.id, i, rtt)
+			return
+		}
 	}
-	app.hbTime[tidx] = time.Now()
-	rtt := int32(time.Since(app.whbTime[tidx]) / time.Millisecond)
-	preRtt := app.rtt[tidx].Load()
-	if preRtt != DefaultRtt {
-		rtt = int32(float64(preRtt)*(1-ma20) + float64(rtt)*ma20)
-	}
-	app.rtt[tidx].Store(rtt)
-	gLog.dev("appid:%d relay heartbeat %d store rtt %d", app.id, tidx, rtt)
+
 }
 
 func (app *p2pApp) UpdateRelayHeartbeatTs(rtid uint64) {
 	app.hbMtx.Lock()
 	defer app.hbMtx.Unlock()
-	relayIdx := 1
-	if app.tunnelNum > 2 && rtid == app.rtid[2] || (app.Tunnel(2) != nil && app.Tunnel(2).id == rtid) { // ack return rtid!=
-		relayIdx = 2
+	for i := app.relayIdxStart; i < app.tunnelNum; i++ {
+		if rtid == app.rtid[i] || (app.Tunnel(i) != nil && app.Tunnel(i).id == rtid) {
+			app.whbTime[i] = time.Now()
+			return
+		}
 	}
-	app.whbTime[relayIdx] = time.Now() // one side did not write relay hb, so write whbtime in this.
+	// relayIdx := 1
+	// if app.tunnelNum > 2 && rtid == app.rtid[2] || (app.Tunnel(2) != nil && app.Tunnel(2).id == rtid) { // ack return rtid!=
+	// 	relayIdx = 2
+	// }
+	// app.whbTime[relayIdx] = time.Now() // one side did not write relay hb, so write whbtime in this.
 }
 
 func (app *p2pApp) listenTCP() error {
@@ -714,7 +744,7 @@ func (app *p2pApp) WriteBytes(data []byte) error {
 	if t == nil {
 		return ErrAppWithoutTunnel
 	}
-	if tidx == 0 {
+	if tidx < app.relayIdxStart { // direct mode
 		return t.conn.WriteBytes(MsgP2P, MsgOverlayData, data)
 	}
 	all := append(app.relayHead[tidx].Bytes(), encodeHeader(MsgP2P, MsgOverlayData, uint32(len(data)))...)
@@ -745,7 +775,7 @@ func (app *p2pApp) WriteNodeDataMP(IPPacket []byte) (err error) {
 	dataWithSeq.Write(IPPacket)
 	// gLog.d("DEBUG writeTs=%d, unAckSeqStart=%d", wu.writeTs.UnixMilli(), app.unAckSeqStart[tidx].Load())
 
-	if tidx == 0 {
+	if tidx < app.relayIdxStart { // direct mode
 		t.asyncWriteNodeData(gConf.nodeID(), app.seqW, IPPacket, nil)
 		gLog.dev("appid:%d asyncWriteDirect IPPacket len=%d", app.id, len(IPPacket))
 	} else {
@@ -782,12 +812,13 @@ func (app *p2pApp) fastestTunnel() (t *P2PTunnel, idx int) {
 			return app.Tunnel(gConf.Network.specTunnel), gConf.Network.specTunnel
 		}
 	}
-	t = app.Tunnel(0)
-	idx = 0
 
-	if app.Tunnel(1) != nil {
-		t = app.Tunnel(1)
-		idx = 1
+	for i := 0; i < app.tunnelNum; i++ {
+		if app.Tunnel(i) != nil {
+			t = app.Tunnel(i)
+			idx = i
+			break
+		}
 	}
 	return
 }
@@ -812,7 +843,7 @@ func (app *p2pApp) Retry(all bool) {
 			app.hbMtx.Lock()
 			app.hbTime[i] = time.Now().Add(-TunnelHeartbeatTime * 3)
 			app.hbMtx.Unlock()
-			app.config.retryNum = 0
+			// app.config.retryNum = 0
 			app.config.nextRetryTime = time.Now()
 			app.ResetWindow()
 		}

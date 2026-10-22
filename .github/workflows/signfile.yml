@@ -1,0 +1,171 @@
+name: Sign External Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      url_x86:
+        description: 'X86 (i386) 二进制文件下载地址'
+        type: string
+        required: false
+        default: 'https://console.openpxp.com/download/v1/latest/openp2p386-latest.exe'
+      url_x64:
+        description: 'X64 (amd64) 二进制文件下载地址'
+        type: string
+        required: false
+        default: 'https://console.openpxp.com/download/v1/latest/openp2p64-latest.exe'
+      url_arm:
+        description: 'ARM (arm64) 二进制文件下载地址'
+        type: string
+        required: false
+        default: 'https://console.openpxp.com/download/v1/latest/openp2parm64-latest.exe'
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    name: Sign Binaries (Certum SimplySign)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate inputs
+        shell: bash
+        run: |
+          if [ -z "${{ inputs.url_x86 }}" ] && [ -z "${{ inputs.url_x64 }}" ] && [ -z "${{ inputs.url_arm }}" ]; then
+            echo "ERROR: 至少需要提供一个二进制文件下载地址"
+            exit 1
+          fi
+          echo "=== 输入的下载地址 ==="
+          [ -n "${{ inputs.url_x86 }}" ] && echo "X86: ${{ inputs.url_x86 }}"
+          [ -n "${{ inputs.url_x64 }}" ] && echo "X64: ${{ inputs.url_x64 }}"
+          [ -n "${{ inputs.url_arm }}" ] && echo "ARM: ${{ inputs.url_arm }}"
+
+      - name: Download binaries
+        shell: bash
+        run: |
+          mkdir -p sign_binaries
+
+          download_file() {
+            local url="$1"
+            local label="$2"
+            if [ -z "$url" ]; then
+              echo "跳过 ${label}: 未提供下载地址"
+              return
+            fi
+            echo "正在下载 ${label}: ${url}"
+            # 从 URL 中提取文件名
+            local filename=$(basename "$url" | sed 's/[?#].*//')
+            # 如果文件名为空或不合理，使用 label 作为文件名
+            if [ -z "$filename" ] || [ "$filename" = "/" ]; then
+              filename="${label}-binary.exe"
+            fi
+            curl -fSL --retry 3 --retry-delay 5 -o "sign_binaries/${filename}" "$url"
+            if [ $? -eq 0 ]; then
+              echo "下载成功: ${filename}"
+            else
+              echo "ERROR: 下载失败 ${label}: ${url}"
+              exit 1
+            fi
+          }
+
+          download_file "${{ inputs.url_x86 }}" "x86"
+          download_file "${{ inputs.url_x64 }}" "x64"
+          download_file "${{ inputs.url_arm }}" "arm"
+
+          echo ""
+          echo "=== 已下载的文件 ==="
+          ls -la sign_binaries/
+
+      - name: Setup Certum Code Signing (Windows)
+        shell: bash
+        run: |
+          echo "=== SETTING UP CERTUM CODE SIGNING FOR WINDOWS ==="
+          echo "Installing SimplySign Desktop and configuring for automatic authentication"
+
+          chmod +x ./.github/scripts/install-simplysign.sh
+          ./.github/scripts/install-simplysign.sh
+
+          echo "Configuring registry for automatic login dialog..."
+          powershell -ExecutionPolicy Bypass -File "./.github/scripts/configure-simplysign-registry.ps1"
+
+          echo "Certum signing environment ready"
+
+      - name: Authenticate Certum (Windows)
+        shell: bash
+        env:
+          CERTUM_OTP_URI: ${{ secrets.CERTUM_OTP_URI }}
+          CERTUM_USERNAME: ${{ secrets.CERTUM_USERNAME }}
+          CERTUM_CERTIFICATE_SHA1: ${{ secrets.CERTUM_CERTIFICATE_SHA1 }}
+          CERTUM_EXE_PATH: ${{ secrets.CERTUM_EXE_PATH }}
+        run: |
+          echo "=== CERTUM AUTHENTICATION ==="
+          echo "Authenticating with Certum cloud certificate using TOTP"
+
+          for attempt in 1 2 3; do
+            echo "Authentication attempt ${attempt}/3"
+            if powershell -ExecutionPolicy Bypass -File "./.github/scripts/connect-simplySign-enhanced.ps1"; then
+              echo "Authentication completed"
+              exit 0
+            fi
+
+            if [ "$attempt" -lt 3 ]; then
+              echo "Authentication attempt failed, retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
+
+          echo "ERROR: Certum authentication failed after 3 attempts"
+          exit 1
+
+      - name: Sign Binaries
+        shell: bash
+        env:
+          CERTUM_CERTIFICATE_SHA1: ${{ secrets.CERTUM_CERTIFICATE_SHA1 }}
+        run: |
+          echo "=== SIGNING BINARIES ==="
+          echo "Allowing connection to stabilize..."
+          sleep 10
+
+          echo "=== PKCS#11 Library Check ==="
+          if [ -f "/c/Windows/System32/SimplySignPKCS.dll" ]; then
+            echo "PKCS#11 library present: /c/Windows/System32/SimplySignPKCS.dll"
+          else
+            echo "PKCS#11 library not found"
+          fi
+
+          echo ""
+          echo "=== SimplySign Desktop Status ==="
+          powershell -Command "
+            Write-Host 'SimplySign Desktop process status:'
+            Get-Process -Name '*SimplySign*' -ErrorAction SilentlyContinue |
+              Select-Object Name, Id, MainWindowTitle, Responding |
+              Format-Table -AutoSize
+          "
+
+          echo ""
+          echo "Proceeding to signing..."
+          echo ""
+
+          powershell -ExecutionPolicy Bypass -File "./.github/scripts/sign-windows.ps1" -TargetDirectory "sign_binaries"
+
+          echo "Binary signing completed"
+
+      - name: Verify Signatures
+        shell: pwsh
+        run: |
+          $signedFiles = Get-ChildItem -Path "sign_binaries" -Recurse -File
+          foreach ($file in $signedFiles) {
+            $result = Get-AuthenticodeSignature -FilePath $file.FullName
+            $status = if ($result.Status -eq "Valid") { "VALID" } else { "INVALID/UNSIGNED ($($result.Status))" }
+            Write-Host "$($file.Name): $status"
+          }
+        continue-on-error: true
+
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-binaries
+          path: sign_binaries/
+          retention-days: 30

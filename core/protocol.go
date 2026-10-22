@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const OpenP2PVersion = "3.24.33"
+const OpenP2PVersion = "3.25.11"
 const ProductName string = "openp2p"
 const LeastSupportVersion = "3.0.0"
 const SyncServerTimeVersion = "3.9.0"
@@ -20,10 +20,12 @@ const SupportIntranetVersion = "3.14.5"
 const SupportDualTunnelVersion = "3.15.5"
 const IPv6PunchVersion = "3.24.9"
 const SupportUDP4DirectVersion = "3.24.16"
+const SupportMultiDirectVersion = "3.25.1"
 const (
 	NATDetectPort1 = 27180
 	NATDetectPort2 = 27181
 	WsPort         = 27183
+	WsPort2        = 465
 	UDPPort1       = 27182
 	UDPPort2       = 27183
 )
@@ -124,41 +126,42 @@ const (
 
 // MsgP2P sub type message
 const (
-	MsgPunchHandshake = iota
-	MsgPunchHandshakeAck
-	MsgTunnelHandshake
-	MsgTunnelHandshakeAck
-	MsgTunnelHeartbeat
-	MsgTunnelHeartbeatAck
-	MsgOverlayConnectReq
-	MsgOverlayConnectRsp
-	MsgOverlayDisconnectReq
-	MsgOverlayData
-	MsgRelayData
-	MsgRelayHeartbeat
-	MsgRelayHeartbeatAck
-	MsgNodeData
-	MsgRelayNodeData
-	MsgNodeDataMP
-	MsgNodeDataMPAck
-	MsgRelayHeartbeatAck2
+	MsgPunchHandshake       = 0
+	MsgPunchHandshakeAck    = 1
+	MsgTunnelHandshake      = 2
+	MsgTunnelHandshakeAck   = 3
+	MsgTunnelHeartbeat      = 4
+	MsgTunnelHeartbeatAck   = 5
+	MsgOverlayConnectReq    = 6
+	MsgOverlayConnectRsp    = 7
+	MsgOverlayDisconnectReq = 8
+	MsgOverlayData          = 9
+	MsgRelayData            = 10
+	MsgRelayHeartbeat       = 11
+	MsgRelayHeartbeatAck    = 12
+	MsgNodeData             = 13
+	MsgRelayNodeData        = 14
+	MsgNodeDataMP           = 15
+	MsgNodeDataMPAck        = 16
+	MsgRelayHeartbeatAck2   = 17
 )
 
 // MsgRelay sub type message
 const (
-	MsgRelayNodeReq = iota
-	MsgRelayNodeRsp
+	MsgRelayNodeReq = 0
+	MsgRelayNodeRsp = 1
 )
 
 // MsgReport sub type message
 const (
-	MsgReportBasic = iota
-	MsgReportQuery
-	MsgReportConnect
-	MsgReportApps
-	MsgReportLog
-	MsgReportMemApps
-	MsgReportResponse
+	MsgReportBasic    = 0
+	MsgReportQuery    = 1
+	MsgReportConnect  = 2
+	MsgReportApps     = 3
+	MsgReportLog      = 4
+	MsgReportMemApps  = 5
+	MsgReportResponse = 6
+	MsgReportBasicRsp = 7
 )
 
 const (
@@ -218,19 +221,19 @@ const (
 )
 
 const (
-	MsgQueryPeerInfoReq = iota
-	MsgQueryPeerInfoRsp
+	MsgQueryPeerInfoReq = 0
+	MsgQueryPeerInfoRsp = 1
 )
 
 const (
-	MsgSDWANInfoReq = iota
-	MsgSDWANInfoRsp
+	MsgSDWANInfoReq = 0
+	MsgSDWANInfoRsp = 1
 )
 
 // MsgNATDetect
 const (
-	MsgNAT = iota
-	MsgPublicIP
+	MsgNAT      = 0
+	MsgPublicIP = 1
 )
 
 func newMessage(mainType uint16, subType uint16, packet interface{}) ([]byte, error) {
@@ -320,6 +323,8 @@ type LoginRsp struct {
 	Token         uint64 `json:"token,omitempty"`
 	Ts            int64  `json:"ts,omitempty"`
 	LoginMaxDelay int    `json:"loginMaxDelay,omitempty"` // seconds
+	Forcev6       int    `json:"forcev6,omitempty"`
+	PublicIPPort  int    `json:"publicIPPort,omitempty"`
 }
 
 type NatDetectReq struct {
@@ -394,6 +399,7 @@ type ReportBasic struct {
 	LanIP           string  `json:"lanIP,omitempty"`
 	HasIPv4         int     `json:"hasIPv4,omitempty"`
 	IPv6            string  `json:"IPv6,omitempty"`
+	PublicIPPort    int     `json:"publicIPPort,omitempty"`
 	HasUPNPorNATPMP int     `json:"hasUPNPorNATPMP,omitempty"`
 	Version         string  `json:"version,omitempty"`
 	NetInfo         NetInfo `json:"netInfo,omitempty"`
@@ -498,9 +504,10 @@ type ProfileInfo struct {
 }
 
 type EditNode struct {
-	NewName   string `json:"newName,omitempty"`
-	Bandwidth int    `json:"bandwidth,omitempty"`
-	Forcev6   int    `json:"forcev6,omitempty"`
+	NewName      string `json:"newName,omitempty"`
+	Bandwidth    int    `json:"bandwidth,omitempty"`
+	Forcev6      int    `json:"forcev6,omitempty"`
+	PublicIPPort int    `json:"publicIPPort,omitempty"`
 }
 
 type QueryPeerInfoReq struct {
@@ -538,6 +545,15 @@ type SDWANInfo struct {
 	TunnelNum     int32  `json:"tunnelNum,omitempty"`
 	Mtu           int32  `json:"mtu,omitempty"`
 	Nodes         []*SDWANNode
+}
+
+func (s *SDWANInfo) GetResourceByNodeName(nodeName string) string {
+	for _, node := range s.Nodes {
+		if node.Name == nodeName {
+			return node.Resource
+		}
+	}
+	return ""
 }
 
 const (

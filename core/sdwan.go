@@ -57,6 +57,10 @@ func (s *p2pSDWAN) reset() {
 	gLog.i("reset sdwan when network disconnected")
 	// clear sysroute
 	delRoutesByGateway(s.gateway.String())
+	s.sysRoute.Range(func(key, value interface{}) bool {
+		s.sysRoute.Delete(key)
+		return true
+	})
 	// clear internel route
 	s.internalRoute = NewIPTree("")
 	// clear p2papp
@@ -67,6 +71,7 @@ func (s *p2pSDWAN) reset() {
 
 	gConf.resetSDWAN()
 }
+
 func (s *p2pSDWAN) init() error {
 	gConf.Network.previousIP = gConf.Network.publicIP
 	if gConf.getSDWAN().Gateway == "" {
@@ -88,6 +93,15 @@ func (s *p2pSDWAN) init() error {
 		s.internalRoute.Del(node.IP, node.IP)
 		ipNum, _ := inetAtoN(node.IP)
 		s.sysRoute.Delete(ipNum)
+		// if node.Name == gConf.Network.Node {
+		// 	// this is local node, need rm all client-side apps
+		// 	GNetwork.apps.Range(func(id, i interface{}) bool {
+		// 		app := i.(*p2pApp)
+		// 		if app.config.is
+		// 		return true
+		// 	})
+		// 	continue
+		// }
 		gConf.delete(AppConfig{SrcPort: 0, PeerNode: node.Name})
 		GNetwork.DeleteApp(AppConfig{SrcPort: 0, PeerNode: node.Name})
 		arr := strings.Split(node.Resource, ",")
@@ -309,7 +323,7 @@ func handleSDWAN(subType uint16, msg []byte) error {
 		}
 		gLog.i("sdwan init:%s", prettyJson(rsp))
 		// GNetwork.sdwan.detail = &rsp
-		if gConf.Network.previousIP != gConf.Network.publicIP || gConf.getSDWAN().CentralNode != rsp.CentralNode {
+		if gConf.Network.previousIP != gConf.Network.publicIP || gConf.getSDWAN().CentralNode != rsp.CentralNode || gConf.getSDWAN().Gateway != rsp.Gateway {
 			GNetwork.sdwan.reset()
 			preAndroidSDWANConfig = "" // let androind app reset vpnservice
 		}

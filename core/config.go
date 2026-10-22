@@ -119,6 +119,10 @@ func (c *Config) resetSDWAN() {
 func (c *Config) setSDWAN(s SDWANInfo) {
 	c.sdwanMtx.Lock()
 	defer c.sdwanMtx.Unlock()
+	allNew := false
+	if c.sdwan.GetResourceByNodeName(c.Network.Node) != s.GetResourceByNodeName(c.Network.Node) {
+		allNew = true
+	}
 	// get old-new
 	c.delNodes = []*SDWANNode{}
 	for _, oldNode := range c.sdwan.Nodes {
@@ -129,7 +133,7 @@ func (c *Config) setSDWAN(s SDWANInfo) {
 				break
 			}
 		}
-		if isDeleted {
+		if isDeleted || allNew {
 			c.delNodes = append(c.delNodes, oldNode)
 		}
 	}
@@ -143,7 +147,7 @@ func (c *Config) setSDWAN(s SDWANInfo) {
 				break
 			}
 		}
-		if isNew {
+		if isNew || allNew {
 			c.addNodes = append(c.addNodes, newNode)
 		}
 	}
@@ -151,9 +155,9 @@ func (c *Config) setSDWAN(s SDWANInfo) {
 	if c.sdwan.TunnelNum < 2 {
 		c.sdwan.TunnelNum = 2 // DEBUG
 	}
-	if c.sdwan.TunnelNum > 3 {
-		c.sdwan.TunnelNum = 3
-	}
+	// if c.sdwan.TunnelNum > 3 {
+	// 	c.sdwan.TunnelNum = 3
+	// }
 }
 
 func (c *Config) switchApp(app AppConfig, enabled int) {
@@ -197,6 +201,11 @@ func (c *Config) retryAllMemApp() {
 	GNetwork.apps.Range(func(id, i interface{}) bool {
 		app := i.(*p2pApp)
 		if app.config.SrcPort != 0 {
+			return true
+		}
+		if app.tunnelNum != int(gConf.sdwan.TunnelNum) {
+			gLog.d("memapp %s tunnelNum changed from %d to %d, delete it and not retry", app.config.LogPeerNode(), app.tunnelNum, gConf.sdwan.TunnelNum)
+			GNetwork.DeleteApp(app.config)
 			return true
 		}
 		app.Retry(true)
@@ -332,6 +341,11 @@ func (c *Config) setNode(node string) {
 	defer c.mtx.Unlock()
 	c.Network.Node = node
 	c.Network.nodeID = NodeNameToID(c.Network.Node)
+}
+func (c *Config) setForcev6(force bool) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.Forcev6 = force
 }
 func (c *Config) nodeID() uint64 {
 	c.mtx.Lock()

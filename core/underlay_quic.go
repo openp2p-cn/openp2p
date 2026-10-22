@@ -16,14 +16,14 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
-// quic.Dial do not support version 44, disable it
-var quicVersion []quic.Version
+// quic.DialContext do not support version 44,disable it
+var quicVersion []quic.VersionNumber
 
 type underlayQUIC struct {
-	listener *quic.Listener
+	listener quic.Listener
 	writeMtx *sync.Mutex
-	*quic.Stream
-	*quic.Conn
+	quic.Stream
+	quic.Connection
 }
 
 func (conn *underlayQUIC) Protocol() string {
@@ -47,17 +47,8 @@ func (conn *underlayQUIC) WriteMessage(mainType uint16, subType uint16, packet i
 }
 
 func (conn *underlayQUIC) Close() error {
-	// CancelRead expects a StreamErrorCode; using 1 as before (application-defined)
-	if conn.Stream != nil {
-		conn.Stream.CancelRead(1)
-		// close send-side of stream
-		_ = conn.Stream.Close()
-	}
-	if conn.Conn != nil {
-		// CloseWithError expects an ApplicationErrorCode and a description.
-		// 0 is zero-value; keep behavior similar to old CloseWithError(0,"")
-		_ = conn.Conn.CloseWithError(0, "")
-	}
+	conn.Stream.CancelRead(1)
+	conn.Connection.CloseWithError(0, "")
 	conn.CloseListener()
 	return nil
 }
@@ -69,7 +60,7 @@ func (conn *underlayQUIC) WUnlock() {
 }
 func (conn *underlayQUIC) CloseListener() {
 	if conn.listener != nil {
-		_ = conn.listener.Close()
+		conn.listener.Close()
 	}
 }
 
@@ -85,7 +76,7 @@ func (conn *underlayQUIC) Accept() error {
 		return err
 	}
 	conn.Stream = stream
-	conn.Conn = sess
+	conn.Connection = sess
 	return nil
 }
 
@@ -105,25 +96,23 @@ func listenQuic(addr string, idleTimeout time.Duration) (*underlayQUIC, error) {
 	return ul, nil
 }
 
-func dialQuic(pconn *net.UDPConn, remoteAddr *net.UDPAddr, timeout time.Duration) (*underlayQUIC, error) {
+func dialQuic(conn *net.UDPConn, remoteAddr *net.UDPAddr, timeout time.Duration) (*underlayQUIC, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"openp2pv1"},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-
-	// New API: quic.Dial(ctx, packetConn, remoteAddr, tlsConf, quicConfig)
-	connection, err := quic.Dial(ctx, pconn, remoteAddr, tlsConf,
+	Connection, err := quic.DialContext(ctx, conn, remoteAddr, conn.LocalAddr().String(), tlsConf,
 		&quic.Config{Versions: quicVersion, MaxIdleTimeout: TunnelIdleTimeout, DisablePathMTUDiscovery: true})
 	if err != nil {
-		return nil, fmt.Errorf("quic.Dial error:%s", err)
+		return nil, fmt.Errorf("quic.DialContext error:%s", err)
 	}
-	stream, err := connection.OpenStreamSync(context.Background())
+	stream, err := Connection.OpenStreamSync(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("OpenStreamSync error:%s", err)
 	}
-	qConn := &underlayQUIC{nil, &sync.Mutex{}, stream, connection}
+	qConn := &underlayQUIC{nil, &sync.Mutex{}, stream, Connection}
 	return qConn, nil
 }
 

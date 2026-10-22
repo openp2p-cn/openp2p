@@ -17,13 +17,13 @@ type v4Listener struct {
 	acceptCh    chan bool
 	running     bool
 	tcpListener *net.TCPListener
-	udpListener *quic.Listener
+	udpListener quic.Listener
 	wg          sync.WaitGroup
 }
 
 func (vl *v4Listener) start() {
 	vl.running = true
-	vl.acceptCh = make(chan bool, 500)
+	v4l.acceptCh = make(chan bool, 500)
 	vl.wg.Add(1)
 	go func() {
 		defer vl.wg.Done()
@@ -56,11 +56,11 @@ func (vl *v4Listener) stop() {
 func (vl *v4Listener) listenTCP() error {
 	gLog.d("v4Listener listenTCP %d start", vl.port)
 	defer gLog.d("v4Listener listenTCP %d end", vl.port)
-	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", vl.port))
+	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", vl.port)) // system will auto listen both v4 and v6
 	var err error
 	vl.tcpListener, err = net.ListenTCP("tcp", addr)
 	if err != nil {
-		gLog.e("v4Listener listen %d error:%s", vl.port, err)
+		gLog.e("v4Listener listen %d error:", vl.port, err)
 		return err
 	}
 	defer vl.tcpListener.Close()
@@ -69,11 +69,7 @@ func (vl *v4Listener) listenTCP() error {
 		if err != nil {
 			break
 		}
-		utcp := &underlayTCP{
-			writeMtx:    &sync.Mutex{},
-			Conn:        c,
-			connectTime: time.Now(),
-		}
+		utcp := &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c, connectTime: time.Now()}
 		go vl.handleConnection(utcp)
 	}
 	vl.tcpListener = nil
@@ -84,15 +80,8 @@ func (vl *v4Listener) listenUDP() error {
 	gLog.d("v4Listener listenUDP %d start", vl.port)
 	defer gLog.d("v4Listener listenUDP %d end", vl.port)
 	var err error
-	vl.udpListener, err = quic.ListenAddr(
-		fmt.Sprintf("0.0.0.0:%d", vl.port),
-		generateTLSConfig(),
-		&quic.Config{
-			Versions:                quicVersion,
-			MaxIdleTimeout:          TunnelIdleTimeout,
-			DisablePathMTUDiscovery: true,
-		},
-	)
+	vl.udpListener, err = quic.ListenAddr(fmt.Sprintf("0.0.0.0:%d", vl.port), generateTLSConfig(),
+		&quic.Config{Versions: quicVersion, MaxIdleTimeout: TunnelIdleTimeout, DisablePathMTUDiscovery: true})
 	if err != nil {
 		return err
 	}
@@ -108,14 +97,7 @@ func (vl *v4Listener) listenUDP() error {
 		if err != nil {
 			break
 		}
-
-		ul := &underlayQUIC{
-			listener: nil,
-			writeMtx: &sync.Mutex{},
-			Stream:   stream,
-			Conn:     sess,
-		}
-
+		ul := &underlayQUIC{writeMtx: &sync.Mutex{}, Stream: stream, Connection: sess}
 		go vl.handleConnection(ul)
 	}
 	vl.udpListener = nil
@@ -128,14 +110,14 @@ func (vl *v4Listener) handleConnection(ul underlay) {
 	_, buff, err := ul.ReadBuffer()
 	if err != nil || buff == nil {
 		gLog.e("v4Listener read MsgTunnelHandshake error:%s", err)
-		return
 	}
 	ul.WriteBytes(MsgP2P, MsgTunnelHandshakeAck, buff)
 	var tid uint64
 	if string(buff) == "OpenP2P,hello" { // old client
+		// save remoteIP as key
 		remoteAddr := ul.RemoteAddr().(*net.TCPAddr).IP
 		ipBytes := remoteAddr.To4()
-		tid = uint64(binary.BigEndian.Uint32(ipBytes))
+		tid = uint64(binary.BigEndian.Uint32(ipBytes)) // bytes not enough for uint64
 		gLog.d("hello %s", string(buff))
 	} else {
 		if len(buff) < 8 {
@@ -164,7 +146,7 @@ func (vl *v4Listener) handleConnection(ul underlay) {
 func (vl *v4Listener) getUnderlay(tid uint64) underlay {
 	for i := 0; i < 100; i++ {
 		select {
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(time.Millisecond * 50):
 		case <-vl.acceptCh:
 		}
 		if u, ok := vl.conns.LoadAndDelete(tid); ok {

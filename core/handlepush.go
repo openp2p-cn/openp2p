@@ -51,7 +51,7 @@ func handlePush(subType uint16, msg []byte) error {
 		config.PunchPriority = req.PunchPriority
 		config.UnderlayProtocol = req.UnderlayProtocol
 		go func(r AddRelayTunnelReq) {
-			t, errDt := GNetwork.addDirectTunnel(config, 0)
+			t, errDt := GNetwork.addDirectTunnel(config, 0, nil)
 			if errDt == nil && t != nil {
 				// notify peer relay ready
 				msg := TunnelMsg{ID: t.id}
@@ -90,18 +90,24 @@ func handlePush(subType uint16, msg []byte) error {
 			appIdx = req.AppID
 		}
 		existApp, appok := GNetwork.apps.Load(appIdx)
+		var app *p2pApp
 		if appok {
-			app := existApp.(*p2pApp)
+			app = existApp.(*p2pApp)
+			if app.tunnelNum != int(req.TunnelNum) {
+				gLog.d("memapp tunnelNum changed from %d to %d", app.tunnelNum, req.TunnelNum)
+				GNetwork.DeleteApp(app.config)
+				app = nil
+			}
+		}
+		if app != nil {
 			app.config.AppName = fmt.Sprintf("%d", peerID)
 			app.id = req.AppID
 			app.key = req.AppKey
 			app.PreCalcKeyBytes()
 			app.relayMode[req.RelayIndex] = req.RelayMode
 			app.hbTime[req.RelayIndex] = time.Now()
-			if req.RelayTunnelID == 0 {
-				app.SetTunnel(existTunnel, 0)
-			} else {
-				app.SetTunnel(existTunnel, int(req.RelayIndex))              // TODO: merge two func
+			app.SetTunnel(existTunnel, int(req.RelayIndex))
+			if req.RelayTunnelID != 0 {
 				app.SetRelayTunnelID(req.RelayTunnelID, int(req.RelayIndex)) // direct tunnel rtid=0, no need set rtid
 			}
 			gLog.d("found existing memapp, update it")
@@ -111,7 +117,7 @@ func handlePush(subType uint16, msg []byte) error {
 			appConfig.Protocol = ""
 			appConfig.AppName = fmt.Sprintf("%d", peerID)
 			appConfig.PeerNode = req.From
-			app := p2pApp{
+			app = &p2pApp{
 				id:      req.AppID,
 				config:  appConfig,
 				running: true,
@@ -126,17 +132,13 @@ func handlePush(subType uint16, msg []byte) error {
 			app.Init(tunnelNum)
 			app.relayMode[req.RelayIndex] = req.RelayMode
 			app.hbTime[req.RelayIndex] = time.Now()
-			if req.RelayTunnelID == 0 {
-				app.SetTunnel(existTunnel, 0)
-			} else {
-				app.SetTunnel(existTunnel, int(req.RelayIndex))
-				app.SetRelayTunnelID(req.RelayTunnelID, int(req.RelayIndex))
-			}
+			app.SetTunnel(existTunnel, int(req.RelayIndex))
 			if req.RelayTunnelID != 0 {
+				app.SetRelayTunnelID(req.RelayTunnelID, int(req.RelayIndex))
 				app.relayNode[req.RelayIndex] = req.Node
 			}
 			app.Start(false)
-			GNetwork.apps.Store(appIdx, &app)
+			GNetwork.apps.Store(appIdx, app)
 			gLog.d("store memapp %d %d", appIdx, req.SrcPort)
 		}
 
@@ -145,12 +147,17 @@ func handlePush(subType uint16, msg []byte) error {
 		gLog.i("MsgPushUpdate")
 		err := update(gConf.Network.ServerHost, gConf.Network.ServerPort)
 		if err == nil {
-			os.Exit(9) // 9 tell daemon this exit because of update
+			if !isAndroid() {
+				os.Exit(9) // 9 tell daemon this exit because of update
+			}
+
 		}
 		return err
 	case MsgPushRestart:
 		gLog.i("MsgPushRestart")
-		os.Exit(0)
+		if !isAndroid() {
+			os.Exit(0)
+		}
 		return err
 	case MsgPushReportApps:
 		err = handleReportApps()
@@ -175,6 +182,9 @@ func handlePush(subType uint16, msg []byte) error {
 		}
 		gConf.setNode(req.NewName)
 		gConf.setShareBandwidth(req.Bandwidth)
+		if req.PublicIPPort != 0 {
+			gConf.Network.PublicIPPort = req.PublicIPPort
+		}
 		gConf.Forcev6 = (req.Forcev6 != 0)
 		gLog.i("set forcev6 to %v", gConf.Forcev6)
 		gConf.save()
@@ -341,7 +351,7 @@ func handleConnectReq(msg []byte) (err error) {
 		}
 		// go GNetwork.AddTunnel(config, req.ID)
 		go func() {
-			GNetwork.addDirectTunnel(config, req.ID)
+			GNetwork.addDirectTunnel(config, req.ID, nil)
 		}()
 		return nil
 	}
