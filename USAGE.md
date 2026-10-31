@@ -61,7 +61,7 @@ Configuration example
       "SrcPort": 23389,
       "PeerNode": "OFFICEPC1",
       "DstPort": 3389,
-      "DstHost": "localhost",
+      "DstHost": "localhost"
     },
     {
       "AppName": "OfficeServerSSH",
@@ -69,7 +69,7 @@ Configuration example
       "SrcPort": 22,
       "PeerNode": "OFFICEPC1",
       "DstPort": 22,
-      "DstHost": "192.168.1.5",
+      "DstHost": "192.168.1.5"
     }
   ]
 }
