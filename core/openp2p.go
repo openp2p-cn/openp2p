@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,8 +15,11 @@ var GNetwork *P2PNetwork
 
 func Run() {
 	rand.Seed(time.Now().UnixNano())
-	baseDir := filepath.Dir(os.Args[0])
-	os.Chdir(baseDir) // for system service
+	baseDir := resolveWorkdir(filepath.Dir(os.Args[0]), os.Args[1:])
+	if err := prepareWorkdir(baseDir); err != nil {
+		fmt.Fprintf(os.Stderr, "openp2p: %v\n", err)
+		os.Exit(1)
+	}
 	gLog = NewLogger(baseDir, ProductName, LvDEBUG, 1024*1024, LogFile|LogConsole)
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -81,7 +85,11 @@ func Run() {
 
 func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork {
 	rand.Seed(time.Now().UnixNano())
-	os.Chdir(baseDir) // for system service
+	baseDir = resolveWorkdir(baseDir, os.Args[1:])
+	if err := prepareWorkdir(baseDir); err != nil {
+		fmt.Fprintf(os.Stderr, "openp2p: %v\n", err)
+		return nil
+	}
 	gLog = NewLogger(baseDir, ProductName, LvINFO, 1024*1024, LogFile|LogConsole)
 
 	parseParams("", "")
@@ -111,7 +119,13 @@ func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork
 func RunCmd(cmd string) {
 	rand.Seed(time.Now().UnixNano())
 	baseDir := filepath.Dir(os.Args[0])
-	os.Chdir(baseDir) // for system service
+	args := append([]string(nil), os.Args[1:]...)
+	args = append(args, strings.Split(cmd, " ")...)
+	baseDir = resolveWorkdir(baseDir, args)
+	if err := prepareWorkdir(baseDir); err != nil {
+		fmt.Fprintf(os.Stderr, "openp2p: %v\n", err)
+		return
+	}
 	gLog = NewLogger(baseDir, ProductName, LvINFO, 1024*1024, LogFile|LogConsole)
 
 	parseParams("", cmd)
