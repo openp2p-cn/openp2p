@@ -21,6 +21,7 @@ var quicVersion []quic.VersionNumber
 
 type underlayQUIC struct {
 	listener quic.Listener
+	pconn    net.PacketConn // created for listener, closed by CloseListener
 	writeMtx *sync.Mutex
 	quic.Stream
 	quic.Connection
@@ -62,6 +63,9 @@ func (conn *underlayQUIC) CloseListener() {
 	if conn.listener != nil {
 		conn.listener.Close()
 	}
+	if conn.pconn != nil {
+		conn.pconn.Close()
+	}
 }
 
 func (conn *underlayQUIC) Accept() error {
@@ -82,12 +86,17 @@ func (conn *underlayQUIC) Accept() error {
 
 func listenQuic(addr string, idleTimeout time.Duration) (*underlayQUIC, error) {
 	gLog.d("quic listen on %s", addr)
-	listener, err := quic.ListenAddr(addr, generateTLSConfig(),
+	conn, err := netxListenPacket(context.Background(), "udp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("quic listen %s error:%s", addr, err)
+	}
+	listener, err := quic.Listen(conn, generateTLSConfig(),
 		&quic.Config{Versions: quicVersion, MaxIdleTimeout: idleTimeout, DisablePathMTUDiscovery: true})
 	if err != nil {
-		return nil, fmt.Errorf("quic.ListenAddr error:%s", err)
+		conn.Close()
+		return nil, fmt.Errorf("quic.Listen error:%s", err)
 	}
-	ul := &underlayQUIC{listener: listener, writeMtx: &sync.Mutex{}}
+	ul := &underlayQUIC{listener: listener, pconn: conn, writeMtx: &sync.Mutex{}}
 	err = ul.Accept()
 	if err != nil {
 		ul.CloseListener()
@@ -112,7 +121,7 @@ func dialQuic(conn *net.UDPConn, remoteAddr *net.UDPAddr, timeout time.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("OpenStreamSync error:%s", err)
 	}
-	qConn := &underlayQUIC{nil, &sync.Mutex{}, stream, Connection}
+	qConn := &underlayQUIC{writeMtx: &sync.Mutex{}, Stream: stream, Connection: Connection}
 	return qConn, nil
 }
 

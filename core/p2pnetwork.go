@@ -28,7 +28,22 @@ import (
 var (
 	v4l            *v4Listener
 	onceP2PNetwork sync.Once
+	netxSDWANOnce  sync.Once
+	netxIPv6Once   sync.Once
 )
+
+// sdwanBlocked reports whether SDWAN must be skipped because underlay sockets
+// are bound to an interface. SDWAN starts its own TUN device, which conflicts
+// with system TUN setups such as mihomo.
+func sdwanBlocked() bool {
+	if !netxEnabled() {
+		return false
+	}
+	netxSDWANOnce.Do(func() {
+		gLog.i("skip SDWAN: underlay sockets are bound to interface %s", netxInterfaceName())
+	})
+	return true
+}
 
 const (
 	retryLimit                  = 20
@@ -749,7 +764,11 @@ func (pn *P2PNetwork) init() error {
 		q.Add("sharebandwidth", fmt.Sprintf("%d", gConf.Network.ShareBandwidth))
 		u.RawQuery = q.Encode()
 		d := websocket.Dialer{
-			NetDialContext: (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+			// Preserve the stock 10s TCP dial timeout; the websocket handshake
+			// timeout alone does not cover the underlying dial.
+			NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return netxDialer(10*time.Second).DialContext(ctx, network, address)
+			},
 			TLSClientConfig: &tls.Config{
 				RootCAs:            caCertPool,               // 你的根证书池
 				ServerName:         gConf.Network.ServerHost, // <--- 关键：把域名放到 ServerName
@@ -821,7 +840,9 @@ func (pn *P2PNetwork) init() error {
 			}
 		}()
 		go pn.autorunApp()
-		pn.write(MsgSDWAN, MsgSDWANInfoReq, nil)
+		if !sdwanBlocked() {
+			pn.write(MsgSDWAN, MsgSDWANInfoReq, nil)
+		}
 		initOK = true
 		gLog.d("P2PNetwork init ok")
 		break
@@ -892,6 +913,9 @@ func (pn *P2PNetwork) handleMessage(msg []byte) {
 	case MsgPush:
 		handlePush(head.SubType, msg)
 	case MsgSDWAN:
+		if sdwanBlocked() {
+			return
+		}
 		handleSDWAN(head.SubType, msg)
 	default:
 		i, ok := pn.msgMap.Load(uint64(0))
@@ -1097,6 +1121,12 @@ func (pn *P2PNetwork) updateAppHeartbeat(appID uint64, rtid uint64, updateRelayT
 
 // ipv6 will expired need to refresh.
 func (pn *P2PNetwork) refreshIPv6() {
+	if netxEnabled() {
+		netxIPv6Once.Do(func() {
+			gLog.i("skip IPv6 refresh: underlay sockets are bound to interface %s", netxInterfaceName())
+		})
+		return
+	}
 
 	for i := 0; i < 2; i++ {
 		url := "http://ipv6.ddnspod.com/"

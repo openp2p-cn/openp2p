@@ -388,6 +388,9 @@ type NetworkConfig struct {
 	publicIPv6      string // must lowwer-case not save json
 	hasUPNPorNATPMP int
 	ShareBandwidth  int
+	// outbound socket binding, see netx.go
+	Interface string   `json:",omitempty"`
+	DNS       []string `json:",omitempty"`
 	// server info
 	ServerHost     string
 	ServerIP       string
@@ -424,6 +427,8 @@ func parseParams(subCommand string, cmd string) {
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
 	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	maxLogSize := fset.Int("maxlogsize", 1024*1024, "default 1MB")
+	iface := fset.String("interface", "", "bind underlay sockets to this network interface, \"auto\" to auto-detect")
+	dns := fset.String("dns", "", "comma separated DNS servers used when an interface is bound")
 	if cmd == "" {
 		if subCommand == "" { // no subcommand
 			fset.Parse(os.Args[1:])
@@ -468,6 +473,16 @@ func parseParams(subCommand string, cmd string) {
 	// gConf.mtx.Lock() // when calling this func it's single-thread no lock
 	gConf.daemonMode = *daemonMode
 	// spec paramters in commandline will always be used
+	splitList := func(s string) []string {
+		var list []string
+		for _, item := range strings.Split(s, ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				list = append(list, item)
+			}
+		}
+		return list
+	}
+	ifaceSet, dnsSet := false, false
 	fset.Visit(func(f *flag.Flag) {
 		if f.Name == "sharebandwidth" {
 			gConf.Network.ShareBandwidth = *shareBandwidth
@@ -496,7 +511,26 @@ func parseParams(subCommand string, cmd string) {
 		if f.Name == "insecure" {
 			gConf.TLSInsecureSkipVerify = *insecure
 		}
+		if f.Name == "interface" {
+			gConf.Network.Interface = strings.TrimSpace(*iface)
+			ifaceSet = true
+		}
+		if f.Name == "dns" {
+			gConf.Network.DNS = splitList(*dns)
+			dnsSet = true
+		}
 	})
+	// -interface/-dns precedence: flag > environment > config.json
+	if !ifaceSet {
+		if envIface := os.Getenv("OPENP2P_IFACE"); envIface != "" {
+			gConf.Network.Interface = envIface
+		}
+	}
+	if !dnsSet {
+		if envDNS := os.Getenv("OPENP2P_DNS"); envDNS != "" {
+			gConf.Network.DNS = splitList(envDNS)
+		}
+	}
 	// set default value
 	if gConf.Network.ServerHost == "" {
 		gConf.Network.ServerHost = *serverHost

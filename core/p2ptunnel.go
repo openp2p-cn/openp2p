@@ -326,10 +326,10 @@ func (t *P2PTunnel) connectUnderlayUDP() (c underlay, err error) {
 			return nil, err
 		}
 	}
-	conn, errL := net.ListenUDP("udp", listenAddr)
+	conn, errL := netxListenUDP("udp", listenAddr)
 	if errL != nil {
 		time.Sleep(time.Millisecond * 10)
-		conn, errL = net.ListenUDP("udp", listenAddr)
+		conn, errL = netxListenUDP("udp", listenAddr)
 		if errL != nil {
 			return nil, fmt.Errorf("%s listen error:%s", underlayProtocol, errL)
 		}

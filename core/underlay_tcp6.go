@@ -43,7 +43,7 @@ func (conn *underlayTCP6) WUnlock() {
 }
 func listenTCP6(port int, timeout time.Duration) (*underlayTCP6, error) {
 	addr, _ := net.ResolveTCPAddr("tcp6", fmt.Sprintf("[::]:%d", port))
-	l, err := net.ListenTCP("tcp6", addr)
+	l, err := netxListenTCP("tcp6", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func listenTCP6(port int, timeout time.Duration) (*underlayTCP6, error) {
 }
 
 func dialTCP6(host string, port int) (*underlayTCP6, error) {
-	c, err := net.DialTimeout("tcp6", fmt.Sprintf("[%s]:%d", host, port), UnderlayConnectTimeout)
+	c, err := netxDialTCPString("tcp6", "", fmt.Sprintf("[%s]:%d", host, port), UnderlayConnectTimeout)
 	if err != nil {
 		gLog.Printf(LvERROR, "Dial %s:%d error:%s", host, port, err)
 		return nil, err

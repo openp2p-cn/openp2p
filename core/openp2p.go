@@ -12,6 +12,15 @@ import (
 
 var GNetwork *P2PNetwork
 
+// configureNetx applies the interface binding configuration. Call it after
+// parseParams so that flags, environment and config.json are merged.
+func configureNetx() error {
+	if err := netxConfigure(gConf.Network.Interface, gConf.Network.DNS); err != nil {
+		return fmt.Errorf("configure network interface binding %q: %w", gConf.Network.Interface, err)
+	}
+	return nil
+}
+
 func Run() {
 	rand.Seed(time.Now().UnixNano())
 	baseDir := filepath.Dir(os.Args[0])
@@ -51,6 +60,10 @@ func Run() {
 		installByFilename()
 	}
 	parseParams("", "")
+	if err := configureNetx(); err != nil {
+		gLog.e("%s", err)
+		os.Exit(1)
+	}
 	gLog.i("openp2p start. version: %s", OpenP2PVersion)
 	gLog.i("Contact: QQ group 16947733, Email openp2p.cn@gmail.com")
 
@@ -85,6 +98,10 @@ func RunAsModule(baseDir string, token string, bw int, logLevel int) *P2PNetwork
 	gLog = NewLogger(baseDir, ProductName, LvINFO, 1024*1024, LogFile|LogConsole)
 
 	parseParams("", "")
+	if err := configureNetx(); err != nil {
+		gLog.e("%s", err)
+		return nil
+	}
 
 	n, err := strconv.ParseUint(token, 10, 64)
 	if err == nil && n > 0 {
@@ -115,6 +132,10 @@ func RunCmd(cmd string) {
 	gLog = NewLogger(baseDir, ProductName, LvINFO, 1024*1024, LogFile|LogConsole)
 
 	parseParams("", cmd)
+	if err := configureNetx(); err != nil {
+		gLog.e("%s", err)
+		return
+	}
 	setFirewall()
 	err := setRLimit()
 	if err != nil {

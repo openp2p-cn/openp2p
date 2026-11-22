@@ -120,13 +120,8 @@ func decryptBytes(key []byte, out, in []byte, dataLen int) ([]byte, error) {
 
 // {240e:3b7:622:3440:59ad:7fa1:170c:ef7f 47924975352157270363627191692449083263 China CN 0xc0000965c8 Guangdong GD 0  Guangzhou 23.1167 113.25 Asia/Shanghai AS4134 Chinanet }
 func netInfo() *NetInfo {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		// DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-		// 	var d net.Dialer
-		// 	return d.DialContext(ctx, "tcp6", addr)
-		// },
-	}
+	tr := netxTransport()
+	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	// sometime will be failed, retry
 	for i := 0; i < 2; i++ {
 		client := &http.Client{Transport: tr, Timeout: time.Second * 10}
@@ -359,11 +354,25 @@ func resolveServerIP(host string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 先系统 DNS
-	ips, err := net.DefaultResolver.LookupHost(ctx, host)
+	// netxResolve falls back to the system resolver when no interface is bound.
+	ips, err := netxResolve(ctx, host)
 	if err == nil && len(ips) > 0 {
-		gLog.i("system dns resolved %s -> %v", host, ips)
+		if netxEnabled() {
+			// A fake-IP answer would point the underlay at the local TUN, so refuse it.
+			if err = netxRejectFakeIP(ips); err != nil {
+				gLog.e("reject false ip for %s: %v", host, err)
+				return nil, err
+			}
+		}
+		gLog.i("resolved %s -> %v", host, ips)
 		return ips, nil
+	}
+	if netxEnabled() {
+		// Never fall back to unbound DNS while an interface is bound.
+		if err == nil {
+			err = fmt.Errorf("no address returned")
+		}
+		return nil, fmt.Errorf("resolve %s with bound interface: %w", host, err)
 	}
 
 	gLog.e("system dns resolve failed for %s: %v", host, err)

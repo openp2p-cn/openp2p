@@ -1,6 +1,7 @@
 package openp2p
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -10,14 +11,12 @@ import (
 	"time"
 
 	upnp "openp2p/pkg/upnp"
-
-	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
 func natDetectTCP(serverHost string, serverPort int, lp int) (publicIP string, publicPort int, localPort int, err error) {
 	gLog.dev("natDetectTCP start")
 	defer gLog.dev("natDetectTCP end")
-	conn, err := reuse.DialTimeout("tcp4", fmt.Sprintf("0.0.0.0:%d", lp), fmt.Sprintf("%s:%d", serverHost, serverPort), NatDetectTimeout)
+	conn, err := netxDialTCPString("tcp4", fmt.Sprintf("0.0.0.0:%d", lp), fmt.Sprintf("%s:%d", serverHost, serverPort), NatDetectTimeout)
 	if err != nil {
 		err = fmt.Errorf("dial tcp4 %s:%d error: %w", serverHost, serverPort, err)
 		return
@@ -60,7 +59,7 @@ func natDetectTCP(serverHost string, serverPort int, lp int) (publicIP string, p
 func natDetectUDP(serverHost string, serverPort int, localPort int) (publicIP string, publicPort int, err error) {
 	gLog.dev("natDetectUDP start")
 	defer gLog.dev("natDetectUDP end")
-	conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", localPort))
+	conn, err := netxListenPacket(context.Background(), "udp", fmt.Sprintf(":%d", localPort))
 	if err != nil {
 		gLog.e("natDetectUDP listen udp error:%s", err)
 		return "", 0, err
@@ -130,7 +129,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 	var echoConn *net.UDPConn
 	gLog.d("echo server start")
 	var err error
-	echoConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
+	echoConn, err = netxListenUDP("udp", &net.UDPAddr{IP: net.IPv4zero, Port: echoPort})
 	if err != nil { // listen error
 		gLog.e("echo server listen error:%s", err)
 		return
@@ -146,7 +145,7 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 			setUPNP(echoPort)
 		}
 		gLog.d("public ip test start %s:%d", publicIP, echoPort)
-		conn, err := net.ListenUDP("udp", nil)
+		conn, err := netxListenUDP("udp", nil)
 		if err != nil {
 			break
 		}
@@ -192,6 +191,10 @@ func publicIPTest(publicIP string, echoPort int) (hasPublicIP int, hasUPNPorNATP
 }
 
 func setUPNP(echoPort int) {
+	if netxEnabled() {
+		gLog.i("skip UPnP/NAT-PMP: underlay sockets are bound to interface %s", netxInterfaceName())
+		return
+	}
 	nat := upnp.Any() // Initialize the NAT interface
 	if nat == nil {
 		gLog.d("NAT interface is not available")

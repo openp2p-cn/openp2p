@@ -13,7 +13,7 @@ import (
 func handshakeC2C(t *P2PTunnel) (err error) {
 	gLog.d("handshakeC2C %s:%d:%d to %s:%d", gConf.Network.Node, t.coneLocalPort, t.coneNatPort, t.config.peerIP, t.config.peerConeNatPort)
 	defer gLog.d("handshakeC2C end")
-	conn, err := net.ListenUDP("udp", t.localHoleAddr)
+	conn, err := netxListenUDP("udp", t.localHoleAddr)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func handshakeC2S(t *P2PTunnel) error {
 	startTime := time.Now()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	randPorts := r.Perm(65532)
-	conn, err := net.ListenUDP("udp", t.localHoleAddr)
+	conn, err := netxListenUDP("udp", t.localHoleAddr)
 	if err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func handshakeS2C(t *P2PTunnel) error {
 	for i := 0; i < SymmetricHandshakeNum; i++ {
 		// time.Sleep(SymmetricHandshakeInterval)
 		go func(t *P2PTunnel) error {
-			conn, err := net.ListenUDP("udp", nil) // TODO: system allocated port really random?
+			conn, err := netxListenUDP("udp", nil) // TODO: system allocated port really random?
 			if err != nil {
 				gLog.d("tid:%d listen error", t.id)
 				return err
