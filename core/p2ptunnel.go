@@ -758,7 +758,7 @@ func (*P2PTunnel) handleOverlayConnectReq(body []byte, err error) {
 	}
 
 	if req.Token != gConf.Network.Token {
-		gLog.e("Access Denied,token=%d", req.Token)
+		gLog.e("Access Denied: token mismatch")
 		return
 	}
 
