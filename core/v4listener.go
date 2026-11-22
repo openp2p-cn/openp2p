@@ -58,7 +58,7 @@ func (vl *v4Listener) listenTCP() error {
 	defer gLog.d("v4Listener listenTCP %d end", vl.port)
 	addr, _ := net.ResolveTCPAddr("tcp", fmt.Sprintf("0.0.0.0:%d", vl.port)) // system will auto listen both v4 and v6
 	var err error
-	vl.tcpListener, err = net.ListenTCP("tcp", addr)
+	vl.tcpListener, err = netxListenTCP("tcp", addr)
 	if err != nil {
 		gLog.e("v4Listener listen %d error:", vl.port, err)
 		return err
@@ -68,6 +68,11 @@ func (vl *v4Listener) listenTCP() error {
 		c, err := vl.tcpListener.Accept()
 		if err != nil {
 			break
+		}
+		if err = netxBindConn(c); err != nil {
+			gLog.e("v4Listener bind accepted connection error:%s", err)
+			c.Close()
+			continue
 		}
 		utcp := &underlayTCP{writeMtx: &sync.Mutex{}, Conn: c, connectTime: time.Now()}
 		go vl.handleConnection(utcp)
@@ -79,12 +84,17 @@ func (vl *v4Listener) listenTCP() error {
 func (vl *v4Listener) listenUDP() error {
 	gLog.d("v4Listener listenUDP %d start", vl.port)
 	defer gLog.d("v4Listener listenUDP %d end", vl.port)
-	var err error
-	vl.udpListener, err = quic.ListenAddr(fmt.Sprintf("0.0.0.0:%d", vl.port), generateTLSConfig(),
-		&quic.Config{Versions: quicVersion, MaxIdleTimeout: TunnelIdleTimeout, DisablePathMTUDiscovery: true})
+	conn, err := netxListenPacket(context.Background(), "udp", fmt.Sprintf("0.0.0.0:%d", vl.port))
 	if err != nil {
 		return err
 	}
+	vl.udpListener, err = quic.Listen(conn, generateTLSConfig(),
+		&quic.Config{Versions: quicVersion, MaxIdleTimeout: TunnelIdleTimeout, DisablePathMTUDiscovery: true})
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	defer conn.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), UnderlayConnectTimeout)
 	defer cancel()
 	defer vl.udpListener.Close()

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -220,7 +219,9 @@ func handlePush(subType uint16, msg []byte) error {
 		gLog.i("SpecTunnel %d", req.TunnelIndex)
 		gConf.Network.specTunnel = int(req.TunnelIndex)
 	case MsgPushSDWanRefresh:
-		GNetwork.write(MsgSDWAN, MsgSDWANInfoReq, nil)
+		if !sdwanBlocked() {
+			GNetwork.write(MsgSDWAN, MsgSDWANInfoReq, nil)
+		}
 	case MsgPushNat4Detect:
 		handleNat4Detect(msg)
 	default:
@@ -567,7 +568,7 @@ func handleCheckRemoteService(msg []byte) (err error) {
 		return err
 	}
 	rsp := PushRsp{Error: 0}
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", req.Host, req.Port), time.Second*3)
+	conn, err := netxDialTimeout("tcp", fmt.Sprintf("%s:%d", req.Host, req.Port), time.Second*3)
 	if err != nil {
 		rsp.Error = 1
 		rsp.Detail = ErrRemoteServiceUnable.Error()

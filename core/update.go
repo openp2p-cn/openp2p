@@ -29,12 +29,11 @@ func update(host string, port int) error {
 	caCertPool.AppendCertsFromPEM([]byte(rootEdgeCA))
 	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
 
+	tr := netxTransport()
+	tr.TLSClientConfig = &tls.Config{RootCAs: caCertPool, InsecureSkipVerify: gConf.TLSInsecureSkipVerify}
 	c := http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: caCertPool,
-				InsecureSkipVerify: gConf.TLSInsecureSkipVerify},
-		},
-		Timeout: time.Second * 30,
+		Transport: tr,
+		Timeout:   time.Second * 30,
 	}
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
@@ -88,11 +87,10 @@ func downloadFile(url string, checksum string, dstFile string) error {
 	caCertPool.AppendCertsFromPEM([]byte(rootCA))
 	caCertPool.AppendCertsFromPEM([]byte(rootEdgeCA))
 	caCertPool.AppendCertsFromPEM([]byte(ISRGRootX1))
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs:            caCertPool,
-			InsecureSkipVerify: gConf.TLSInsecureSkipVerify},
-	}
+	tr := netxTransport()
+	tr.TLSClientConfig = &tls.Config{
+		RootCAs:            caCertPool,
+		InsecureSkipVerify: gConf.TLSInsecureSkipVerify}
 	client := &http.Client{Transport: tr,
 		Timeout: 60 * time.Second}
 	response, err := client.Get(url)

@@ -6,8 +6,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	reuse "github.com/openp2p-cn/go-reuseport"
 )
 
 type underlayTCP struct {
@@ -59,9 +57,9 @@ func listenTCP(host string, port int, localPort int, mode string, t *P2PTunnel) 
 		var c net.Conn
 		var err error
 		if mode == LinkModeTCPPunch {
-			c, err = reuse.DialTimeout("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
+			c, err = netxDialTCPString("tcp", fmt.Sprintf("0.0.0.0:%d", localPort), fmt.Sprintf("%s:%d", host, port), CheckActiveTimeout)
 		} else {
-			c, err = reuse.DialTimeout("tcp6", fmt.Sprintf("[::]:%d", localPort), fmt.Sprintf("[%s]:%d", t.config.peerIPv6, port), CheckActiveTimeout)
+			c, err = netxDialTCPString("tcp6", fmt.Sprintf("[::]:%d", localPort), fmt.Sprintf("[%s]:%d", t.config.peerIPv6, port), CheckActiveTimeout)
 		}
 		if err != nil {
 			// gLog.d("send tcp punch: ", err)
@@ -111,7 +109,7 @@ func dialTCP(host string, port int, localPort int, mode string) (*underlayTCP, e
 	}
 	gLog.dev("send tcp punch: %s --> %s", localAddr, remoteAddr)
 
-	c, err = reuse.DialTimeout(network, localAddr, remoteAddr, CheckActiveTimeout)
+	c, err = netxDialTCPString(network, localAddr, remoteAddr, CheckActiveTimeout)
 	if err != nil {
 		gLog.dev("send tcp punch: %v", err)
 	}
