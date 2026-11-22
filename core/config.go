@@ -83,6 +83,7 @@ type Config struct {
 	TLSInsecureSkipVerify bool
 	Forcev6               bool
 	daemonMode            bool
+	noUpdate              bool
 	mtx                   sync.RWMutex
 	fileMtx               sync.Mutex
 	sdwanMtx              sync.Mutex
@@ -424,6 +425,8 @@ func parseParams(subCommand string, cmd string) {
 	newconfig := fset.Bool("newconfig", false, "not load existing config.json")
 	logLevel := fset.Int("loglevel", 1, "0:debug 1:info 2:warn 3:error")
 	maxLogSize := fset.Int("maxlogsize", 1024*1024, "default 1MB")
+	fset.String("workdir", "", "writable directory for config.json and logs (default: binary directory)")
+	noUpdate := fset.Bool("noupdate", false, "ignore server-pushed updates")
 	if cmd == "" {
 		if subCommand == "" { // no subcommand
 			fset.Parse(os.Args[1:])
@@ -467,6 +470,7 @@ func parseParams(subCommand string, cmd string) {
 	}
 	// gConf.mtx.Lock() // when calling this func it's single-thread no lock
 	gConf.daemonMode = *daemonMode
+	gConf.noUpdate = *noUpdate || os.Getenv("OPENP2P_NOUPDATE") != ""
 	// spec paramters in commandline will always be used
 	fset.Visit(func(f *flag.Flag) {
 		if f.Name == "sharebandwidth" {

@@ -145,6 +145,10 @@ func handlePush(subType uint16, msg []byte) error {
 		return nil
 	case MsgPushUpdate:
 		gLog.i("MsgPushUpdate")
+		if gConf.noUpdate {
+			gLog.i("MsgPushUpdate ignored: updates disabled")
+			return nil
+		}
 		err := update(gConf.Network.ServerHost, gConf.Network.ServerPort)
 		if err == nil {
 			if !isAndroid() {
